@@ -1,0 +1,91 @@
+{
+  "compilerOptions": {
+    // 编译目标和模块系统
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable", "WebWorker"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    
+    // 输出配置
+    "outDir": "out",
+    "rootDir": "src",
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+    "removeComments": false,
+    "importHelpers": true,
+    
+    // 严格类型检查
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "alwaysStrict": true,
+    
+    // 代码质量检查
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    
+    // 模块解析
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    
+    // 性能优化
+    "skipLibCheck": true,
+    "incremental": true,
+    "tsBuildInfoFile": "./out/.tsbuildinfo",
+    
+    // 路径映射 - 与webpack alias一致
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@drivers/*": ["src/drivers/*"],
+      "@models/*": ["src/models/*"],
+      "@utils/*": ["src/utils/*"],
+      "@components/*": ["src/webview/components/*"],
+      "@stores/*": ["src/webview/stores/*"]
+    },
+    
+    // 实验性功能
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    
+    // JSX支持（为Vue SFC准备）
+    "jsx": "preserve",
+    "jsxFactory": "h",
+    "jsxFragmentFactory": "Fragment"
+  },
+  "include": [
+    "src/**/*",
+    "types/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "out",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/test/**/*",
+    "**/tests/**/*",
+    "coverage",
+    ".vscode-test"
+  ],
+  "ts-node": {
+    "esm": true,
+    "experimentalSpecifierResolution": "node"
+  }
+}

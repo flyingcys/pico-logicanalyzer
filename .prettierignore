@@ -1,0 +1,68 @@
+# 构建输出目录
+out/
+dist/
+coverage/
+
+# 依赖目录
+node_modules/
+
+# 生成的文件
+*.min.js
+*.bundle.js
+*.map
+
+# 临时文件
+*.tmp
+*.temp
+
+# 日志文件
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# VSCode配置（保持原有格式）
+.vscode/
+
+# Git文件
+.git/
+.gitignore
+
+# 其他工具配置文件（保持原有格式）
+.editorconfig
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 二进制文件
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.pdf
+*.exe
+*.dll
+*.so
+
+# 压缩文件
+*.zip
+*.tar.gz
+*.rar
+
+# IDE生成的文件
+.idea/
+*.swp
+*.swo
+*~
+
+# 特定的大型数据文件
+test/data/
+docs/assets/
+
+# 已经格式化的文件类型
+*.md5
+*.sha1

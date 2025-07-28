@@ -1,0 +1,290 @@
+{
+  "version": "2.0",
+  "description": "示例硬件兼容性数据 - 用于测试和开发",
+  "lastUpdated": "2024-01-15T10:00:00.000Z",
+  "entries": [
+    {
+      "deviceId": "example-usb-analyzer",
+      "manufacturer": "Example Corp",
+      "model": "USB Logic Analyzer Pro",
+      "version": "1.2",
+      "category": "usb-la",
+      "identifiers": {
+        "vendorId": "1234",
+        "productId": "5678",
+        "serialPattern": "ELA*"
+      },
+      "driverCompatibility": {
+        "primaryDriver": "LogicAnalyzerDriver",
+        "alternativeDrivers": ["SigrokAdapter"],
+        "driverVersion": "2.0.0",
+        "compatibilityLevel": "full",
+        "knownIssues": ["Windows 11兼容性问题"],
+        "workarounds": ["使用兼容模式运行驱动"]
+      },
+      "capabilities": {
+        "channels": {
+          "digital": 16,
+          "analog": 0,
+          "maxVoltage": 5.0,
+          "inputImpedance": 1000000,
+          "thresholdVoltages": [0.8, 1.5, 2.5, 3.3, 5.0]
+        },
+        "sampling": {
+          "maxRate": 200000000,
+          "minRate": 1000,
+          "supportedRates": [1000, 10000, 100000, 1000000, 10000000, 100000000, 200000000],
+          "bufferSize": 2000000,
+          "streamingSupport": true,
+          "compressionSupport": true
+        },
+        "triggers": {
+          "types": ["edge", "pattern", "pulse", "serial"],
+          "maxChannels": 16,
+          "advancedTriggers": true,
+          "triggerPosition": true
+        },
+        "protocol": {
+          "supportedProtocols": ["uart", "spi", "i2c", "can", "lin"],
+          "hardwareDecoding": false,
+          "customProtocols": true
+        },
+        "advanced": {
+          "memorySegmentation": true,
+          "externalClock": true,
+          "calibration": true,
+          "selfTest": true
+        }
+      },
+      "connectionOptions": {
+        "defaultConnectionString": "COM3",
+        "alternativeConnections": ["COM1", "COM2", "COM4"],
+        "connectionParameters": {
+          "baudRate": 921600,
+          "dataBits": 8,
+          "stopBits": 1,
+          "parity": "none",
+          "timeout": 5000,
+          "dtr": true,
+          "rts": false
+        }
+      },
+      "testStatus": {
+        "lastTested": "2024-01-10T15:30:00.000Z",
+        "testResults": {
+          "driverValidation": 92,
+          "functionalTests": 88,
+          "performanceGrade": "A",
+          "reliability": "excellent"
+        },
+        "certificationLevel": "certified"
+      },
+      "communityFeedback": {
+        "userRating": 4.3,
+        "reportCount": 25,
+        "commonIssues": ["USB供电不足", "高频采样不稳定"],
+        "userComments": [
+          "性能优秀，使用简单",
+          "支持的协议丰富",
+          "价格合理",
+          "需要外部供电才能稳定工作"
+        ]
+      },
+      "metadata": {
+        "addedDate": "2024-01-01T00:00:00.000Z",
+        "lastUpdated": "2024-01-10T15:30:00.000Z",
+        "maintainer": "Community Team",
+        "documentationUrl": "https://example.com/docs/usb-analyzer-pro",
+        "vendorUrl": "https://example.com",
+        "supportStatus": "active"
+      }
+    },
+    {
+      "deviceId": "example-network-analyzer",
+      "manufacturer": "NetworkTech",
+      "model": "Ethernet Logic Analyzer",
+      "version": "2.0",
+      "category": "network-la",
+      "identifiers": {
+        "networkSignature": "networktech-ela-*",
+        "scpiIdnResponse": "NETWORKTECH,ELA*"
+      },
+      "driverCompatibility": {
+        "primaryDriver": "NetworkLogicAnalyzerDriver",
+        "alternativeDrivers": [],
+        "driverVersion": "2.0.0",
+        "compatibilityLevel": "partial",
+        "knownIssues": ["需要固定IP配置", "防火墙可能阻止连接"],
+        "workarounds": ["配置防火墙规则", "使用静态IP地址"]
+      },
+      "capabilities": {
+        "channels": {
+          "digital": 32,
+          "analog": 4,
+          "maxVoltage": 12.0,
+          "inputImpedance": 1000000,
+          "thresholdVoltages": [0.8, 1.2, 1.8, 2.5, 3.3, 5.0, 12.0]
+        },
+        "sampling": {
+          "maxRate": 1000000000,
+          "minRate": 1000,
+          "supportedRates": [1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000],
+          "bufferSize": 100000000,
+          "streamingSupport": true,
+          "compressionSupport": true
+        },
+        "triggers": {
+          "types": ["edge", "pattern", "pulse", "runt", "setup-hold"],
+          "maxChannels": 32,
+          "advancedTriggers": true,
+          "triggerPosition": true
+        },
+        "protocol": {
+          "supportedProtocols": ["uart", "spi", "i2c", "can", "lin", "ethernet", "usb"],
+          "hardwareDecoding": true,
+          "customProtocols": false
+        },
+        "advanced": {
+          "memorySegmentation": true,
+          "externalClock": true,
+          "calibration": true,
+          "selfTest": true
+        }
+      },
+      "connectionOptions": {
+        "defaultConnectionString": "192.168.1.100:8080",
+        "alternativeConnections": ["192.168.1.100:8081", "networktech.local:8080"],
+        "connectionParameters": {
+          "protocol": "HTTP",
+          "timeout": 15000,
+          "retries": 3,
+          "authRequired": false,
+          "keepAlive": true
+        }
+      },
+      "testStatus": {
+        "lastTested": "2024-01-08T12:00:00.000Z",
+        "testResults": {
+          "driverValidation": 78,
+          "functionalTests": 82,
+          "performanceGrade": "B",
+          "reliability": "good"
+        },
+        "certificationLevel": "verified"
+      },
+      "communityFeedback": {
+        "userRating": 3.9,
+        "reportCount": 12,
+        "commonIssues": ["网络配置复杂", "文档不完整"],
+        "userComments": [
+          "功能强大但设置复杂",
+          "网络连接有时不稳定",
+          "硬件解码功能很有用",
+          "需要更好的文档支持"
+        ]
+      },
+      "metadata": {
+        "addedDate": "2024-01-01T00:00:00.000Z",
+        "lastUpdated": "2024-01-08T12:00:00.000Z",
+        "maintainer": "NetworkTech Support",
+        "documentationUrl": "https://networktech.com/docs/ela-2.0",
+        "vendorUrl": "https://networktech.com",
+        "supportStatus": "active"
+      }
+    },
+    {
+      "deviceId": "budget-analyzer-v1",
+      "manufacturer": "BudgetElectronics",
+      "model": "Basic Logic Analyzer",
+      "version": "1.0",
+      "category": "usb-la",
+      "identifiers": {
+        "vendorId": "9999",
+        "productId": "0001",
+        "serialPattern": "BLA*"
+      },
+      "driverCompatibility": {
+        "primaryDriver": "SigrokAdapter",
+        "alternativeDrivers": ["LogicAnalyzerDriver"],
+        "driverVersion": "2.0.0",
+        "compatibilityLevel": "experimental",
+        "knownIssues": ["采样率不稳定", "长时间采集可能丢失数据"],
+        "workarounds": ["降低采样率", "分段采集"]
+      },
+      "capabilities": {
+        "channels": {
+          "digital": 8,
+          "analog": 0,
+          "maxVoltage": 3.3,
+          "inputImpedance": 1000000,
+          "thresholdVoltages": [1.5, 3.3]
+        },
+        "sampling": {
+          "maxRate": 24000000,
+          "minRate": 1000,
+          "supportedRates": [1000, 10000, 100000, 1000000, 24000000],
+          "bufferSize": 512000,
+          "streamingSupport": false,
+          "compressionSupport": false
+        },
+        "triggers": {
+          "types": ["edge", "pattern"],
+          "maxChannels": 8,
+          "advancedTriggers": false,
+          "triggerPosition": false
+        },
+        "protocol": {
+          "supportedProtocols": ["uart", "spi", "i2c"],
+          "hardwareDecoding": false,
+          "customProtocols": false
+        },
+        "advanced": {
+          "memorySegmentation": false,
+          "externalClock": false,
+          "calibration": false,
+          "selfTest": false
+        }
+      },
+      "connectionOptions": {
+        "defaultConnectionString": "COM1",
+        "alternativeConnections": ["COM2", "COM3"],
+        "connectionParameters": {
+          "baudRate": 115200,
+          "dataBits": 8,
+          "stopBits": 1,
+          "parity": "none",
+          "timeout": 10000
+        }
+      },
+      "testStatus": {
+        "lastTested": "2024-01-05T09:00:00.000Z",
+        "testResults": {
+          "driverValidation": 65,
+          "functionalTests": 70,
+          "performanceGrade": "C",
+          "reliability": "fair"
+        },
+        "certificationLevel": "community"
+      },
+      "communityFeedback": {
+        "userRating": 3.2,
+        "reportCount": 8,
+        "commonIssues": ["性能限制", "构建质量一般"],
+        "userComments": [
+          "价格便宜，适合学习使用",
+          "功能基础但够用",
+          "质量一般，偶尔出问题",
+          "入门级产品"
+        ]
+      },
+      "metadata": {
+        "addedDate": "2024-01-01T00:00:00.000Z",
+        "lastUpdated": "2024-01-05T09:00:00.000Z",
+        "maintainer": "Community",
+        "documentationUrl": "https://budgetelectronics.com/basic-la",
+        "vendorUrl": "https://budgetelectronics.com",
+        "supportStatus": "legacy"
+      }
+    }
+  ]
+}

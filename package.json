@@ -1,0 +1,182 @@
+{
+  "name": "vscode-logic-analyzer",
+  "displayName": "VSCode Logic Analyzer",
+  "description": "Professional logic analyzer plugin with multi-hardware support, protocol decoders, and real-time waveform visualization",
+  "version": "1.0.0-beta.0",
+  "publisher": "logic-analyzer-team",
+  "author": {
+    "name": "Logic Analyzer Team",
+    "email": "team@logicanalyzer-vscode.com"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/your-repo/vscode-logicanalyzer",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-repo/vscode-logicanalyzer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-repo/vscode-logicanalyzer/issues"
+  },
+  "keywords": [
+    "logic analyzer",
+    "hardware debugging",
+    "protocol decoder",
+    "i2c",
+    "spi",
+    "uart",
+    "waveform",
+    "oscilloscope",
+    "embedded",
+    "electronics"
+  ],
+  "engines": {
+    "vscode": "^1.74.0",
+    "node": ">=16.0.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:logicanalyzer"
+  ],
+  "icon": "resources/icon.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "logicAnalyzer.openAnalyzer",
+        "title": "Open Logic Analyzer",
+        "category": "Logic Analyzer"
+      },
+      {
+        "command": "logicAnalyzer.connectDevice",
+        "title": "Connect Device",
+        "category": "Logic Analyzer"
+      },
+      {
+        "command": "logicAnalyzer.startCapture",
+        "title": "Start Capture",
+        "category": "Logic Analyzer"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "logicAnalyzer.lacEditor",
+        "displayName": "Logic Analyzer Capture",
+        "selector": [
+          {
+            "filenamePattern": "*.lac"
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "Logic Analyzer",
+      "properties": {
+        "logicAnalyzer.autoDetectDevices": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically detect connected logic analyzer devices"
+        },
+        "logicAnalyzer.defaultSampleRate": {
+          "type": "number",
+          "default": 24000000,
+          "description": "Default sample rate in Hz"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build:production",
+    "build": "npm run clean && webpack --mode development",
+    "build:production": "npm run clean && cross-env NODE_ENV=production webpack --mode production",
+    "build:analyze": "npm run clean && cross-env NODE_ENV=production ANALYZE=true webpack --mode production",
+    "compile": "npm run build",
+    "watch": "npm run clean && webpack --mode development --watch",
+    "watch:production": "npm run clean && cross-env NODE_ENV=production webpack --mode production --watch",
+    "dev": "npm run watch",
+    "clean": "rimraf out dist",
+    "typecheck": "tsc --noEmit",
+    "typecheck:watch": "tsc --noEmit --watch",
+    "pretest": "npm run build && npm run lint && npm run typecheck",
+    "test": "node ./out/test/runTest.js",
+    "test:watch": "npm run test -- --watch",
+    "test:coverage": "jest --coverage",
+    "test:drivers": "ts-node scripts/test-drivers.ts",
+    "test:compatibility": "ts-node scripts/test-drivers.ts compatibility",
+    "test:summary": "ts-node scripts/test-drivers.ts report",
+    "benchmark:drivers": "ts-node scripts/test-drivers.ts benchmark",
+    "quality-gate": "ts-node scripts/test-drivers.ts run --required-grade B",
+    "update-badges": "echo \"Badge update not implemented\"",
+    "lint": "eslint src --ext .ts,.vue --cache",
+    "lint:fix": "eslint src --ext .ts,.vue --fix",
+    "format": "prettier --write \"src/**/*.{ts,vue,js,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,vue,js,json}\"",
+    "validate": "npm run typecheck && npm run lint && npm run format:check",
+    "db:query": "ts-node scripts/manage-database.ts query",
+    "db:stats": "ts-node scripts/manage-database.ts stats",
+    "db:discover": "ts-node scripts/manage-database.ts discover",
+    "db:validate": "ts-node scripts/manage-database.ts validate --fix",
+    "db:export": "ts-node scripts/manage-database.ts export ./data/hardware-compatibility-backup.json",
+    "db:import": "ts-node scripts/manage-database.ts import",
+    "db:template": "ts-node scripts/manage-database.ts template",
+    "release:check": "ts-node scripts/release-check.ts",
+    "version:bump": "ts-node scripts/version-manager.ts bump",
+    "version:prepare": "ts-node scripts/version-manager.ts prepare",
+    "version:status": "ts-node scripts/version-manager.ts status",
+    "version:tag": "ts-node scripts/version-manager.ts tag",
+    "build:release": "ts-node scripts/build-release.ts",
+    "package": "npm run build:production && vsce package",
+    "package:test": "npm run package && code --install-extension *.vsix",
+    "publish": "npm run release:check && npm run package && vsce publish",
+    "publish:dry": "npm run package && vsce package --dry-run"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.2.4",
+    "@types/node": "18.x",
+    "@types/vscode": "^1.74.0",
+    "@typescript-eslint/eslint-plugin": "^5.45.0",
+    "@typescript-eslint/parser": "^5.45.0",
+    "@vue/compiler-sfc": "^3.2.45",
+    "@vue/eslint-config-typescript": "^11.0.2",
+    "@vue/test-utils": "^2.2.6",
+    "@vue/vue3-jest": "^29.2.2",
+    "babel-jest": "^29.3.1",
+    "cross-env": "^7.0.3",
+    "css-loader": "^6.7.1",
+    "eslint": "^8.28.0",
+    "eslint-plugin-vue": "^9.8.0",
+    "html-webpack-plugin": "^5.5.0",
+    "jest": "^29.3.1",
+    "jest-environment-jsdom": "^29.3.1",
+    "prettier": "^2.8.1",
+    "rimraf": "^3.0.2",
+    "sass": "^1.56.2",
+    "sass-loader": "^13.2.0",
+    "style-loader": "^3.3.1",
+    "ts-jest": "^29.0.3",
+    "ts-loader": "^9.4.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^4.9.4",
+    "vsce": "^2.15.0",
+    "vue-loader": "^17.0.0",
+    "webpack": "^5.75.0",
+    "webpack-bundle-analyzer": "^4.7.0",
+    "webpack-cli": "^5.0.0"
+  },
+  "dependencies": {
+    "@serialport/parser-readline": "^10.5.0",
+    "commander": "^9.4.1",
+    "element-plus": "^2.2.26",
+    "glob": "^8.0.3",
+    "pinia": "^2.0.28",
+    "serialport": "^10.5.0",
+    "vue": "^3.2.45",
+    "vue-i18n": "^9.14.5"
+  }
+}
