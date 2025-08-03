@@ -1,0 +1,63 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "timestamp": "2025-08-03T00:34:08.259Z",
+    "deviceInfo": {
+      "name": "Pico Logic Analyzer",
+      "version": "Unknown",
+      "serialNumber": "Unknown"
+    },
+    "sampleRate": 1000000,
+    "totalSamples": 1,
+    "channels": 1,
+    "duration": 0.000001,
+    "exportType": "waveform",
+    "exportFormat": "json",
+    "exportSettings": {
+      "timeRange": "all",
+      "originalTotalSamples": 1,
+      "sampleRange": {
+        "startSample": 0,
+        "endSample": 1
+      },
+      "selectedChannelCount": 1,
+      "totalChannelCount": 1,
+      "samplingMode": "original"
+    },
+    "performance": {
+      "estimatedFileSize": 1015,
+      "compressionAvailable": true
+    }
+  },
+  "exportInfo": {
+    "exportTime": "2025-08-03T00:34:08.259Z",
+    "timeRange": "all",
+    "selectedChannels": 1,
+    "customRange": null
+  },
+  "channels": [
+    {
+      "number": 0,
+      "name": "TEST",
+      "hidden": false,
+      "enabled": true
+    }
+  ],
+  "samples": [
+    {
+      "index": 0,
+      "time": "0.000000",
+      "channels": {
+        "0": 1
+      }
+    }
+  ],
+  "timebase": {
+    "sampleRate": 1000000,
+    "startSample": 0,
+    "endSample": 1,
+    "totalSamples": 1,
+    "duration": 0.000001,
+    "resolution": 0.000001
+  }
+}

@@ -14,16 +14,16 @@ const getDefaultLocale = (): string => {
   if (savedLocale) {
     return savedLocale;
   }
-  
+
   // 根据浏览器语言自动检测
   const browserLang = navigator.language || navigator.languages?.[0] || 'zh-CN';
-  
+
   if (browserLang.startsWith('zh')) {
     return 'zh-CN';
   } else if (browserLang.startsWith('en')) {
     return 'en-US';
   }
-  
+
   // 默认使用中文
   return 'zh-CN';
 };
@@ -44,7 +44,7 @@ export default i18n;
 export const switchLocale = (locale: string) => {
   i18n.global.locale.value = locale;
   localStorage.setItem('ui-locale', locale);
-  
+
   // 更新HTML lang属性
   document.documentElement.lang = locale;
 };

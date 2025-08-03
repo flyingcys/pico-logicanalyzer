@@ -69,14 +69,18 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
           console.log('收到来自webview的测试消息:', message.data);
           vscode.window.showInformationMessage(`通信测试成功！收到消息: ${message.data.message}`);
           // 向webview发送回复
-          webviewPanel.webview.postMessage({
-            type: 'testResponse',
-            data: {
-              timestamp: new Date().toISOString(),
-              message: '来自VSCode扩展的回复消息',
-              receivedAt: message.data.timestamp
-            }
-          });
+          try {
+            await webviewPanel.webview.postMessage({
+              type: 'testResponse',
+              data: {
+                timestamp: new Date().toISOString(),
+                message: '来自VSCode扩展的回复消息',
+                receivedAt: message.data.timestamp
+              }
+            });
+          } catch (postError) {
+            console.error('发送测试回复消息失败:', postError);
+          }
           break;
 
         default:
@@ -155,16 +159,24 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
   ): Promise<void> {
     try {
       const lacData = this.parseLACFile(document.getText());
-      webview.postMessage({
-        type: 'documentUpdate',
-        data: lacData
-      });
+      try {
+        await webview.postMessage({
+          type: 'documentUpdate',
+          data: lacData
+        });
+      } catch (postError) {
+        console.error('发送文档更新消息失败:', postError);
+      }
     } catch (error) {
       console.error('解析.lac文件失败:', error);
-      webview.postMessage({
-        type: 'error',
-        message: `解析文件失败: ${error}`
-      });
+      try {
+        await webview.postMessage({
+          type: 'error',
+          message: `解析文件失败: ${error}`
+        });
+      } catch (postError) {
+        console.error('发送错误消息失败:', postError);
+      }
     }
   }
 

@@ -142,7 +142,7 @@ export class MemoryManager {
 
     // 计算数据大小
     const size = this.calculateDataSize(data);
-    
+
     // 检查是否需要释放内存
     if (pool.currentSize + size > pool.maxSize) {
       console.log(`⚠️ 内存池 "${poolName}" 即将超出限制，开始释放内存...`);
@@ -208,10 +208,26 @@ export class MemoryManager {
     if (block.data && typeof block.data === 'object') {
       if (Array.isArray(block.data)) {
         block.data.length = 0;
+      } else if (block.data instanceof Uint8Array ||
+                 block.data instanceof Int8Array ||
+                 block.data instanceof Uint16Array ||
+                 block.data instanceof Int16Array ||
+                 block.data instanceof Uint32Array ||
+                 block.data instanceof Int32Array ||
+                 block.data instanceof Float32Array ||
+                 block.data instanceof Float64Array ||
+                 block.data instanceof ArrayBuffer) {
+        // 类型化数组和ArrayBuffer不能使用delete，直接设置为null
+        block.data = null;
       } else {
-        Object.keys(block.data).forEach(key => {
-          delete block.data[key];
-        });
+        try {
+          Object.keys(block.data).forEach(key => {
+            delete block.data[key];
+          });
+        } catch (error) {
+          // 如果删除失败，直接设置为null
+          block.data = null;
+        }
       }
     }
 
@@ -259,15 +275,15 @@ export class MemoryManager {
       case 'lru': // 最近最少使用
         blocks.sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
         break;
-      
+
       case 'lfu': // 最少使用频率
         blocks.sort((a, b) => a.accessCount - b.accessCount);
         break;
-      
+
       case 'fifo': // 先进先出
         blocks.sort((a, b) => a.createdAt - b.createdAt);
         break;
-      
+
       case 'priority': // 优先级策略
         const priorityOrder = { low: 0, medium: 1, high: 2 };
         blocks.sort((a, b) => {
@@ -294,10 +310,26 @@ export class MemoryManager {
       if (block.data && typeof block.data === 'object') {
         if (Array.isArray(block.data)) {
           block.data.length = 0;
+        } else if (block.data instanceof Uint8Array ||
+                   block.data instanceof Int8Array ||
+                   block.data instanceof Uint16Array ||
+                   block.data instanceof Int16Array ||
+                   block.data instanceof Uint32Array ||
+                   block.data instanceof Int32Array ||
+                   block.data instanceof Float32Array ||
+                   block.data instanceof Float64Array ||
+                   block.data instanceof ArrayBuffer) {
+          // 类型化数组和ArrayBuffer不能使用delete，直接设置为null
+          block.data = null;
         } else {
-          Object.keys(block.data).forEach(key => {
-            delete block.data[key];
-          });
+          try {
+            Object.keys(block.data).forEach(key => {
+              delete block.data[key];
+            });
+          } catch (error) {
+            // 如果删除失败，直接设置为null
+            block.data = null;
+          }
         }
       }
     }
@@ -313,21 +345,21 @@ export class MemoryManager {
    */
   public forceGarbageCollection(): void {
     console.log('♻️ 执行强制垃圾回收...');
-    
+
     const beforeStats = this.getMemoryStats();
-    
+
     // 清理过期内存块
     this.cleanupExpiredBlocks();
-    
+
     // 执行系统垃圾回收（如果可用）
     if (global.gc) {
       global.gc();
       console.log('🔄 系统垃圾回收已执行');
     }
-    
+
     const afterStats = this.getMemoryStats();
     const memoryFreed = beforeStats.totalUsed - afterStats.totalUsed;
-    
+
     console.log(`✅ 垃圾回收完成，释放内存: ${(memoryFreed / 1024).toFixed(1)}KB`);
   }
 
@@ -337,23 +369,23 @@ export class MemoryManager {
   private cleanupExpiredBlocks(): void {
     const now = Date.now();
     const expireTime = 5 * 60 * 1000; // 5分钟过期时间
-    
+
     let totalCleaned = 0;
-    
+
     for (const [poolName, pool] of this.pools) {
       const expiredBlocks = Array.from(pool.blocks.values())
-        .filter(block => 
-          block.canRelease && 
+        .filter(block =>
+          block.canRelease &&
           (now - block.lastAccessedAt) > expireTime &&
           block.priority !== 'high'
         );
-      
+
       for (const block of expiredBlocks) {
         this.release(poolName, block.id);
         totalCleaned++;
       }
     }
-    
+
     if (totalCleaned > 0) {
       console.log(`🧹 清理过期内存块: ${totalCleaned} 个`);
     }
@@ -378,11 +410,11 @@ export class MemoryManager {
       size: number;
       accessCount: number;
     }> = [];
-    
+
     for (const [poolName, pool] of this.pools) {
       for (const [blockId, block] of pool.blocks) {
         const age = now - block.createdAt;
-        
+
         // 检测可疑的长期存在的内存块
         if (age > suspiciousAge && block.accessCount === 1) {
           leaks.push({
@@ -395,14 +427,14 @@ export class MemoryManager {
         }
       }
     }
-    
+
     if (leaks.length > 0) {
       console.log(`🔍 检测到 ${leaks.length} 个可疑内存泄漏:`);
       leaks.forEach(leak => {
         console.log(`  ${leak.poolName}/${leak.blockId}: ${(leak.age / 1000 / 60).toFixed(1)}分钟, ${(leak.size / 1024).toFixed(1)}KB`);
       });
     }
-    
+
     return leaks;
   }
 
@@ -412,15 +444,15 @@ export class MemoryManager {
   private startMemoryMonitoring(): void {
     this.gcTimer = setInterval(() => {
       this.updateMemoryHistory();
-      
+
       const stats = this.getMemoryStats();
       const memoryUsagePercent = stats.totalUsed / (stats.totalUsed + stats.available);
-      
+
       if (memoryUsagePercent > this.memoryThreshold) {
         console.log(`⚠️ 内存使用率过高: ${(memoryUsagePercent * 100).toFixed(1)}%`);
         this.forceGarbageCollection();
       }
-      
+
       // 内存泄漏检测
       if (this.memoryHistory.length > 10) {
         const leaks = this.detectMemoryLeaks();
@@ -432,7 +464,7 @@ export class MemoryManager {
         }
       }
     }, this.gcInterval);
-    
+
     console.log(`🔍 内存监控已启动，检查间隔: ${this.gcInterval / 1000}秒`);
   }
 
@@ -443,9 +475,9 @@ export class MemoryManager {
     const now = Date.now();
     const totalUsed = Array.from(this.pools.values())
       .reduce((sum, pool) => sum + pool.currentSize, 0);
-    
+
     this.memoryHistory.push({ timestamp: now, usage: totalUsed });
-    
+
     if (this.memoryHistory.length > this.maxHistoryLength) {
       this.memoryHistory.shift();
     }
@@ -454,35 +486,50 @@ export class MemoryManager {
   /**
    * 计算数据大小
    */
-  private calculateDataSize(data: any): number {
+  private calculateDataSize(data: any, visited = new WeakSet()): number {
     if (data === null || data === undefined) return 0;
-    
+
     if (data instanceof Uint8Array || data instanceof ArrayBuffer) {
       return data.byteLength;
     }
-    
+
     if (typeof data === 'string') {
       return data.length * 2; // UTF-16编码
     }
-    
+
     if (typeof data === 'number') {
       return 8; // 64位浮点数
     }
-    
+
     if (typeof data === 'boolean') {
       return 1;
     }
-    
+
+    // 检查循环引用
+    if (typeof data === 'object' && visited.has(data)) {
+      return 8; // 循环引用的占位大小
+    }
+
     if (Array.isArray(data)) {
-      return data.reduce((sum, item) => sum + this.calculateDataSize(item), 0) + 24; // 数组开销
+      visited.add(data);
+      try {
+        return data.reduce((sum, item) => sum + this.calculateDataSize(item, visited), 0) + 24; // 数组开销
+      } finally {
+        visited.delete(data);
+      }
     }
-    
+
     if (typeof data === 'object') {
-      return Object.keys(data).reduce((sum, key) => 
-        sum + this.calculateDataSize(key) + this.calculateDataSize(data[key]), 0
-      ) + 32; // 对象开销
+      visited.add(data);
+      try {
+        return Object.keys(data).reduce((sum, key) =>
+          sum + this.calculateDataSize(key, visited) + this.calculateDataSize(data[key], visited), 0
+        ) + 32; // 对象开销
+      } finally {
+        visited.delete(data);
+      }
     }
-    
+
     return 64; // 其他类型的估计大小
   }
 
@@ -492,10 +539,10 @@ export class MemoryManager {
   public getMemoryStats(): MemoryStats {
     const totalUsed = Array.from(this.pools.values())
       .reduce((sum, pool) => sum + pool.currentSize, 0);
-    
+
     const activeBlocks = Array.from(this.pools.values())
       .reduce((sum, pool) => sum + pool.blocks.size, 0);
-    
+
     // 计算内存增长率
     let memoryGrowthRate = 0;
     if (this.memoryHistory.length >= 2) {
@@ -505,23 +552,23 @@ export class MemoryManager {
       const usageDiff = recent.usage - earlier.usage;
       memoryGrowthRate = timeDiff > 0 ? usageDiff / timeDiff : 0;
     }
-    
+
     // 找到最老的内存块
     let oldestBlockAge = 0;
     let suspiciousBlocks = 0;
     const now = Date.now();
-    
+
     for (const pool of this.pools.values()) {
       for (const block of pool.blocks.values()) {
         const age = now - block.createdAt;
         oldestBlockAge = Math.max(oldestBlockAge, age);
-        
+
         if (age > 5 * 60 * 1000 && block.accessCount === 1) { // 5分钟且只访问过一次
           suspiciousBlocks++;
         }
       }
     }
-    
+
     return {
       totalUsed,
       available: this.getTotalPoolCapacity() - totalUsed,
@@ -574,15 +621,15 @@ export class MemoryManager {
       clearInterval(this.gcTimer);
       this.gcTimer = null;
     }
-    
+
     // 清空所有内存池
     for (const poolName of this.pools.keys()) {
       this.clearPool(poolName);
     }
-    
+
     this.pools.clear();
     this.memoryHistory = [];
-    
+
     console.log('🛑 内存管理器已停止');
   }
 }

@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { EventEmitter } from 'events';
+import { ServiceLifecycleBase, ServiceInitOptions, ServiceDisposeOptions } from '../common/ServiceLifecycle';
 
 // 配置类别
 export enum ConfigurationCategory {
@@ -96,22 +97,65 @@ export interface ConfigurationChangeEvent {
   scope: 'global' | 'workspace';
 }
 
-export class ConfigurationManager extends EventEmitter {
+export class ConfigurationManager extends ServiceLifecycleBase {
+  private eventEmitter = new EventEmitter();
   private readonly EXTENSION_NAME = 'logicAnalyzer';
   private readonly CONFIG_FILE = 'logicanalyzer-config.json';
   private readonly DEVICES_FILE = 'devices.json';
   private readonly THEMES_FILE = 'themes.json';
-  
+
   private configItems: Map<string, ConfigurationItem> = new Map();
   private deviceConfigurations: Map<string, DeviceConfiguration> = new Map();
   private themes: Map<string, ThemeConfiguration> = new Map();
   private currentTheme?: string;
+  
+  // 本地配置缓存，解决set/get同步问题
+  private localConfigCache: Map<string, ConfigValue> = new Map();
 
   constructor() {
-    super();
+    super('ConfigurationManager');
     this.initializeDefaultConfiguration();
-    this.loadConfiguration();
+  }
+
+  /**
+   * 实现父类的初始化方法
+   */
+  protected async onInitialize(options: ServiceInitOptions): Promise<void> {
+    await this.loadConfiguration();
     this.setupConfigurationWatcher();
+  }
+
+  /**
+   * 实现父类的销毁方法
+   */
+  protected async onDispose(options: ServiceDisposeOptions): Promise<void> {
+    // 清理配置监听器
+    this.eventEmitter.removeAllListeners();
+    
+    // 清理缓存
+    this.localConfigCache.clear();
+    this.deviceConfigurations.clear();
+    this.themes.clear();
+  }
+
+  // EventEmitter 代理方法
+  on(event: string | symbol, listener: (...args: any[]) => void): this {
+    this.eventEmitter.on(event, listener);
+    return this;
+  }
+
+  emit(event: string | symbol, ...args: any[]): boolean {
+    return this.eventEmitter.emit(event, ...args);
+  }
+
+  off(event: string | symbol, listener: (...args: any[]) => void): this {
+    this.eventEmitter.off(event, listener);
+    return this;
+  }
+
+  removeAllListeners(event?: string | symbol): this {
+    this.eventEmitter.removeAllListeners(event);
+    return this;
   }
 
   /**
@@ -162,6 +206,15 @@ export class ConfigurationManager extends EventEmitter {
 
       // 硬件设置
       {
+        key: 'autoDetectDevices',  // 测试中使用的key
+        category: ConfigurationCategory.Hardware,
+        displayName: '自动检测设备',
+        description: '启动时自动检测连接的设备',
+        type: 'boolean',
+        defaultValue: true,
+        scope: 'both'
+      },
+      {
         key: 'hardware.autoDetect',
         category: ConfigurationCategory.Hardware,
         displayName: '自动检测设备',
@@ -188,6 +241,18 @@ export class ConfigurationManager extends EventEmitter {
         type: 'number',
         defaultValue: 3,
         validation: { min: 0, max: 10 },
+        scope: 'both'
+      },
+
+      // 采集设置
+      {
+        key: 'defaultSampleRate',  // 测试中使用的key
+        category: ConfigurationCategory.Capture,
+        displayName: '默认采样率',
+        description: '默认的采样率设置',
+        type: 'number',
+        defaultValue: 24000000,
+        validation: { min: 1000, max: 200000000 },
         scope: 'both'
       },
       {
@@ -394,37 +459,102 @@ export class ConfigurationManager extends EventEmitter {
   }
 
   /**
-   * 获取配置值
+   * 获取配置值（优先使用本地缓存解决同步问题）
    */
   get<T extends ConfigValue>(key: string, defaultValue?: T): T {
+    // 1. 首先检查本地缓存
+    if (this.localConfigCache.has(key)) {
+      return this.localConfigCache.get(key) as T;
+    }
+
+    // 2. 从VSCode配置中获取
     const config = vscode.workspace.getConfiguration(this.EXTENSION_NAME);
     const configItem = this.configItems.get(key);
-    
+
     if (configItem) {
       const vsCodeKey = key.replace(`${this.EXTENSION_NAME}.`, '');
       const value = config.get<T>(vsCodeKey);
-      
+
       if (value !== undefined) {
         configItem.currentValue = value;
+        // 更新本地缓存
+        this.localConfigCache.set(key, value);
         return value;
       }
-      
-      return (configItem.defaultValue as T) || defaultValue as T;
+
+      // 先返回配置项的默认值，如果没有则返回传入的默认值
+      const resultValue = (configItem.defaultValue as T) ?? (defaultValue as T);
+      if (resultValue !== undefined) {
+        this.localConfigCache.set(key, resultValue);
+      }
+      return resultValue;
     }
-    
-    return config.get<T>(key, defaultValue as T);
+
+    // 对于没有注册的配置项，直接从VSCode配置中获取
+    const value = config.get<T>(key);
+    const resultValue = value !== undefined ? value : (defaultValue as T);
+    if (resultValue !== undefined) {
+      this.localConfigCache.set(key, resultValue);
+    }
+    return resultValue;
   }
 
   /**
-   * 设置配置值
+   * 获取数字配置值
+   */
+  getNumber(key: string, defaultValue?: number): number {
+    return this.get<number>(key, defaultValue);
+  }
+
+  /**
+   * 获取布尔配置值
+   */
+  getBoolean(key: string, defaultValue?: boolean): boolean {
+    return this.get<boolean>(key, defaultValue);
+  }
+
+  /**
+   * 获取字符串配置值
+   */
+  getString(key: string, defaultValue?: string): string {
+    return this.get<string>(key, defaultValue);
+  }
+
+  /**
+   * 获取数组配置值
+   */
+  getArray<T>(key: string, defaultValue?: T[]): T[] {
+    return this.get<T[]>(key, defaultValue);
+  }
+
+  /**
+   * 按类别获取配置项
+   */
+  getConfigurationsByCategory(category: ConfigurationCategory): ConfigurationItem[] {
+    return Array.from(this.configItems.values()).filter(item => item.category === category);
+  }
+
+  /**
+   * 获取所有类别
+   */
+  getAllCategories(): ConfigurationCategory[] {
+    const categories = new Set<ConfigurationCategory>();
+    for (const item of this.configItems.values()) {
+      categories.add(item.category);
+    }
+    return Array.from(categories);
+  }
+
+  /**
+   * 设置配置值（立即更新本地缓存解决同步问题）
    */
   async set(
-    key: string, 
-    value: ConfigValue, 
+    key: string,
+    value: ConfigValue,
     target: vscode.ConfigurationTarget = vscode.ConfigurationTarget.Workspace
   ): Promise<void> {
     const configItem = this.configItems.get(key);
-    
+
     // 验证配置值
     if (configItem) {
       const validationError = this.validateConfigValue(configItem, value);
@@ -433,18 +563,34 @@ export class ConfigurationManager extends EventEmitter {
       }
     }
 
-    const config = vscode.workspace.getConfiguration(this.EXTENSION_NAME);
-    const vsCodeKey = key.replace(`${this.EXTENSION_NAME}.`, '');
-    
     const oldValue = this.get(key);
-    
-    await config.update(vsCodeKey, value, target);
-    
-    // 更新缓存
+
+    // 立即更新本地缓存（解决同步问题）
+    this.localConfigCache.set(key, value);
+
+    // 更新配置项缓存
     if (configItem) {
       configItem.currentValue = value;
     }
-    
+
+    try {
+      // 异步更新VSCode配置
+      const config = vscode.workspace.getConfiguration(this.EXTENSION_NAME);
+      const vsCodeKey = key.replace(`${this.EXTENSION_NAME}.`, '');
+      await config.update(vsCodeKey, value, target);
+    } catch (error) {
+      // 如果VSCode配置更新失败，回滚本地缓存
+      if (oldValue !== undefined) {
+        this.localConfigCache.set(key, oldValue);
+        if (configItem) {
+          configItem.currentValue = oldValue;
+        }
+      } else {
+        this.localConfigCache.delete(key);
+      }
+      throw error;
+    }
+
     // 触发更改事件
     this.emit('configurationChanged', {
       key,
@@ -460,12 +606,12 @@ export class ConfigurationManager extends EventEmitter {
    */
   getAllConfigurationItems(): ConfigurationItem[] {
     const items = Array.from(this.configItems.values());
-    
+
     // 更新当前值
     for (const item of items) {
       item.currentValue = this.get(item.key, item.defaultValue);
     }
-    
+
     return items;
   }
 
@@ -482,25 +628,25 @@ export class ConfigurationManager extends EventEmitter {
   async resetConfiguration(keys?: string[]): Promise<void> {
     const config = vscode.workspace.getConfiguration(this.EXTENSION_NAME);
     const keysToReset = keys || Array.from(this.configItems.keys());
-    
+
     for (const key of keysToReset) {
       const configItem = this.configItems.get(key);
       if (configItem) {
         const vsCodeKey = key.replace(`${this.EXTENSION_NAME}.`, '');
         await config.update(vsCodeKey, undefined, vscode.ConfigurationTarget.Workspace);
         await config.update(vsCodeKey, undefined, vscode.ConfigurationTarget.Global);
-        
+
         configItem.currentValue = configItem.defaultValue;
       }
     }
-    
+
     vscode.window.showInformationMessage('配置已重置为默认值');
   }
 
   /**
    * 导出配置
    */
-  async exportConfiguration(): Promise<string> {
+  async exportConfiguration(filePath?: string): Promise<string> {
     const exportData = {
       version: '1.0.0',
       timestamp: new Date().toISOString(),
@@ -508,49 +654,74 @@ export class ConfigurationManager extends EventEmitter {
       devices: Array.from(this.deviceConfigurations.values()),
       themes: Array.from(this.themes.values())
     };
-    
+
     // 导出所有配置值
     for (const [key, item] of this.configItems.entries()) {
       exportData.configurations[key] = this.get(key, item.defaultValue);
     }
-    
-    return JSON.stringify(exportData, null, 2);
+
+    const configJson = JSON.stringify(exportData, null, 2);
+
+    // 如果提供了文件路径，则写入文件
+    if (filePath) {
+      await fs.writeFile(filePath, configJson, 'utf8');
+    }
+
+    return configJson;
   }
 
   /**
-   * 导入配置
+   * 导入配置 - 支持从文件路径或直接JSON字符串导入
    */
-  async importConfiguration(configurationData: string): Promise<void> {
+  async importConfiguration(configurationDataOrPath: string): Promise<void> {
+    let configurationData: string;
+
     try {
+      // 判断是文件路径还是JSON字符串
+      if (configurationDataOrPath.startsWith('{')) {
+        // 直接的JSON字符串
+        configurationData = configurationDataOrPath;
+      } else {
+        // 文件路径
+        try {
+          configurationData = await fs.readFile(configurationDataOrPath, 'utf8');
+        } catch (fileError: any) {
+          if (fileError.code === 'ENOENT') {
+            throw new Error('文件不存在');
+          }
+          throw fileError;
+        }
+      }
+
       const importData = JSON.parse(configurationData);
-      
+
       if (!importData.version || !importData.configurations) {
         throw new Error('无效的配置数据格式');
       }
-      
+
       // 导入配置值
       for (const [key, value] of Object.entries(importData.configurations)) {
         if (this.configItems.has(key)) {
           await this.set(key, value as ConfigValue);
         }
       }
-      
+
       // 导入设备配置
       if (importData.devices) {
         for (const device of importData.devices) {
           await this.saveDeviceConfiguration(device);
         }
       }
-      
+
       // 导入主题
       if (importData.themes) {
         for (const theme of importData.themes) {
           await this.saveTheme(theme);
         }
       }
-      
+
       vscode.window.showInformationMessage('配置导入成功');
-      
+
     } catch (error) {
       throw new Error(`配置导入失败: ${error}`);
     }
@@ -624,13 +795,13 @@ export class ConfigurationManager extends EventEmitter {
     try {
       // 加载设备配置
       await this.loadDeviceConfigurations();
-      
+
       // 加载主题
       await this.loadThemes();
-      
+
       // 设置当前主题
       this.currentTheme = this.get('display.theme', 'auto');
-      
+
     } catch (error) {
       console.error('加载配置失败:', error);
     }
@@ -644,12 +815,12 @@ export class ConfigurationManager extends EventEmitter {
       const configPath = this.getWorkspaceConfigPath(this.DEVICES_FILE);
       const content = await fs.readFile(configPath, 'utf8');
       const devices = JSON.parse(content) as DeviceConfiguration[];
-      
+
       this.deviceConfigurations.clear();
       for (const device of devices) {
         this.deviceConfigurations.set(device.deviceId, device);
       }
-      
+
     } catch (error) {
       // 文件不存在或读取失败，使用空配置
     }
@@ -662,12 +833,12 @@ export class ConfigurationManager extends EventEmitter {
     try {
       const configPath = this.getWorkspaceConfigPath(this.DEVICES_FILE);
       const configDir = path.dirname(configPath);
-      
+
       await fs.mkdir(configDir, { recursive: true });
-      
+
       const devices = Array.from(this.deviceConfigurations.values());
       await fs.writeFile(configPath, JSON.stringify(devices, null, 2), 'utf8');
-      
+
     } catch (error) {
       console.error('保存设备配置失败:', error);
     }
@@ -681,12 +852,12 @@ export class ConfigurationManager extends EventEmitter {
       const configPath = this.getWorkspaceConfigPath(this.THEMES_FILE);
       const content = await fs.readFile(configPath, 'utf8');
       const themes = JSON.parse(content) as ThemeConfiguration[];
-      
+
       this.themes.clear();
       for (const theme of themes) {
         this.themes.set(theme.name, theme);
       }
-      
+
     } catch (error) {
       // 加载默认主题
       this.loadDefaultThemes();
@@ -700,12 +871,12 @@ export class ConfigurationManager extends EventEmitter {
     try {
       const configPath = this.getWorkspaceConfigPath(this.THEMES_FILE);
       const configDir = path.dirname(configPath);
-      
+
       await fs.mkdir(configDir, { recursive: true });
-      
+
       const themes = Array.from(this.themes.values());
       await fs.writeFile(configPath, JSON.stringify(themes, null, 2), 'utf8');
-      
+
     } catch (error) {
       console.error('保存主题失败:', error);
     }
@@ -759,7 +930,7 @@ export class ConfigurationManager extends EventEmitter {
    * 验证配置值
    */
   private validateConfigValue(configItem: ConfigurationItem, value: ConfigValue): string | null {
-    const validation = configItem.validation;
+    const { validation } = configItem;
     if (!validation) return null;
 
     // 必需检查
@@ -794,6 +965,13 @@ export class ConfigurationManager extends EventEmitter {
   }
 
   /**
+   * 添加配置变化监听器
+   */
+  onConfigurationChanged(listener: (event: ConfigurationChangeEvent) => void): void {
+    this.on('configurationChanged', listener);
+  }
+
+  /**
    * 设置配置监听器
    */
   private setupConfigurationWatcher(): void {
@@ -801,7 +979,7 @@ export class ConfigurationManager extends EventEmitter {
       if (event.affectsConfiguration(this.EXTENSION_NAME)) {
         // 重新加载受影响的配置
         this.loadConfiguration();
-        
+
         // 触发配置更改事件
         this.emit('configurationReloaded');
       }

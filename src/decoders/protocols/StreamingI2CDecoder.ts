@@ -5,7 +5,7 @@
  */
 
 import { StreamingDecoderBase, StreamingConfig } from '../StreamingDecoder';
-import type { 
+import type {
   DecoderResult,
   ChannelData,
   DecoderOptionValue,
@@ -92,7 +92,7 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
         },
         {
           id: 'sda',
-          name: 'SDA', 
+          name: 'SDA',
           desc: 'Serial data line',
           required: true
         }
@@ -152,21 +152,21 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
     chunk: any,
     sampleRate: number,
     options: DecoderOptionValue[],
-    selectedChannels: DecoderSelectedChannel[]
+    _selectedChannels: DecoderSelectedChannel[]
   ): Promise<DecoderResult[]> {
     const results: DecoderResult[] = [];
-    
+
     // 获取通道数据
     const sclData = this.getChannelData(chunk.channelData, this.channels.scl);
     const sdaData = this.getChannelData(chunk.channelData, this.channels.sda);
-    
+
     if (!sclData || !sdaData) {
       console.warn(`⚠️ I2C解码器: 块 ${chunk.index} 缺少必需的通道数据`);
       return results;
     }
 
     const minLength = Math.min(sclData.length, sdaData.length);
-    let chunkState = { ...this.globalState };
+    const chunkState = { ...this.globalState };
 
     // 逐样本处理
     for (let i = 0; i < minLength; i++) {
@@ -176,7 +176,7 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
 
       // 检测 I2C 条件
       const condition = this.detectI2CCondition(chunkState, scl, sda);
-      
+
       if (condition) {
         const result = this.processI2CCondition(
           condition,
@@ -184,7 +184,7 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
           chunkState,
           options
         );
-        
+
         if (result) {
           result.startSample = Math.max(0, result.startSample); // 确保样本索引有效
           results.push(result);
@@ -215,7 +215,7 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
    */
   protected async finalizeDecoding(): Promise<void> {
     console.log(`✅ I2C流式解码完成: 共产生 ${this.resultCounter} 个结果`);
-    
+
     // 如果有未完成的事务，可以在这里处理
     if (this.globalState.state !== I2CState.IDLE) {
       console.log(`⚠️ I2C解码结束时状态非空闲: ${this.globalState.state}`);
@@ -285,13 +285,13 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
     switch (condition) {
       case 'start':
         return this.processStartCondition(sampleIndex, state);
-      
+
       case 'stop':
         return this.processStopCondition(sampleIndex, state);
-      
+
       case 'bit':
         return this.processBit(sampleIndex, state, options);
-      
+
       default:
         return null;
     }
@@ -302,7 +302,7 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
    */
   private processStartCondition(sampleIndex: number, state: I2CChunkState): DecoderResult {
     const isRepeatStart = state.state !== I2CState.IDLE;
-    
+
     state.state = I2CState.START;
     state.currentByte = 0;
     state.bitCount = 0;
@@ -350,16 +350,16 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
     switch (state.state) {
       case I2CState.START:
         return this.processAddressBit(sampleIndex, state, bit, options);
-      
+
       case I2CState.ADDRESS:
         return this.processAddressBit(sampleIndex, state, bit, options);
-      
+
       case I2CState.ACK_NACK:
         return this.processAckNackBit(sampleIndex, state, bit);
-      
+
       case I2CState.DATA:
         return this.processDataBit(sampleIndex, state, bit);
-      
+
       default:
         return null;
     }

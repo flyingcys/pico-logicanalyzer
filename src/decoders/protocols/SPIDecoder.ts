@@ -10,7 +10,6 @@ import {
   DecoderOption,
   DecoderOptionValue,
   DecoderResult,
-  DecoderOutput,
   DecoderOutputType,
   ChannelData
 } from '../types';
@@ -19,7 +18,7 @@ import {
  * SPI模式定义
  * 基于CPOL和CPHA组合
  */
-const SPI_MODES = {
+const _SPI_MODES = {
   '0,0': 0, // Mode 0: CPOL=0, CPHA=0
   '0,1': 1, // Mode 1: CPOL=0, CPHA=1
   '1,0': 2, // Mode 2: CPOL=1, CPHA=0
@@ -133,21 +132,22 @@ export class SPIDecoder extends DecoderBase {
   private bitCount = 0;
   private misoData = 0;
   private mosiData = 0;
-  
+
   private misoBits: SPIBitInfo[] = [];
   private mosiBits: SPIBitInfo[] = [];
   private misoBytes: SPIDataTransfer[] = [];
   private mosiBytes: SPIDataTransfer[] = [];
-  
+
   private ssBlock = -1;
   private ssTransfer = -1;
   private csWasDeasserted = false;
-  
+  private lastCS = -1; // 跟踪上一次CS值
+
   // 通道可用性标志
   private haveMiso = false;
   private haveMosi = false;
   private haveCS = false;
-  
+
   // 选项值
   private csPolarity = 'active-low';
   private cpol = 0;
@@ -167,24 +167,38 @@ export class SPIDecoder extends DecoderBase {
   ): DecoderResult[] {
     // 初始化
     this.sampleRate = sampleRate;
-    
-    // 检查通道可用性
-    this.haveMiso = channels.length > 1 && channels[1].samples.length > 0;
-    this.haveMosi = channels.length > 2 && channels[2].samples.length > 0;
-    this.haveCS = channels.length > 3 && channels[3].samples.length > 0;
-    
-    // 验证至少有MISO或MOSI
+
+    // 检查CLK是否可用（必需）
+    if (channels.length === 0 || !channels[0].samples || channels[0].samples.length === 0) {
+      return []; // 没有数据时返回空结果，不抛出错误
+    }
+
+    // 检查通道可用性（对应原版 lines 322-326）
+    this.haveMiso = channels.length > 1 && channels[1].samples && channels[1].samples.length > 0;
+    this.haveMosi = channels.length > 2 && channels[2].samples && channels[2].samples.length > 0;
+    this.haveCS = channels.length > 3 && channels[3].samples && channels[3].samples.length > 0;
+
+    // 验证至少有MISO或MOSI（对应原版 lines 324-325）
     if (!this.haveMiso && !this.haveMosi) {
       throw new Error('Either MISO or MOSI (or both) pins required.');
     }
 
-    // 准备通道数据
-    this.prepareChannelData(channels, [
-      { captureIndex: 0, decoderIndex: 0 }, // CLK
-      { captureIndex: 1, decoderIndex: 1 }, // MISO
-      { captureIndex: 2, decoderIndex: 2 }, // MOSI  
-      { captureIndex: 3, decoderIndex: 3 }  // CS
-    ]);
+    // 准备通道数据映射
+    const channelMapping = [
+      { captureIndex: 0, decoderIndex: 0 } // CLK - 必需
+    ];
+
+    if (this.haveMiso) {
+      channelMapping.push({ captureIndex: 1, decoderIndex: 1 }); // MISO
+    }
+    if (this.haveMosi) {
+      channelMapping.push({ captureIndex: 2, decoderIndex: 2 }); // MOSI
+    }
+    if (this.haveCS) {
+      channelMapping.push({ captureIndex: 3, decoderIndex: 3 }); // CS
+    }
+
+    this.prepareChannelData(channels, channelMapping);
 
     // 处理选项
     this.processOptions(options);
@@ -193,28 +207,46 @@ export class SPIDecoder extends DecoderBase {
     this.start();
     this.reset();
 
-    // 如果没有CS信号，发送初始CS状态
+    // 如果没有CS信号，发送初始CS状态（对应原版 lines 327-328）
     if (!this.haveCS) {
       this.putCSChange(null, null);
     }
 
-    // 获取第一个样本进行初始化
-    if (this.hasMoreSamples()) {
-      const pins = this.getCurrentPins();
-      this.findClockEdge(pins[1], pins[2], pins[0], pins[3] || 0, true);
+    // 构造等待条件（对应原版 lines 333-336）
+    // 我们想要所有CLK变化，如果使用CS的话还要所有CS变化
+    const waitConditions = [
+      { 0: 'edge' } // 时钟的所有边沿
+    ];
+
+    let csConditionIndex = -1;
+    if (this.haveCS) {
+      csConditionIndex = waitConditions.length;
+      waitConditions.push({ 3: 'edge' }); // CS的所有边沿
     }
 
-    // 主解码循环
+    // "像素兼容性"获取第一个样本（对应原版 lines 338-343）
+    if (this.hasMoreSamples()) {
+      const pins = this.getCurrentPins();
+      const clk = pins[0] || 0;
+      const miso = pins[1] || 0;
+      const mosi = pins[2] || 0;
+      const cs = pins[3] || 0;
+
+      this.findClockEdge(miso, mosi, clk, cs, true, null);
+    }
+
+    // 主解码循环（对应原版 lines 345-347）
     while (this.hasMoreSamples()) {
       try {
-        // 等待时钟边沿或CS变化
-        const waitConditions = this.haveCS 
-          ? [{ 0: 'edge' }, { 3: 'edge' }]
-          : [{ 0: 'edge' }];
-        
-        // 简化实现：等待时钟边沿
-        const pins = this.wait({ 0: 'edge' });
-        this.findClockEdge(pins.pins[1] || 0, pins.pins[2] || 0, pins.pins[0], pins.pins[3] || 0, false);
+        const waitResult = this.wait(waitConditions);
+        const matched = waitResult.matched!;
+
+        const clk = waitResult.pins[0] || 0;
+        const miso = waitResult.pins[1] || 0;
+        const mosi = waitResult.pins[2] || 0;
+        const cs = waitResult.pins[3] || 0;
+
+        this.findClockEdge(miso, mosi, clk, cs, false, matched);
       } catch (error) {
         if ((error as Error).message === 'End of samples reached') {
           break;
@@ -331,8 +363,8 @@ export class SPIDecoder extends DecoderBase {
     // 计算比特率元数据
     if (this.sampleRate) {
       const elapsed = (this.sampleIndex - this.ssBlock + 1) / this.sampleRate;
-      const bitrate = Math.floor(this.wordSize / elapsed);
-      console.log(`SPI bitrate: ${bitrate} bps`);
+      const _bitrate = Math.floor(this.wordSize / elapsed);
+      // 可以在这里输出比特率信息或记录到日志
     }
 
     // 检查CS状态警告
@@ -350,28 +382,29 @@ export class SPIDecoder extends DecoderBase {
 
   /**
    * 输出数据
-   * 对应原解码器的 putdata()
+   * 对应原解码器的 putdata() (lines 159-196)
    */
   private putData(): void {
-    if (this.misoBits.length === 0 && this.mosiBits.length === 0) {
-      return;
+    // 传递MISO和MOSI位以及数据到堆栈上的下一个PD（对应原版 lines 160-164）
+    const so = this.haveMiso ? this.misoData : null;
+    const si = this.haveMosi ? this.mosiData : null;
+    const soBits = this.haveMiso ? this.misoBits : null;
+    const siBits = this.haveMosi ? this.mosiBits : null;
+
+    // 计算时间范围（对应原版 lines 167-171）
+    let ss: number, es: number;
+
+    if (this.haveMiso && this.misoBits.length > 0) {
+      ss = this.misoBits[this.misoBits.length - 1].startSample;
+      es = this.misoBits[0].endSample;
+    } else if (this.haveMosi && this.mosiBits.length > 0) {
+      ss = this.mosiBits[this.mosiBits.length - 1].startSample;
+      es = this.mosiBits[0].endSample;
+    } else {
+      return; // 没有数据
     }
 
-    const ss = Math.min(
-      ...[
-        ...(this.haveMiso && this.misoBits.length > 0 ? [this.misoBits[this.misoBits.length - 1].startSample] : []),
-        ...(this.haveMosi && this.mosiBits.length > 0 ? [this.mosiBits[this.mosiBits.length - 1].startSample] : [])
-      ]
-    );
-    
-    const es = Math.max(
-      ...[
-        ...(this.haveMiso && this.misoBits.length > 0 ? [this.misoBits[0].endSample] : []),
-        ...(this.haveMosi && this.mosiBits.length > 0 ? [this.mosiBits[0].endSample] : [])
-      ]
-    );
-
-    // 保存字节数据用于传输注释
+    // 保存字节数据用于传输注释（对应原版 lines 178-181）
     if (this.haveMiso) {
       this.misoBytes.push({ startSample: ss, endSample: es, value: this.misoData });
     }
@@ -379,8 +412,8 @@ export class SPIDecoder extends DecoderBase {
       this.mosiBytes.push({ startSample: ss, endSample: es, value: this.mosiData });
     }
 
-    // 位注释
-    if (this.haveMiso) {
+    // 位注释（对应原版 lines 183-189）
+    if (this.haveMiso && this.misoBits.length > 0) {
       for (const bit of this.misoBits) {
         this.put(bit.startSample, bit.endSample, {
           type: DecoderOutputType.ANNOTATION,
@@ -389,8 +422,8 @@ export class SPIDecoder extends DecoderBase {
         });
       }
     }
-    
-    if (this.haveMosi) {
+
+    if (this.haveMosi && this.mosiBits.length > 0) {
       for (const bit of this.mosiBits) {
         this.put(bit.startSample, bit.endSample, {
           type: DecoderOutputType.ANNOTATION,
@@ -400,7 +433,7 @@ export class SPIDecoder extends DecoderBase {
       }
     }
 
-    // 数据字注释
+    // 数据字注释（对应原版 lines 191-195）
     if (this.haveMiso) {
       this.put(ss, es, {
         type: DecoderOutputType.ANNOTATION,
@@ -409,7 +442,7 @@ export class SPIDecoder extends DecoderBase {
         rawData: this.misoData
       });
     }
-    
+
     if (this.haveMosi) {
       this.put(ss, es, {
         type: DecoderOutputType.ANNOTATION,
@@ -434,75 +467,80 @@ export class SPIDecoder extends DecoderBase {
 
   /**
    * 查找时钟边沿
-   * 对应原解码器的 find_clk_edge()
+   * 对应原解码器的 find_clk_edge() (lines 270-314)
    */
-  private findClockEdge(miso: number, mosi: number, clk: number, cs: number, first: boolean): void {
-    // 处理CS变化
-    if (this.haveCS) {
-      const oldCS = first ? undefined : (1 - cs);
-      if (first || oldCS !== cs) {
-        this.putCSChange(oldCS, cs);
+  private findClockEdge(miso: number, mosi: number, clk: number, cs: number, first: boolean, matched: boolean[] | null): void {
+    // 处理CS变化（对应原版 lines 271-292）
+    if (this.haveCS && (first || (matched && matched.length > 1 && matched[1]))) {
+      // 发送所有CS#引脚值变化（对应原版 lines 272-275）
+      const oldCS = first ? null : (1 - cs); // 原版: oldcs = None if first else 1 - cs
+      this.putCSChange(oldCS, cs);
 
-        if (this.csAsserted(cs)) {
-          this.ssTransfer = this.sampleIndex;
-          this.misoBytes = [];
-          this.mosiBytes = [];
-        } else if (this.ssTransfer !== -1) {
-          // 输出传输注释
-          if (this.haveMiso && this.misoBytes.length > 0) {
-            const misoTransfer = this.misoBytes.map(b => 
-              b.value.toString(16).toUpperCase().padStart(2, '0')
-            ).join(' ');
-            this.put(this.ssTransfer, this.sampleIndex, {
-              type: DecoderOutputType.ANNOTATION,
-              annotationType: 5, // miso-transfer
-              values: [misoTransfer]
-            });
-          }
-          
-          if (this.haveMosi && this.mosiBytes.length > 0) {
-            const mosiTransfer = this.mosiBytes.map(b => 
-              b.value.toString(16).toUpperCase().padStart(2, '0')
-            ).join(' ');
-            this.put(this.ssTransfer, this.sampleIndex, {
-              type: DecoderOutputType.ANNOTATION,
-              annotationType: 6, // mosi-transfer
-              values: [mosiTransfer]
-            });
-          }
+      if (this.csAsserted(cs)) {
+        // CS被断言，开始传输（对应原版 lines 277-280）
+        this.ssTransfer = this.sampleIndex;
+        this.misoBytes = [];
+        this.mosiBytes = [];
+      } else if (this.ssTransfer !== -1) {
+        // CS被取消断言，结束传输（对应原版 lines 281-289）
+        if (this.haveMiso && this.misoBytes.length > 0) {
+          const misoTransfer = this.misoBytes.map(x =>
+            x.value.toString(16).toUpperCase().padStart(2, '0')
+          ).join(' ');
+          this.put(this.ssTransfer, this.sampleIndex, {
+            type: DecoderOutputType.ANNOTATION,
+            annotationType: 5, // miso-transfer
+            values: [misoTransfer]
+          });
         }
 
-        // CS变化时重置解码器状态
-        this.resetDecoderState();
+        if (this.haveMosi && this.mosiBytes.length > 0) {
+          const mosiTransfer = this.mosiBytes.map(x =>
+            x.value.toString(16).toUpperCase().padStart(2, '0')
+          ).join(' ');
+          this.put(this.ssTransfer, this.sampleIndex, {
+            type: DecoderOutputType.ANNOTATION,
+            annotationType: 6, // mosi-transfer
+            values: [mosiTransfer]
+          });
+        }
+
+        // 输出Python OUTPUT（对应原版 line 288-289）
+        // 这里可以添加 TRANSFER Python 输出，暂时注释
       }
+
+      // 当CS#变化时重置解码器状态（对应原版 lines 291-292）
+      this.resetDecoderState();
     }
 
-    // 只关心CS断言时的样本
+    // 只关心CS#断言时的样本（对应原版 lines 294-296）
     if (this.haveCS && !this.csAsserted(cs)) {
       return;
     }
 
-    // 忽略时钟未变化的样本
-    if (!first) {
-      // 简化实现：假设已经检测到时钟边沿
+    // 忽略时钟引脚未变化的样本（对应原版 lines 298-300）
+    if (first || !(matched && matched[0])) {
+      return;
     }
 
-    // 根据模式在上升/下降时钟边沿采样数据
-    const modeKey = `${this.cpol},${this.cpha}` as keyof typeof SPI_MODES;
-    const mode = SPI_MODES[modeKey];
-    
+    // 在上升/下降时钟边沿采样数据（取决于模式）（对应原版 lines 302-314）
+    const mode = this.getSPIMode();
+
+    // 根据SPI模式和当前时钟状态决定是否采样
+    // 由于我们等待的是边沿，所以我们知道时钟状态已经改变
+    // 我们根据当前状态和模式来决定是否在此边沿采样
     let shouldSample = false;
     switch (mode) {
-      case 0: // Mode 0: 上升沿采样
+      case 0: // CPOL=0, CPHA=0: 在上升沿采样 (clk从0变为1)
         shouldSample = clk === 1;
         break;
-      case 1: // Mode 1: 下降沿采样
+      case 1: // CPOL=0, CPHA=1: 在下降沿采样 (clk从1变为0)
         shouldSample = clk === 0;
         break;
-      case 2: // Mode 2: 下降沿采样
+      case 2: // CPOL=1, CPHA=0: 在下降沿采样 (clk从1变为0)
         shouldSample = clk === 0;
         break;
-      case 3: // Mode 3: 上升沿采样
+      case 3: // CPOL=1, CPHA=1: 在上升沿采样 (clk从0变为1)
         shouldSample = clk === 1;
         break;
     }
@@ -511,16 +549,30 @@ export class SPIDecoder extends DecoderBase {
       return;
     }
 
-    // 找到正确的时钟边沿，获取SPI位
+    // 找到正确的时钟边沿，现在获取SPI位（对应原版 lines 313-314）
     this.handleBit(miso, mosi, clk, cs);
   }
 
   /**
-   * 输出CS变化
+   * 获取SPI模式
+   * 对应原版的 spi_mode 字典 (lines 66-71)
    */
-  private putCSChange(oldCS: number | undefined | null, newCS: number | null): void {
-    // 这里可以添加CS变化的输出逻辑
-    console.log(`CS change: ${oldCS} -> ${newCS}`);
+  private getSPIMode(): number {
+    // Key: (CPOL, CPHA). Value: SPI mode.
+    // Clock polarity (CPOL) = 0/1: Clock is low/high when inactive.
+    // Clock phase (CPHA) = 0/1: Data is valid on the leading/trailing clock edge.
+    const key = `${this.cpol},${this.cpha}` as keyof typeof _SPI_MODES;
+    return _SPI_MODES[key] || 0;
+  }
+
+  /**
+   * 输出CS变化
+   * 对应原版的 put CS-CHANGE (lines 274-275)
+   */
+  private putCSChange(oldCS: number | null, newCS: number | null): void {
+    // 发送CS-CHANGE Python输出（对应原版 lines 274-275）
+    // 在TypeScript版本中，我们通过注释来输出CS变化信息
+    // 这里可以添加具体的CS变化注释输出
   }
 
   /**
@@ -538,5 +590,6 @@ export class SPIDecoder extends DecoderBase {
     this.ssBlock = -1;
     this.ssTransfer = -1;
     this.csWasDeasserted = false;
+    this.lastCS = -1;
   }
 }

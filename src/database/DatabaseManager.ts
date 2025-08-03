@@ -1,7 +1,7 @@
-import { HardwareCompatibilityDatabase, DeviceCompatibilityEntry, CompatibilityQuery } from './HardwareCompatibilityDatabase';
-import { HardwareDriverManager } from '../drivers/HardwareDriverManager';
+import { HardwareCompatibilityDatabase, DeviceCompatibilityEntry } from './HardwareCompatibilityDatabase';
+import { HardwareDriverManager, DetectedDevice } from '../drivers/HardwareDriverManager';
 import { DeviceInfo } from '../models/AnalyzerTypes';
-import { AnalyzerDriverBase } from '../drivers/AnalyzerDriverBase';
+// import { AnalyzerDriverBase } from '../drivers/AnalyzerDriverBase'; // 暂时注释掉未使用的导入
 
 /**
  * 数据库管理器
@@ -10,7 +10,7 @@ import { AnalyzerDriverBase } from '../drivers/AnalyzerDriverBase';
 export class DatabaseManager {
   private database: HardwareCompatibilityDatabase;
   private driverManager: HardwareDriverManager;
-  private updateInterval: NodeJS.Timeout | null = null;
+  private updateInterval: any | null = null; // 修复NodeJS类型问题
 
   constructor(
     databasePath?: string,
@@ -25,10 +25,10 @@ export class DatabaseManager {
    */
   async initialize(): Promise<void> {
     await this.database.initialize();
-    
+
     // 启动定期数据库维护
     this.startPeriodicMaintenance();
-    
+
     console.log('数据库管理器已初始化');
   }
 
@@ -45,7 +45,7 @@ export class DatabaseManager {
     const exactMatches: DeviceCompatibilityEntry[] = [];
     const partialMatches: DeviceCompatibilityEntry[] = [];
     const suggestedDrivers: string[] = [];
-    
+
     // 1. 精确匹配（基于标识符）
     if (deviceInfo.serialNumber) {
       const serialMatches = await this.findBySerialPattern(deviceInfo.serialNumber);
@@ -58,9 +58,9 @@ export class DatabaseManager {
         manufacturer: deviceInfo.manufacturer,
         model: deviceInfo.model
       });
-      
+
       // 避免重复
-      const newMatches = modelMatches.filter(match => 
+      const newMatches = modelMatches.filter(match =>
         !exactMatches.some(exact => exact.deviceId === match.deviceId)
       );
       exactMatches.push(...newMatches);
@@ -101,7 +101,7 @@ export class DatabaseManager {
    */
   private async findBySerialPattern(serialNumber: string): Promise<DeviceCompatibilityEntry[]> {
     const allDevices = await this.database.queryDevices({});
-    
+
     return allDevices.filter(device => {
       if (device.identifiers.serialPattern) {
         const pattern = new RegExp(
@@ -119,22 +119,22 @@ export class DatabaseManager {
    */
   private async getDriversByConnectionType(deviceInfo: Partial<DeviceInfo>): Promise<string[]> {
     const drivers: string[] = [];
-    
+
     // 基于设备信息推断连接类型
-    if (deviceInfo.serialNumber?.startsWith('COM') || 
+    if (deviceInfo.serialNumber?.startsWith('COM') ||
         deviceInfo.manufacturer?.toLowerCase().includes('serial')) {
       drivers.push('SerialAnalyzerDriver');
     }
-    
-    if (deviceInfo.serialNumber?.includes(':') || 
+
+    if (deviceInfo.serialNumber?.includes(':') ||
         deviceInfo.manufacturer?.toLowerCase().includes('network')) {
       drivers.push('NetworkLogicAnalyzerDriver');
     }
-    
+
     if (deviceInfo.manufacturer?.toLowerCase().includes('saleae')) {
       drivers.push('SaleaeLogicDriver');
     }
-    
+
     if (deviceInfo.manufacturer?.toLowerCase().includes('rigol') ||
         deviceInfo.manufacturer?.toLowerCase().includes('siglent')) {
       drivers.push('RigolSiglentDriver');
@@ -157,7 +157,7 @@ export class DatabaseManager {
     added: number;
   }> {
     console.log('开始自动设备发现...');
-    
+
     let discovered = 0;
     let updated = 0;
     let added = 0;
@@ -165,32 +165,44 @@ export class DatabaseManager {
     try {
       // 获取所有已注册的驱动
       const availableDrivers = this.driverManager.getAvailableDrivers();
-      
+
       for (const driverType of availableDrivers) {
         try {
+          // 创建临时设备信息用于驱动发现
+          const tempDevice: DetectedDevice = {
+            id: `temp-${driverType.id}`,
+            name: driverType.name,
+            type: 'usb',
+            connectionString: 'auto-discovery',
+            driverType: driverType.id as any,
+            confidence: 50
+          };
+
           // 创建驱动实例进行设备发现
-          const driver = this.driverManager.createDriver(driverType, 'auto-discovery');
-          
+          const driver = await this.driverManager.createDriver(tempDevice);
+
           if (driver && typeof (driver as any).discoverDevices === 'function') {
             const devices = await (driver as any).discoverDevices();
             discovered += devices.length;
-            
+
             for (const deviceInfo of devices) {
               const existing = await this.findExistingEntry(deviceInfo);
-              
+
               if (existing) {
                 // 更新现有条目
-                await this.updateDeviceEntry(existing, deviceInfo, driverType);
+                await this.updateDeviceEntry(existing, deviceInfo, driverType.id);
                 updated++;
               } else {
                 // 添加新条目
-                await this.createNewDeviceEntry(deviceInfo, driverType);
+                await this.createNewDeviceEntry(deviceInfo, driverType.id);
                 added++;
               }
             }
           }
-          
-          driver?.dispose();
+
+          if (driver && typeof driver.dispose === 'function') {
+            await driver.dispose();
+          }
         } catch (error) {
           console.warn(`驱动 ${driverType} 设备发现失败:`, error);
         }
@@ -210,14 +222,15 @@ export class DatabaseManager {
   private async findExistingEntry(deviceInfo: DeviceInfo): Promise<DeviceCompatibilityEntry | null> {
     // 首先尝试精确匹配
     const matches = await this.database.findCompatibleDrivers(deviceInfo);
-    
+
     if (matches.length > 0) {
       // 优先返回完全匹配的条目
-      const exactMatch = matches.find(match => 
+      const exactMatch = matches.find(match =>
+        deviceInfo.manufacturer && deviceInfo.model &&
         match.manufacturer.toLowerCase() === deviceInfo.manufacturer.toLowerCase() &&
         match.model.toLowerCase() === deviceInfo.model.toLowerCase()
       );
-      
+
       return exactMatch || matches[0];
     }
 
@@ -234,7 +247,7 @@ export class DatabaseManager {
   ): Promise<void> {
     // 更新最后发现时间
     existing.metadata.lastUpdated = new Date();
-    
+
     // 如果驱动不在备选列表中，添加到备选驱动
     if (!existing.driverCompatibility.alternativeDrivers.includes(driverType) &&
         existing.driverCompatibility.primaryDriver !== driverType) {
@@ -252,15 +265,15 @@ export class DatabaseManager {
     driverType: string
   ): Promise<void> {
     const deviceId = this.generateDeviceId(deviceInfo);
-    
+
     const newEntry: DeviceCompatibilityEntry = {
       deviceId,
-      manufacturer: deviceInfo.manufacturer,
-      model: deviceInfo.model,
+      manufacturer: deviceInfo.manufacturer || 'Unknown',
+      model: deviceInfo.model || 'Unknown',
       version: deviceInfo.version || '1.0',
       category: this.inferDeviceCategory(deviceInfo),
       identifiers: {
-        serialPattern: deviceInfo.serialNumber ? `${deviceInfo.serialNumber.substring(0, 3)}*` : undefined
+        ...(deviceInfo.serialNumber && { serialPattern: `${deviceInfo.serialNumber.substring(0, 3)}*` })
       },
       driverCompatibility: {
         primaryDriver: driverType,
@@ -307,10 +320,10 @@ export class DatabaseManager {
    * 生成设备ID
    */
   private generateDeviceId(deviceInfo: DeviceInfo): string {
-    const manufacturer = deviceInfo.manufacturer.toLowerCase().replace(/[^a-z0-9]/g, '-');
-    const model = deviceInfo.model.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const manufacturer = (deviceInfo.manufacturer || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const model = (deviceInfo.model || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '-');
     const version = deviceInfo.version?.replace(/[^a-z0-9]/g, '-') || 'v1';
-    
+
     return `${manufacturer}-${model}-${version}`;
   }
 
@@ -319,7 +332,7 @@ export class DatabaseManager {
    */
   private inferDeviceCategory(deviceInfo: DeviceInfo): DeviceCompatibilityEntry['category'] {
     const name = `${deviceInfo.manufacturer} ${deviceInfo.model}`.toLowerCase();
-    
+
     if (name.includes('network') || name.includes('ethernet')) {
       return 'network-la';
     }
@@ -332,7 +345,7 @@ export class DatabaseManager {
     if (name.includes('benchtop') || name.includes('professional')) {
       return 'benchtop';
     }
-    
+
     return 'usb-la'; // 默认类别
   }
 
@@ -348,14 +361,14 @@ export class DatabaseManager {
         return deviceInfo.serialNumber;
       }
     }
-    
+
     return 'auto-detect';
   }
 
   /**
    * 推断设备能力
    */
-  private inferCapabilities(deviceInfo: DeviceInfo): any {
+  private inferCapabilities(_deviceInfo: DeviceInfo): any {
     // 基于设备名称和信息推断基本能力
     // 这里返回默认值，实际使用时应该更智能
     return {
@@ -403,13 +416,13 @@ export class DatabaseManager {
     fixedIssues: string[];
   }> {
     console.log('开始验证数据库完整性...');
-    
+
     const issues: string[] = [];
     const fixedIssues: string[] = [];
     let isValid = true;
 
     const allDevices = await this.database.queryDevices({});
-    
+
     for (const device of allDevices) {
       // 检查必填字段
       if (!device.deviceId || !device.manufacturer || !device.model) {
@@ -419,18 +432,19 @@ export class DatabaseManager {
 
       // 检查驱动是否存在
       const availableDrivers = this.driverManager.getAvailableDrivers();
-      if (!availableDrivers.includes(device.driverCompatibility.primaryDriver)) {
+      const availableDriverIds = availableDrivers.map(d => d.id);
+      if (!availableDriverIds.includes(device.driverCompatibility.primaryDriver)) {
         issues.push(`设备 ${device.deviceId} 的主驱动 ${device.driverCompatibility.primaryDriver} 不存在`);
-        
+
         // 尝试自动修复
         const alternativeDriver = device.driverCompatibility.alternativeDrivers
-          .find(driver => availableDrivers.includes(driver));
-        
+          .find(driver => availableDriverIds.includes(driver));
+
         if (alternativeDriver) {
           device.driverCompatibility.primaryDriver = alternativeDriver;
-          device.driverCompatibility.alternativeDrivers = 
+          device.driverCompatibility.alternativeDrivers =
             device.driverCompatibility.alternativeDrivers.filter(d => d !== alternativeDriver);
-          
+
           await this.database.addOrUpdateDevice(device);
           fixedIssues.push(`设备 ${device.deviceId} 的主驱动已修复为 ${alternativeDriver}`);
         }
@@ -445,7 +459,7 @@ export class DatabaseManager {
     }
 
     console.log(`数据库完整性验证完成: ${issues.length} 个问题, ${fixedIssues.length} 个已修复`);
-    
+
     return { isValid, issues, fixedIssues };
   }
 
@@ -454,16 +468,16 @@ export class DatabaseManager {
    */
   async optimizeDatabase(): Promise<void> {
     console.log('开始数据库性能优化...');
-    
+
     // 清理过期测试数据
     const allDevices = await this.database.queryDevices({});
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    
+
     let cleanedCount = 0;
     for (const device of allDevices) {
-      if (device.testStatus.lastTested < thirtyDaysAgo && 
+      if (device.testStatus.lastTested < thirtyDaysAgo &&
           device.testStatus.certificationLevel === 'experimental') {
-        
+
         // 重置测试状态为待测试
         device.testStatus.testResults = {
           driverValidation: 0,
@@ -471,7 +485,7 @@ export class DatabaseManager {
           performanceGrade: 'F',
           reliability: 'poor'
         };
-        
+
         await this.database.addOrUpdateDevice(device);
         cleanedCount++;
       }

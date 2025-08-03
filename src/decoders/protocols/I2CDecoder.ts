@@ -10,7 +10,6 @@ import {
   DecoderOption,
   DecoderOptionValue,
   DecoderResult,
-  DecoderOutput,
   DecoderOutputType,
   ChannelData
 } from '../types';
@@ -127,43 +126,59 @@ export class I2CDecoder extends DecoderBase {
     this.start();
     this.reset();
 
-    // 主解码循环 - 对应原解码器的while True循环
+    // 主解码循环 - 精确对应原解码器的状态机实现
     while (this.hasMoreSamples()) {
       try {
+        // 状态机 - 完全基于原版 decode() 方法 (lines 317-364)
         if (this.wantsStart()) {
-          // 等待START条件: SCL=高, SDA=下降沿
+          // 等待START条件: SCL=高, SDA=下降沿 (line 332)
           const pins = this.wait({ 0: 'high', 1: 'falling' });
-          this.handleStart(pins.sampleNumber, pins.sampleNumber);
+          const ss = pins.sampleNumber;
+          const es = pins.sampleNumber;
+          this.handleStart(ss, es);
         } else if (this.collectsAddress() && this.collectsByte()) {
-          // 等待数据位: SCL=上升沿
+          // 等待数据位: SCL=上升沿 (line 337)
           const pins = this.wait({ 0: 'rising' });
           const sda = pins.pins[1];
-          this.handleAddressOrData(pins.sampleNumber, pins.sampleNumber + this.bitWidth, sda);
+          const ss = pins.sampleNumber;
+          const es = pins.sampleNumber + this.bitWidth;
+          this.handleAddressOrData(ss, es, sda);
         } else if (this.collectsByte()) {
-          // 等待多种条件的组合
+          // 等待多种条件的组合 (lines 341-358)
           const conditions = [
-            { 0: 'rising' }, // 数据采样
-            { 0: 'high', 1: 'falling' }, // START条件
-            { 0: 'high', 1: 'rising' } // STOP条件
+            { 0: 'rising' },              // 数据采样 - SCL上升沿
+            { 0: 'high', 1: 'falling' },  // START条件 - SCL高，SDA下降沿
+            { 0: 'high', 1: 'rising' }    // STOP条件 - SCL高，SDA上升沾
           ];
 
-          // 使用第一个条件进行等待（简化实现）
-          const pins = this.wait({ 0: 'rising' });
-          const sda = pins.pins[1];
+          const pins = this.wait(conditions);
+          const matched = pins.matched!;
 
-          // 检查是否是特殊条件
-          if (this.checkForStart(pins.pins)) {
-            this.handleStart(pins.sampleNumber, pins.sampleNumber);
-          } else if (this.checkForStop(pins.pins)) {
-            this.handleStop(pins.sampleNumber, pins.sampleNumber);
-          } else {
-            this.handleAddressOrData(pins.sampleNumber, pins.sampleNumber + this.bitWidth, sda);
+          // 检查哪个条件匹配了 (对应原版的 self.matched[0/1/2])
+          if (matched[0]) {
+            // SCL上升沿 - 数据采样 (lines 349-352)
+            const sda = pins.pins[1];
+            const ss = pins.sampleNumber;
+            const es = pins.sampleNumber + this.bitWidth;
+            this.handleAddressOrData(ss, es, sda);
+          } else if (matched[1]) {
+            // START条件 (lines 353-355)
+            const ss = pins.sampleNumber;
+            const es = pins.sampleNumber;
+            this.handleStart(ss, es);
+          } else if (matched[2]) {
+            // STOP条件 (lines 356-358)
+            const ss = pins.sampleNumber;
+            const es = pins.sampleNumber;
+            this.handleStop(ss, es);
           }
         } else {
-          // 等待ACK/NACK位: SCL=上升沿
+          // 等待ACK/NACK位: SCL=上升沿 (lines 360-364)
           const pins = this.wait({ 0: 'rising' });
           const sda = pins.pins[1];
-          this.getAck(pins.sampleNumber, pins.sampleNumber + this.bitWidth, sda);
+          const ss = pins.sampleNumber;
+          const es = pins.sampleNumber + this.bitWidth;
+          this.getAck(ss, es, sda);
         }
       } catch (error) {
         if ((error as Error).message === 'End of samples reached') {
@@ -217,7 +232,7 @@ export class I2CDecoder extends DecoderBase {
    * 对应原解码器的 handle_start()
    */
   private handleStart(ss: number, es: number): void {
-    const cmd = this.isRepeatStart ? 'START REPEAT' : 'START';
+    const _cmd = this.isRepeatStart ? 'START REPEAT' : 'START';
     const annotationType = this.isRepeatStart ? 1 : 0; // repeat-start : start
 
     if (!this.isRepeatStart) {
@@ -259,11 +274,10 @@ export class I2CDecoder extends DecoderBase {
       return;
     }
 
-    // 计算位宽
+    // 计算位宽 - 基于原版实现 (lines 198-199)
     if (this.dataBits.length >= 3) {
-      this.bitWidth =
-        this.dataBits[this.dataBits.length - 2].endSample -
-        this.dataBits[this.dataBits.length - 3].endSample;
+      this.bitWidth = this.dataBits[this.dataBits.length - 2].endSample -
+                     this.dataBits[this.dataBits.length - 3].endSample;
       this.dataBits[this.dataBits.length - 1].endSample =
         this.dataBits[this.dataBits.length - 1].startSample + this.bitWidth;
     }
@@ -273,6 +287,7 @@ export class I2CDecoder extends DecoderBase {
     for (let i = 0; i < 8; i++) {
       byteValue = (byteValue << 1) | this.dataBits[i].value;
     }
+
 
     const ssByte = this.dataBits[0].startSample;
     const esByte = this.dataBits[7].endSample;
@@ -307,25 +322,34 @@ export class I2CDecoder extends DecoderBase {
     const hasRwBit = this.isWrite === null;
     if (this.isWrite === null) {
       const readBit = !!(addrByte & 1);
-      if (this.addressFormat === 'shifted') {
-        addrByte >>= 1;
-      }
       this.isWrite = !readBit;
     } else if (this.slaveAddr10 !== null) {
       this.slaveAddr10 |= addrByte;
     }
 
     // 确定注释类型
-    const cmd = this.isWrite ? 'ADDRESS WRITE' : 'ADDRESS READ';
+    const _cmd = this.isWrite ? 'ADDRESS WRITE' : 'ADDRESS READ';
     const annotationType = this.isWrite ? 7 : 6; // address-write : address-read
 
-    // 输出注释
-    const addressValue =
-      this.slaveAddr7 !== null
-        ? this.slaveAddr7
-        : this.slaveAddr10 !== null
-        ? this.slaveAddr10
-        : addrByte;
+    // 输出注释 - 基于原版实现确定显示值
+    let addressValue: number;
+    if (this.slaveAddr10 !== null) {
+      // 10位地址情况
+      addressValue = this.slaveAddr10;
+    } else if (this.slaveAddr7 !== null) {
+      // 7位地址情况
+      if (this.addressFormat === 'shifted') {
+        // shifted 格式：显示7位地址（不包含R/W位）
+        addressValue = this.slaveAddr7;
+      } else {
+        // unshifted 格式：显示8位地址（包含R/W位）
+        addressValue = addrByte;
+      }
+    } else {
+      // fallback: 使用原始地址字节
+      addressValue = addrByte;
+    }
+
 
     this.put(ssByte, esByte, {
       type: DecoderOutputType.ANNOTATION,
@@ -346,7 +370,7 @@ export class I2CDecoder extends DecoderBase {
    * 处理数据字节
    */
   private processDataByte(dataByte: number, ssByte: number, esByte: number): void {
-    const cmd = this.isWrite ? 'DATA WRITE' : 'DATA READ';
+    const _cmd = this.isWrite ? 'DATA WRITE' : 'DATA READ';
     const annotationType = this.isWrite ? 9 : 8; // data-write : data-read
 
     this.put(ssByte, esByte, {
@@ -369,7 +393,7 @@ export class I2CDecoder extends DecoderBase {
    * 对应原解码器的 get_ack()
    */
   private getAck(ss: number, es: number, value: number): void {
-    const cmd = value === 0 ? 'ACK' : 'NACK';
+    const _cmd = value === 0 ? 'ACK' : 'NACK';
     const annotationType = value === 0 ? 3 : 4; // ack : nack
 
     this.put(ss, es, {
@@ -412,21 +436,6 @@ export class I2CDecoder extends DecoderBase {
     this.pduBits = 0;
   }
 
-  /**
-   * 检查START条件（简化实现）
-   */
-  private checkForStart(pins: number[]): boolean {
-    // 简化实现：在实际应用中需要更复杂的逻辑
-    return false;
-  }
-
-  /**
-   * 检查STOP条件（简化实现）
-   */
-  private checkForStop(pins: number[]): boolean {
-    // 简化实现：在实际应用中需要更复杂的逻辑
-    return false;
-  }
 
   /**
    * 重置解码器状态

@@ -1,0 +1,46 @@
+{
+  "settings": {
+    "id": "advanced-session",
+    "deviceId": "test-device",
+    "startTime": "2025-08-03T02:11:34.205Z",
+    "endTime": "2025-08-03T02:11:34.205Z",
+    "sampleRate": 10000000,
+    "channelCount": 16,
+    "totalSamples": 10000000,
+    "status": "completed",
+    "triggerPosition": 5000000,
+    "timespan": 1,
+    "channels": [],
+    "captureChannels": []
+  },
+  "selectedRegions": [],
+  "metadata": {
+    "version": "1.0",
+    "timestamp": "2025-08-03T02:11:34.205Z",
+    "deviceInfo": {
+      "name": "Pico Logic Analyzer",
+      "version": "Unknown",
+      "serialNumber": "Unknown"
+    },
+    "totalSamples": null,
+    "channels": 0,
+    "duration": null,
+    "exportType": "waveform",
+    "exportFormat": "lac",
+    "exportSettings": {
+      "timeRange": "all",
+      "originalTotalSamples": null,
+      "sampleRange": {
+        "startSample": 0,
+        "endSample": null
+      },
+      "selectedChannelCount": 0,
+      "totalChannelCount": 0,
+      "samplingMode": "compressed"
+    },
+    "performance": {
+      "estimatedFileSize": null,
+      "compressionAvailable": false
+    }
+  }
+}

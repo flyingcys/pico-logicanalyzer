@@ -11,21 +11,21 @@ import { StreamingI2CDecoder } from './protocols/StreamingI2CDecoder';
  */
 export function registerAllDecoders(): void {
   console.log('📋 开始注册解码器...');
-  
+
   try {
     // 注册流式解码器
     decoderManager.registerStreamingDecoder('streaming_i2c', StreamingI2CDecoder);
-    
+
     console.log('✅ 流式解码器注册完成:');
     console.log('  - I²C 流式解码器 (streaming_i2c)');
-    
+
     // 获取统计信息
     const stats = decoderManager.getStatistics();
-    console.log(`📊 解码器注册统计:`);
+    console.log('📊 解码器注册统计:');
     console.log(`  - 常规解码器: ${stats.registeredDecoders}个`);
     console.log(`  - 流式解码器: ${stats.registeredStreamingDecoders}个`);
     console.log(`  - 可用解码器总数: ${stats.availableDecoders}个`);
-    
+
   } catch (error) {
     console.error('❌ 解码器注册失败:', error);
     throw error;
@@ -41,7 +41,7 @@ export function getDecoderRegistryInfo(): {
   totalCount: number;
 } {
   const stats = decoderManager.getStatistics();
-  
+
   return {
     regularDecoders: [], // 将来添加常规解码器时填充
     streamingDecoders: ['streaming_i2c'],

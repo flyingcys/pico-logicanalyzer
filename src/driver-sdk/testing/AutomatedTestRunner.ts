@@ -11,18 +11,18 @@ export interface AutomatedTestConfig {
   testPaths: string[];
   driverPattern: string;
   excludePatterns: string[];
-  
+
   // 测试执行
   parallel: boolean;
   maxWorkers: number;
   timeout: number;
   retries: number;
-  
+
   // 报告生成
   outputDir: string;
   reportFormats: ('json' | 'html' | 'xml' | 'markdown')[];
   includePerformanceGraphs: boolean;
-  
+
   // 质量门控
   qualityGates: {
     minValidationScore: number;
@@ -30,7 +30,7 @@ export interface AutomatedTestConfig {
     maxPerformanceRegression: number;
     requiredGrade: 'A' | 'B' | 'C' | 'D';
   };
-  
+
   // 通知设置
   notifications: {
     enabled: boolean;
@@ -234,7 +234,7 @@ export class AutomatedTestRunner {
     try {
       // 动态加载驱动
       const driver = await this.loadDriver(driverFile);
-      
+
       if (!driver) {
         throw new Error('无法加载驱动或找不到导出的驱动类');
       }
@@ -268,7 +268,7 @@ export class AutomatedTestRunner {
       });
 
       results.testedDrivers++;
-      
+
       if (summary.overall.readyForProduction) {
         results.passedDrivers++;
         console.log(`✅ ${driverName}: ${summary.overall.grade} 级`);
@@ -279,7 +279,7 @@ export class AutomatedTestRunner {
 
     } catch (error) {
       console.error(`💥 ${driverName} 测试失败:`, error);
-      
+
       results.results.push({
         driverName,
         filePath: driverFile,
@@ -299,11 +299,11 @@ export class AutomatedTestRunner {
     try {
       // 动态导入模块
       const module = await import(driverFile);
-      
+
       // 查找驱动类
       const exportedClasses = Object.values(module).filter(
-        (value): value is new (...args: any[]) => AnalyzerDriverBase => 
-          typeof value === 'function' && 
+        (value): value is new (...args: any[]) => AnalyzerDriverBase =>
+          typeof value === 'function' &&
           value.prototype instanceof AnalyzerDriverBase
       );
 
@@ -314,7 +314,7 @@ export class AutomatedTestRunner {
 
       // 使用第一个找到的驱动类
       const DriverClass = exportedClasses[0];
-      
+
       // 尝试创建实例（使用测试连接字符串）
       const testConnectionString = this.generateTestConnectionString(DriverClass);
       return new DriverClass(testConnectionString);
@@ -330,7 +330,7 @@ export class AutomatedTestRunner {
    */
   private generateTestConnectionString(DriverClass: any): string {
     const className = DriverClass.name.toLowerCase();
-    
+
     if (className.includes('network') || className.includes('tcp') || className.includes('http')) {
       return 'localhost:8080';
     } else if (className.includes('serial') || className.includes('com')) {
@@ -350,23 +350,23 @@ export class AutomatedTestRunner {
       duration: 0,
       validation: { score: 0, status: 'fail', errors: 1, warnings: 0 },
       functional: { total: 0, passed: 0, failed: 1, skipped: 0, coverage: 0 },
-      performance: { 
-        connectionTime: -1, 
-        captureTime: -1, 
-        throughput: -1, 
-        memoryUsage: -1, 
-        baselineComparison: 'worse' 
+      performance: {
+        connectionTime: -1,
+        captureTime: -1,
+        throughput: -1,
+        memoryUsage: -1,
+        baselineComparison: 'worse'
       },
-      compatibility: { 
-        apiVersion: 'unknown', 
-        supportedFeatures: [], 
-        missingFeatures: ['all'], 
-        deprecatedUsage: [] 
+      compatibility: {
+        apiVersion: 'unknown',
+        supportedFeatures: [],
+        missingFeatures: ['all'],
+        deprecatedUsage: []
       },
-      overall: { 
-        grade: 'F', 
-        readyForProduction: false, 
-        recommendations: ['驱动加载或执行失败'] 
+      overall: {
+        grade: 'F',
+        readyForProduction: false,
+        recommendations: ['驱动加载或执行失败']
       }
     };
   }
@@ -380,21 +380,21 @@ export class AutomatedTestRunner {
     }
 
     // 计算平均分数
-    const totalScore = results.results.reduce((sum, result) => 
+    const totalScore = results.results.reduce((sum, result) =>
       sum + result.summary.validation.score, 0
     );
     results.overallQuality.averageScore = totalScore / results.results.length;
 
     // 统计等级分布
     results.results.forEach(result => {
-      const grade = result.summary.overall.grade;
+      const { grade } = result.summary.overall;
       results.overallQuality.gradeDistribution[grade]++;
     });
 
     // 检查质量门控
     const gates = this.config.qualityGates;
     const passedGates = results.results.filter(result => {
-      const summary = result.summary;
+      const { summary } = result;
       return (
         summary.validation.score >= gates.minValidationScore &&
         summary.functional.coverage >= gates.minFunctionalCoverage &&
@@ -402,7 +402,7 @@ export class AutomatedTestRunner {
       );
     });
 
-    results.overallQuality.qualityGatesPassed = 
+    results.overallQuality.qualityGatesPassed =
       passedGates.length / results.results.length >= 0.8; // 80%通过率
   }
 
@@ -421,19 +421,24 @@ export class AutomatedTestRunner {
     console.log('📊 生成测试报告...');
 
     for (const format of this.config.reportFormats) {
-      switch (format) {
-        case 'json':
-          await this.generateJSONReport(results);
-          break;
-        case 'html':
-          await this.generateHTMLReport(results);
-          break;
-        case 'xml':
-          await this.generateXMLReport(results);
-          break;
-        case 'markdown':
-          await this.generateMarkdownReport(results);
-          break;
+      try {
+        switch (format) {
+          case 'json':
+            await this.generateJSONReport(results);
+            break;
+          case 'html':
+            await this.generateHTMLReport(results);
+            break;
+          case 'xml':
+            await this.generateXMLReport(results);
+            break;
+          case 'markdown':
+            await this.generateMarkdownReport(results);
+            break;
+        }
+      } catch (error) {
+        console.error(`❌ 报告生成失败 (${format}):`, error);
+        // 报告生成失败不应该阻停整个测试流程
       }
     }
   }
@@ -563,7 +568,7 @@ export class AutomatedTestRunner {
       const testTime = result.summary.duration / 1000;
       xml += `
   <testcase name="${result.driverName}" classname="DriverTest" time="${testTime}">`;
-      
+
       if (!result.summary.overall.readyForProduction || result.error) {
         xml += `
     <failure message="${result.error || 'Quality gates failed'}">
@@ -572,7 +577,7 @@ export class AutomatedTestRunner {
       Recommendations: ${result.summary.overall.recommendations.join('; ')}
     </failure>`;
       }
-      
+
       xml += `
   </testcase>`;
     });
@@ -587,7 +592,7 @@ export class AutomatedTestRunner {
    * 构建Markdown报告
    */
   private buildMarkdownReport(results: TestResultCollection): string {
-    let markdown = `# 驱动测试报告\n\n`;
+    let markdown = '# 驱动测试报告\n\n';
     markdown += `**测试时间**: ${results.timestamp.toLocaleString()}\n`;
     markdown += `**总驱动数**: ${results.totalDrivers}\n`;
     markdown += `**已测试**: ${results.testedDrivers}\n`;
@@ -596,23 +601,23 @@ export class AutomatedTestRunner {
     markdown += `**平均分数**: ${results.overallQuality.averageScore.toFixed(1)}\n`;
     markdown += `**质量门控**: ${results.overallQuality.qualityGatesPassed ? '✅ 通过' : '❌ 失败'}\n\n`;
 
-    markdown += `## 等级分布\n\n`;
-    markdown += `| 等级 | 数量 |\n|------|------|\n`;
+    markdown += '## 等级分布\n\n';
+    markdown += '| 等级 | 数量 |\n|------|------|\n';
     Object.entries(results.overallQuality.gradeDistribution).forEach(([grade, count]) => {
       const emoji = { A: '🏆', B: '👍', C: '⚠️', D: '👎', F: '💥' }[grade] || '❓';
       markdown += `| ${emoji} ${grade} | ${count} |\n`;
     });
 
-    markdown += `\n## 详细结果\n\n`;
-    markdown += `| 驱动名称 | 等级 | 分数 | 覆盖率 | 生产就绪 | 主要问题 |\n`;
-    markdown += `|----------|------|------|--------|----------|----------|\n`;
+    markdown += '\n## 详细结果\n\n';
+    markdown += '| 驱动名称 | 等级 | 分数 | 覆盖率 | 生产就绪 | 主要问题 |\n';
+    markdown += '|----------|------|------|--------|----------|----------|\n';
 
     results.results.forEach(result => {
-      const grade = result.summary.overall.grade;
+      const { grade } = result.summary.overall;
       const gradeEmoji = { A: '🏆', B: '👍', C: '⚠️', D: '👎', F: '💥' }[grade] || '❓';
       const readyEmoji = result.summary.overall.readyForProduction ? '✅' : '❌';
       const issue = result.error || result.summary.overall.recommendations[0] || '-';
-      
+
       markdown += `| ${result.driverName} | ${gradeEmoji} ${grade} | ${result.summary.validation.score} | ${result.summary.functional.coverage.toFixed(1)}% | ${readyEmoji} | ${issue} |\n`;
     });
 

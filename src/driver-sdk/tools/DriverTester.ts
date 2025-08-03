@@ -1,5 +1,5 @@
 import { AnalyzerDriverBase } from '../../drivers/AnalyzerDriverBase';
-import { 
+import {
   ConnectionParams,
   CaptureSession,
   CaptureError,
@@ -92,14 +92,14 @@ export class DriverTester {
       timeout: 10000,
       run: async (driver, context) => {
         const startTime = Date.now();
-        
+
         try {
           context.logger('开始连接测试...');
-          
+
           // 测试连接
           const connectionParams: ConnectionParams = { timeout: 5000 };
           const result = await driver.connect(connectionParams);
-          
+
           if (!result.success) {
             return {
               passed: false,
@@ -144,12 +144,12 @@ export class DriverTester {
       timeout: 5000,
       run: async (driver, context) => {
         const startTime = Date.now();
-        
+
         try {
           context.logger('开始断开连接测试...');
-          
+
           await driver.disconnect();
-          
+
           // 验证断开状态
           const status = await driver.getStatus();
           if (status.isConnected) {
@@ -185,10 +185,10 @@ export class DriverTester {
       timeout: 30000,
       run: async (driver, context) => {
         const startTime = Date.now();
-        
+
         try {
           context.logger('开始基本采集测试...');
-          
+
           // 创建测试采集会话
           const testSession: CaptureSession = {
             captureChannels: [
@@ -216,7 +216,7 @@ export class DriverTester {
           // 等待采集完成或超时
           const maxWaitTime = 20000; // 20秒
           const waitStartTime = Date.now();
-          
+
           while (driver.isCapturing && (Date.now() - waitStartTime) < maxWaitTime) {
             await new Promise(resolve => setTimeout(resolve, 100));
           }
@@ -256,12 +256,12 @@ export class DriverTester {
       timeout: 5000,
       run: async (driver, context) => {
         const startTime = Date.now();
-        
+
         try {
           context.logger('开始状态查询测试...');
-          
+
           const status = await driver.getStatus();
-          
+
           // 验证状态对象的必需字段
           if (typeof status.isConnected !== 'boolean') {
             return {
@@ -305,12 +305,12 @@ export class DriverTester {
       timeout: 15000,
       run: async (driver, context) => {
         const startTime = Date.now();
-        
+
         try {
           context.logger('开始内存使用测试...');
-          
+
           const initialMemory = process.memoryUsage();
-          
+
           // 模拟多次连接/断开操作
           for (let i = 0; i < 10; i++) {
             await driver.connect({ timeout: 1000 });
@@ -319,16 +319,16 @@ export class DriverTester {
 
           const finalMemory = process.memoryUsage();
           const memoryIncrease = finalMemory.heapUsed - initialMemory.heapUsed;
-          
+
           // 如果内存增长超过50MB，认为有问题
           const memoryThreshold = 50 * 1024 * 1024; // 50MB
           const passed = memoryIncrease < memoryThreshold;
 
           context.logger(`内存测试完成，增长: ${Math.round(memoryIncrease / 1024 / 1024)}MB`);
-          
+
           return {
             passed,
-            message: passed 
+            message: passed
               ? `内存使用正常，增长${Math.round(memoryIncrease / 1024 / 1024)}MB`
               : `内存增长过多: ${Math.round(memoryIncrease / 1024 / 1024)}MB`,
             duration: Date.now() - startTime,
@@ -355,17 +355,17 @@ export class DriverTester {
       timeout: 30000,
       run: async (driver, context) => {
         const startTime = Date.now();
-        
+
         try {
           context.logger('开始并发操作测试...');
-          
+
           // 连接设备
           await driver.connect({ timeout: 5000 });
-          
+
           // 并发状态查询
           const statusPromises = Array(10).fill(0).map(() => driver.getStatus());
           const statusResults = await Promise.allSettled(statusPromises);
-          
+
           const failedStatus = statusResults.filter(r => r.status === 'rejected').length;
           if (failedStatus > 0) {
             return {
@@ -450,11 +450,11 @@ export class DriverTester {
 
     for (const testCase of this.testCases) {
       logger(`运行测试: ${testCase.name}`);
-      
+
       try {
         const testResult = await Promise.race([
           testCase.run(driver, context),
-          new Promise<TestResult>((_, reject) => 
+          new Promise<TestResult>((_, reject) =>
             setTimeout(() => reject(new Error('测试超时')), testCase.timeout)
           )
         ]);
@@ -476,11 +476,11 @@ export class DriverTester {
         });
 
         logger(`测试 ${testCase.name} ${testResult.passed ? '通过' : '失败'}: ${testResult.message}`);
-        
+
       } catch (error) {
         report.failedTests++;
         this.updateCategorySummary(report.summary, testCase.category, false);
-        
+
         report.testResults.push({
           passed: false,
           message: `测试执行失败: ${error}`,
@@ -511,14 +511,14 @@ export class DriverTester {
    * 运行特定类别的测试
    */
   async runTestsByCategory(
-    driver: AnalyzerDriverBase, 
+    driver: AnalyzerDriverBase,
     category: TestCase['category']
   ): Promise<TestReport> {
     const originalTests = [...this.testCases];
     this.testCases = this.testCases.filter(test => test.category === category);
-    
+
     const report = await this.runAllTests(driver);
-    
+
     this.testCases = originalTests;
     return report;
   }
@@ -527,8 +527,8 @@ export class DriverTester {
    * 更新分类统计
    */
   private updateCategorySummary(
-    summary: TestReport['summary'], 
-    category: string, 
+    summary: TestReport['summary'],
+    category: string,
     passed: boolean
   ): void {
     const categoryKey = `${category}Tests` as keyof TestReport['summary'];
@@ -545,8 +545,8 @@ export class DriverTester {
    * 生成测试报告文本
    */
   generateTextReport(report: TestReport): string {
-    let text = `驱动测试报告\n`;
-    text += `===============\n`;
+    let text = '驱动测试报告\n';
+    text += '===============\n';
     text += `驱动名称: ${report.driverName}\n`;
     text += `测试时间: ${report.timestamp.toLocaleString()}\n`;
     text += `总体状态: ${report.overallStatus.toUpperCase()}\n`;
@@ -554,26 +554,26 @@ export class DriverTester {
     text += `总耗时: ${Math.round(report.totalDuration / 1000)}秒\n\n`;
 
     // 分类统计
-    text += `分类统计:\n`;
-    text += `---------\n`;
+    text += '分类统计:\n';
+    text += '---------\n';
     Object.entries(report.summary).forEach(([category, stats]) => {
       const categoryName = category.replace('Tests', '');
       text += `${categoryName}: ${stats.passed}/${stats.passed + stats.failed} 通过\n`;
     });
-    text += `\n`;
+    text += '\n';
 
     // 失败的测试详情
     const failedTests = report.testResults.filter(result => !result.passed);
     if (failedTests.length > 0) {
-      text += `失败测试详情:\n`;
-      text += `-------------\n`;
+      text += '失败测试详情:\n';
+      text += '-------------\n';
       failedTests.forEach((test, index) => {
         text += `${index + 1}. ${test.testName} (${test.category})\n`;
         text += `   错误: ${test.message}\n`;
         if (test.error) {
           text += `   异常: ${test.error.message}\n`;
         }
-        text += `\n`;
+        text += '\n';
       });
     }
 

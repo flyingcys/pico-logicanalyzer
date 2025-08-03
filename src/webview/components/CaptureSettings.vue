@@ -168,7 +168,10 @@
         <!-- 触发设置 -->
         <el-card shadow="never" class="parameter-card" v-if="!isEmulatedMode">
           <template #header>
-            <span>触发设置</span>
+            <div class="card-header">
+              <span>触发设置</span>
+              <el-button size="small" @click="resetTriggerSettings">重置触发</el-button>
+            </div>
           </template>
 
           <el-form :model="captureConfig" label-width="120px" size="small">
@@ -261,6 +264,70 @@
                 </el-checkbox>
               </el-form-item>
             </template>
+
+            <!-- 触发电平设置 -->
+            <el-divider content-position="left">触发电平</el-divider>
+            
+            <el-form-item label="信号类型">
+              <el-select v-model="triggerLevelConfig.signalType" @change="onSignalTypeChange">
+                <el-option label="TTL (1.4V)" value="TTL" />
+                <el-option label="CMOS 3.3V (1.65V)" value="CMOS" />
+                <el-option label="LVDS (1.2V)" value="LVDS" />
+                <el-option label="自定义" value="Custom" />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="触发阈值">
+              <div class="threshold-input">
+                <el-input-number
+                  v-model="triggerLevelConfig.threshold"
+                  :min="0"
+                  :max="5.0"
+                  :step="0.1"
+                  :precision="2"
+                  controls-position="right"
+                  :disabled="triggerLevelConfig.signalType !== 'Custom'"
+                />
+                <span class="unit">V</span>
+              </div>
+              <div class="threshold-info">
+                <span class="current-level">{{ formatVoltage(triggerLevelConfig.threshold) }}</span>
+                <span v-if="triggerLevelConfig.hysteresis" class="hysteresis-info">
+                  (±{{ formatVoltage(triggerLevelConfig.hysteresis) }} 滞回)
+                </span>
+              </div>
+            </el-form-item>
+
+            <el-form-item label="滞回电压" v-if="triggerLevelConfig.signalType === 'Custom'">
+              <div class="hysteresis-input">
+                <el-input-number
+                  v-model="triggerLevelConfig.hysteresis"
+                  :min="0"
+                  :max="1.0"
+                  :step="0.1"
+                  :precision="2"
+                  controls-position="right"
+                />
+                <span class="unit">V</span>
+              </div>
+              <div class="hysteresis-help">
+                <el-icon><InfoFilled /></el-icon>
+                滞回电压可减少噪音影响
+              </div>
+            </el-form-item>
+
+            <el-form-item label="输入阻抗" v-if="triggerLevelConfig.signalType === 'Custom'">
+              <div class="impedance-input">
+                <el-input-number
+                  v-model="triggerLevelConfig.inputImpedance"
+                  :min="50"
+                  :max="10000000"
+                  :step="1000"
+                  controls-position="right"
+                />
+                <span class="unit">Ω</span>
+              </div>
+            </el-form-item>
           </el-form>
         </el-card>
       </div>
@@ -314,9 +381,18 @@
     Check,
     Close,
     RefreshRight,
-    Setting
+    Setting,
+    InfoFilled
   } from '@element-plus/icons-vue';
   import { ElMessage } from 'element-plus';
+  import { 
+    TriggerProcessor,
+    TriggerProcessorFactory,
+    TriggerLevelConfig as ITriggerLevelConfig,
+    TriggerValidationResult,
+    TriggerValidationError 
+  } from '../../models/TriggerProcessor';
+  import { TriggerType } from '../../models/AnalyzerTypes';
 
   // 接口定义
   interface ChannelConfig {
@@ -340,6 +416,10 @@
     burstEnabled: boolean;
     burstCount: number;
     measureBursts: boolean;
+  }
+
+  interface TriggerLevelConfig extends ITriggerLevelConfig {
+    signalType: 'TTL' | 'CMOS' | 'LVDS' | 'Custom';
   }
 
   interface DeviceLimits {
@@ -442,8 +522,20 @@
     '#ffc0cb'
   ];
 
+  // 触发电平配置
+  const triggerLevelConfig = ref<TriggerLevelConfig>({
+    signalType: 'CMOS',
+    threshold: 1.65,
+    hysteresis: 0.2,
+    inputImpedance: 1000000
+  });
+
+  // 触发处理器
+  const triggerProcessor = ref<TriggerProcessor | null>(null);
+
   // 验证状态
   const patternError = ref('');
+  const triggerValidationResults = ref<TriggerValidationResult[]>([]);
 
   // 计算属性
   const channelGroups = computed(() => {
@@ -693,6 +785,52 @@
     }
   };
 
+  // 信号类型改变时的处理
+  const onSignalTypeChange = (signalType: 'TTL' | 'CMOS' | 'LVDS' | 'Custom') => {
+    if (triggerProcessor.value && signalType !== 'Custom') {
+      const recommended = triggerProcessor.value.getRecommendedTriggerLevel(signalType);
+      triggerLevelConfig.value.threshold = recommended.threshold;
+      triggerLevelConfig.value.hysteresis = recommended.hysteresis;
+      triggerLevelConfig.value.inputImpedance = recommended.inputImpedance;
+    }
+    validateTriggerLevel();
+  };
+
+  // 验证触发电平
+  const validateTriggerLevel = () => {
+    if (!triggerProcessor.value) return;
+    
+    const validation = triggerProcessor.value.validateTriggerLevel(triggerLevelConfig.value);
+    if (!validation.isValid) {
+      ElMessage.warning(validation.errorMessage || '触发电平配置无效');
+    }
+    return validation;
+  };
+
+  // 重置触发设置
+  const resetTriggerSettings = () => {
+    captureConfig.value.triggerType = 'edge';
+    captureConfig.value.triggerChannel = 0;
+    captureConfig.value.triggerInverted = false;
+    captureConfig.value.triggerPattern = '';
+    captureConfig.value.patternTriggerChannel = 1;
+    captureConfig.value.fastTrigger = false;
+    captureConfig.value.isBlastMode = false;
+    captureConfig.value.burstEnabled = false;
+    captureConfig.value.burstCount = 2;
+    captureConfig.value.measureBursts = false;
+
+    // 重置触发电平
+    triggerLevelConfig.value = {
+      signalType: 'CMOS',
+      threshold: 1.65,
+      hysteresis: 0.2,
+      inputImpedance: 1000000
+    };
+
+    ElMessage.success('触发设置已重置');
+  };
+
   const resetToDefaults = () => {
     captureConfig.value = {
       frequency: deviceLimits.value.maxFrequency,
@@ -715,6 +853,9 @@
       ch.name = `CH${index}`;
       ch.color = getChannelColor(index);
     });
+
+    // 重置触发电平
+    resetTriggerSettings();
 
     updateChannelLimits();
     updateJitter();
@@ -758,6 +899,14 @@
     return count.toString();
   };
 
+  const formatVoltage = (voltage: number): string => {
+    if (voltage >= 1.0) {
+      return `${voltage.toFixed(2)}V`;
+    } else {
+      return `${(voltage * 1000).toFixed(0)}mV`;
+    }
+  };
+
   // 监听器
   watch(() => props.visible, (visible) => {
     if (visible) {
@@ -772,6 +921,15 @@
   onMounted(() => {
     initializeChannels();
     updateJitter();
+    
+    // 初始化触发处理器
+    triggerProcessor.value = TriggerProcessorFactory.createForDevice({
+      channelCount: deviceLimits.value.channelCount,
+      maxFrequency: deviceLimits.value.maxFrequency,
+      minFrequency: deviceLimits.value.minFrequency,
+      blastFrequency: deviceLimits.value.blastFrequency,
+      bufferSize: 131072
+    });
   });
 </script>
 
@@ -1019,6 +1177,50 @@
 
   .footer-buttons {
     display: flex;
+    gap: 8px;
+  }
+
+  /* 触发电平设置样式 */
+  .threshold-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .threshold-info {
+    font-size: 12px;
+    color: #666;
+    margin-top: 4px;
+  }
+
+  .current-level {
+    font-weight: 500;
+    color: #409eff;
+  }
+
+  .hysteresis-info {
+    color: #909399;
+    margin-left: 8px;
+  }
+
+  .hysteresis-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .hysteresis-help {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #909399;
+    margin-top: 4px;
+  }
+
+  .impedance-input {
+    display: flex;
+    align-items: center;
     gap: 8px;
   }
 </style>

@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs';
-import { join } from 'path';
+// import { join } from 'path'; // 暂时注释掉未使用的导入
 import { HardwareCapabilities, DeviceInfo } from '../models/AnalyzerTypes';
 
 /**
@@ -12,7 +12,7 @@ export interface DeviceCompatibilityEntry {
   model: string;
   version: string;
   category: 'usb-la' | 'network-la' | 'benchtop' | 'mixed-signal' | 'protocol-analyzer';
-  
+
   // 识别信息
   identifiers: {
     vendorId?: string;
@@ -21,7 +21,7 @@ export interface DeviceCompatibilityEntry {
     networkSignature?: string;
     scpiIdnResponse?: string;
   };
-  
+
   // 驱动兼容性
   driverCompatibility: {
     primaryDriver: string;
@@ -31,17 +31,17 @@ export interface DeviceCompatibilityEntry {
     knownIssues: string[];
     workarounds: string[];
   };
-  
+
   // 硬件能力
   capabilities: HardwareCapabilities;
-  
+
   // 连接配置
   connectionOptions: {
     defaultConnectionString: string;
     alternativeConnections: string[];
     connectionParameters: Record<string, any>;
   };
-  
+
   // 测试状态
   testStatus: {
     lastTested: Date;
@@ -53,7 +53,7 @@ export interface DeviceCompatibilityEntry {
     };
     certificationLevel: 'certified' | 'verified' | 'community' | 'experimental';
   };
-  
+
   // 用户反馈
   communityFeedback: {
     userRating: number; // 1-5
@@ -61,7 +61,7 @@ export interface DeviceCompatibilityEntry {
     commonIssues: string[];
     userComments: string[];
   };
-  
+
   // 元数据
   metadata: {
     addedDate: Date;
@@ -118,7 +118,7 @@ export class HardwareCompatibilityDatabase {
 
       // 加载现有数据
       await this.loadDatabase();
-      
+
       // 如果数据库为空，加载默认数据
       if (this.entries.size === 0) {
         await this.loadDefaultData();
@@ -126,7 +126,7 @@ export class HardwareCompatibilityDatabase {
 
       // 构建索引
       this.buildIndexes();
-      
+
       this.isLoaded = true;
       console.log(`硬件兼容性数据库已加载 (${this.entries.size} 个设备条目)`);
     } catch (error) {
@@ -142,20 +142,20 @@ export class HardwareCompatibilityDatabase {
     try {
       const data = await fs.readFile(this.databasePath, 'utf-8');
       const jsonData = JSON.parse(data);
-      
+
       if (jsonData.entries && Array.isArray(jsonData.entries)) {
         for (const entry of jsonData.entries) {
           // 转换日期字符串为Date对象
           entry.testStatus.lastTested = new Date(entry.testStatus.lastTested);
           entry.metadata.addedDate = new Date(entry.metadata.addedDate);
           entry.metadata.lastUpdated = new Date(entry.metadata.lastUpdated);
-          
+
           this.entries.set(entry.deviceId, entry);
         }
       }
     } catch (error) {
       // 文件不存在时是正常的，创建空数据库
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if ((error as any).code !== 'ENOENT') {
         throw error;
       }
     }
@@ -447,27 +447,27 @@ export class HardwareCompatibilityDatabase {
     for (const [deviceId, entry] of this.entries) {
       // 制造商索引
       this.addToIndex('manufacturer', entry.manufacturer.toLowerCase(), deviceId);
-      
+
       // 型号索引
       this.addToIndex('model', entry.model.toLowerCase(), deviceId);
-      
+
       // 类别索引
       this.addToIndex('category', entry.category, deviceId);
-      
+
       // 驱动索引
       this.addToIndex('driver', entry.driverCompatibility.primaryDriver, deviceId);
-      
+
       // 兼容性级别索引
       this.addToIndex('compatibility', entry.driverCompatibility.compatibilityLevel, deviceId);
-      
+
       // 认证级别索引
       this.addToIndex('certification', entry.testStatus.certificationLevel, deviceId);
-      
+
       // 支持状态索引
       this.addToIndex('support', entry.metadata.supportStatus, deviceId);
-      
+
       // 标识符索引
-      const identifiers = entry.identifiers;
+      const { identifiers } = entry;
       if (identifiers.vendorId) {
         this.addToIndex('vendorId', identifiers.vendorId, deviceId);
       }
@@ -652,7 +652,7 @@ export class HardwareCompatibilityDatabase {
       entry.testStatus.testResults = testResults;
       entry.testStatus.lastTested = new Date();
       entry.metadata.lastUpdated = new Date();
-      
+
       await this.saveDatabase();
       console.log(`测试结果已更新: ${deviceId}`);
     }
@@ -668,17 +668,17 @@ export class HardwareCompatibilityDatabase {
     if (entry) {
       // 更新评分（加权平均）
       const totalRatings = entry.communityFeedback.reportCount + 1;
-      entry.communityFeedback.userRating = 
+      entry.communityFeedback.userRating =
         (entry.communityFeedback.userRating * entry.communityFeedback.reportCount + rating) / totalRatings;
-      
+
       // 添加评论和问题
       entry.communityFeedback.userComments.push(comment);
       entry.communityFeedback.commonIssues.push(...issues);
       entry.communityFeedback.reportCount = totalRatings;
-      
+
       entry.metadata.lastUpdated = new Date();
       await this.saveDatabase();
-      
+
       console.log(`用户反馈已添加: ${deviceId}`);
     }
   }
@@ -709,14 +709,14 @@ export class HardwareCompatibilityDatabase {
     for (const entry of this.entries.values()) {
       // 按类别统计
       stats.devicesByCategory[entry.category] = (stats.devicesByCategory[entry.category] || 0) + 1;
-      
+
       // 按制造商统计
       stats.devicesByManufacturer[entry.manufacturer] = (stats.devicesByManufacturer[entry.manufacturer] || 0) + 1;
-      
+
       // 按认证级别统计
-      stats.certificationLevels[entry.testStatus.certificationLevel] = 
+      stats.certificationLevels[entry.testStatus.certificationLevel] =
         (stats.certificationLevels[entry.testStatus.certificationLevel] || 0) + 1;
-      
+
       // 计算平均评分
       if (entry.communityFeedback.reportCount > 0) {
         totalRating += entry.communityFeedback.userRating * entry.communityFeedback.reportCount;

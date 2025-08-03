@@ -29,13 +29,13 @@ export class SigrokAdapter extends AnalyzerDriverBase {
     ['openbench-logic-sniffer', { name: 'OpenBench Logic Sniffer', channels: 32, maxRate: 200000000 }],
     ['kingst-la2016', { name: 'Kingst LA2016', channels: 16, maxRate: 200000000 }],
     ['hantek-6022be', { name: 'Hantek 6022BE', channels: 2, maxRate: 48000000 }],
-    
+
     // 示波器的逻辑分析功能
     ['rigol-ds', { name: 'Rigol DS Series', channels: 16, maxRate: 1000000000 }],
     ['siglent-sds', { name: 'Siglent SDS Series', channels: 16, maxRate: 1000000000 }],
     ['tek-mso', { name: 'Tektronix MSO Series', channels: 16, maxRate: 2500000000 }],
     ['lecroy-logicstudio', { name: 'LeCroy LogicStudio', channels: 16, maxRate: 500000000 }],
-    
+
     // 其他专业设备
     ['chronovu-la', { name: 'ChronoVu LA Series', channels: 32, maxRate: 200000000 }],
     ['ikalogic-scanalogic2', { name: 'Ikalogic Scanalogic-2', channels: 4, maxRate: 20000000 }],
@@ -310,8 +310,8 @@ export class SigrokAdapter extends AnalyzerDriverBase {
 
         devices.push({
           id: connection,
-          driver: driver,
-          description: description
+          driver,
+          description
         });
       }
     }
@@ -507,7 +507,7 @@ export class SigrokAdapter extends AnalyzerDriverBase {
         if (session.triggerPattern !== undefined) {
           // 将模式转换为sigrok格式
           const pattern = session.triggerPattern.toString(2).padStart(16, '0');
-          trigger = pattern.split('').map((bit, index) => 
+          trigger = pattern.split('').map((bit, index) =>
             bit === '1' ? `${index}=1` : bit === '0' ? `${index}=0` : ''
           ).filter(t => t).join(',');
         }

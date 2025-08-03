@@ -39,7 +39,7 @@ export interface DriverPackageStructure {
  * 驱动开发工具函数集合
  */
 export class DriverUtils {
-  
+
   /**
    * 创建驱动包
    */
@@ -56,21 +56,21 @@ export class DriverUtils {
     }
   ): Promise<string> {
     console.log(`创建驱动包: ${packageName}`);
-    
+
     const packageDir = join(outputDir, packageName);
-    
+
     // 创建目录结构
     await fs.mkdir(packageDir, { recursive: true });
     await fs.mkdir(join(packageDir, 'src'), { recursive: true });
-    
+
     if (options.includeTests) {
       await fs.mkdir(join(packageDir, 'tests'), { recursive: true });
     }
-    
+
     if (options.includeExamples) {
       await fs.mkdir(join(packageDir, 'examples'), { recursive: true });
     }
-    
+
     if (options.includeDocs) {
       await fs.mkdir(join(packageDir, 'docs'), { recursive: true });
     }
@@ -101,7 +101,7 @@ export class DriverUtils {
       packageJson.driverClass,
       options.driverType
     );
-    
+
     await fs.writeFile(
       join(packageDir, 'src', `${packageJson.driverClass}.ts`),
       driverContent
@@ -167,12 +167,12 @@ export class DriverUtils {
     driverInstance: AnalyzerDriverBase
   ): Promise<ValidationReport> {
     console.log('开始验证驱动实现...');
-    
+
     const validator = new DriverValidator();
     const report = await validator.validateDriver(driverInstance);
-    
+
     console.log(`验证完成，评分: ${report.score}/100`);
-    
+
     if (report.overallStatus === 'fail') {
       console.error('驱动验证失败，存在严重错误');
     } else if (report.overallStatus === 'warning') {
@@ -180,7 +180,7 @@ export class DriverUtils {
     } else {
       console.log('驱动验证完全通过');
     }
-    
+
     return report;
   }
 
@@ -192,12 +192,12 @@ export class DriverUtils {
     mockMode: boolean = true
   ): Promise<TestReport> {
     console.log('开始测试驱动功能...');
-    
+
     const tester = new DriverTester(mockMode);
     const report = await tester.runAllTests(driverInstance);
-    
+
     console.log(`测试完成: ${report.passedTests}/${report.totalTests} 通过`);
-    
+
     if (report.overallStatus === 'fail') {
       console.error('驱动功能测试失败');
     } else if (report.overallStatus === 'partial') {
@@ -205,7 +205,7 @@ export class DriverUtils {
     } else {
       console.log('驱动功能测试完全通过');
     }
-    
+
     return report;
   }
 
@@ -222,7 +222,7 @@ export class DriverUtils {
     }
   ): Promise<string> {
     console.log('生成驱动文档...');
-    
+
     const opts = {
       includeAPI: true,
       includeExamples: true,
@@ -247,18 +247,18 @@ export class DriverUtils {
 
     // 支持的设备
     if (packageJson.supportedDevices && packageJson.supportedDevices.length > 0) {
-      documentation += `## 支持的设备\n\n`;
+      documentation += '## 支持的设备\n\n';
       packageJson.supportedDevices.forEach((device: string) => {
         documentation += `- ${device}\n`;
       });
-      documentation += `\n`;
+      documentation += '\n';
     }
 
     // 安装说明
-    documentation += `## 安装\n\n`;
-    documentation += `\\`\\`\\`bash\n`;
+    documentation += '## 安装\n\n';
+    documentation += '```bash\n';
     documentation += `npm install ${packageJson.name}\n`;
-    documentation += `\\`\\`\\`\n\n`;
+    documentation += '```\n\n';
 
     // API文档
     if (opts.includeAPI) {
@@ -278,12 +278,12 @@ export class DriverUtils {
     // 写入文档文件
     const docsDir = join(driverPackagePath, 'docs');
     await fs.mkdir(docsDir, { recursive: true });
-    
+
     const docFileName = `${packageJson.name}-guide.${opts.outputFormat}`;
     const docFilePath = join(docsDir, docFileName);
-    
+
     await fs.writeFile(docFilePath, documentation);
-    
+
     console.log(`文档生成完成: ${docFilePath}`);
     return docFilePath;
   }
@@ -297,12 +297,12 @@ export class DriverUtils {
   ): Promise<string> {
     const templates = {
       serial: 'SerialDriverTemplate',
-      network: 'NetworkDriverTemplate', 
+      network: 'NetworkDriverTemplate',
       generic: 'GenericDriverTemplate'
     };
 
     const templateName = templates[driverType];
-    
+
     return `import { ${templateName} } from '@pico-logicanalyzer/driver-sdk';
 
 /**
@@ -352,7 +352,7 @@ ${packageInfo.description}
 
 ## 快速开始
 
-\\`\\`\\`typescript
+\`\`\`typescript
 import { ${packageInfo.driverClass} } from '${packageInfo.name}';
 
 // 创建驱动实例
@@ -365,7 +365,7 @@ if (result.success) {
 } else {
   console.error('连接失败:', result.error);
 }
-\\`\\`\\`
+\`\`\`
 
 ## API文档
 
@@ -381,7 +381,7 @@ if (result.success) {
 
 ## 开发
 
-\\`\\`\\`bash
+\`\`\`bash
 # 安装依赖
 npm install
 
@@ -393,7 +393,7 @@ npm test
 
 # 运行验证
 npm run validate
-\\`\\`\\`
+\`\`\`
 
 ## 许可证
 
@@ -566,34 +566,34 @@ export { basicUsageExample };
    * 生成API文档
    */
   private static async generateAPIDocumentation(packagePath: string): Promise<string> {
-    let apiDoc = `## API 参考\n\n`;
-    
+    let apiDoc = '## API 参考\n\n';
+
     // 这里可以通过静态分析TypeScript代码来生成API文档
     // 或者使用TSDoc等工具
-    
-    apiDoc += `### 构造函数\n\n`;
-    apiDoc += `\\`\\`\\`typescript\n`;
-    apiDoc += `constructor(connectionString: string)\n`;
-    apiDoc += `\\`\\`\\`\n\n`;
-    apiDoc += `创建驱动实例。\n\n`;
-    apiDoc += `**参数**:\n`;
-    apiDoc += `- \`connectionString\`: 设备连接字符串\n\n`;
 
-    apiDoc += `### 方法\n\n`;
-    apiDoc += `#### connect(params?: ConnectionParams): Promise<ConnectionResult>\n\n`;
-    apiDoc += `连接到设备。\n\n`;
-    
-    apiDoc += `#### disconnect(): Promise<void>\n\n`;
-    apiDoc += `断开设备连接。\n\n`;
-    
-    apiDoc += `#### getStatus(): Promise<DeviceStatus>\n\n`;
-    apiDoc += `获取设备状态。\n\n`;
-    
-    apiDoc += `#### startCapture(session: CaptureSession): Promise<CaptureError>\n\n`;
-    apiDoc += `开始数据采集。\n\n`;
-    
-    apiDoc += `#### stopCapture(): Promise<boolean>\n\n`;
-    apiDoc += `停止数据采集。\n\n`;
+    apiDoc += '### 构造函数\n\n';
+    apiDoc += '```typescript\n';
+    apiDoc += 'constructor(connectionString: string)\n';
+    apiDoc += '```\n\n';
+    apiDoc += '创建驱动实例。\n\n';
+    apiDoc += '**参数**:\n';
+    apiDoc += '- `connectionString`: 设备连接字符串\n\n';
+
+    apiDoc += '### 方法\n\n';
+    apiDoc += '#### connect(params?: ConnectionParams): Promise<ConnectionResult>\n\n';
+    apiDoc += '连接到设备。\n\n';
+
+    apiDoc += '#### disconnect(): Promise<void>\n\n';
+    apiDoc += '断开设备连接。\n\n';
+
+    apiDoc += '#### getStatus(): Promise<DeviceStatus>\n\n';
+    apiDoc += '获取设备状态。\n\n';
+
+    apiDoc += '#### startCapture(session: CaptureSession): Promise<CaptureError>\n\n';
+    apiDoc += '开始数据采集。\n\n';
+
+    apiDoc += '#### stopCapture(): Promise<boolean>\n\n';
+    apiDoc += '停止数据采集。\n\n';
 
     return apiDoc;
   }
@@ -602,28 +602,28 @@ export { basicUsageExample };
    * 生成配置文档
    */
   private static async generateConfigurationDocumentation(packageInfo: DriverPackageInfo): Promise<string> {
-    let configDoc = `## 配置\n\n`;
-    
-    configDoc += `### 连接配置\n\n`;
-    configDoc += `根据设备类型，连接字符串的格式可能不同：\n\n`;
-    configDoc += `- **串口设备**: \`COM3\`, \`/dev/ttyUSB0\`\n`;
-    configDoc += `- **网络设备**: \`192.168.1.100:5555\`, \`hostname:port\`\n`;
-    configDoc += `- **USB设备**: \`usb:vid:pid\`, \`usb:serial\`\n\n`;
-    
-    configDoc += `### 设备能力\n\n`;
-    configDoc += `驱动支持以下设备类型：\n\n`;
-    
+    let configDoc = '## 配置\n\n';
+
+    configDoc += '### 连接配置\n\n';
+    configDoc += '根据设备类型，连接字符串的格式可能不同：\n\n';
+    configDoc += '- **串口设备**: `COM3`, `/dev/ttyUSB0`\n';
+    configDoc += '- **网络设备**: `192.168.1.100:5555`, `hostname:port`\n';
+    configDoc += '- **USB设备**: `usb:vid:pid`, `usb:serial`\n\n';
+
+    configDoc += '### 设备能力\n\n';
+    configDoc += '驱动支持以下设备类型：\n\n';
+
     if (packageInfo.supportedDevices) {
       packageInfo.supportedDevices.forEach(device => {
         configDoc += `- ${device}\n`;
       });
     }
-    
-    configDoc += `\n### 环境变量\n\n`;
-    configDoc += `可以通过以下环境变量配置驱动行为：\n\n`;
-    configDoc += `- \`LOG_LEVEL\`: 日志级别 (debug, info, warn, error)\n`;
-    configDoc += `- \`CONNECTION_TIMEOUT\`: 连接超时时间（毫秒）\n`;
-    configDoc += `- \`COMMAND_TIMEOUT\`: 命令超时时间（毫秒）\n\n`;
+
+    configDoc += '\n### 环境变量\n\n';
+    configDoc += '可以通过以下环境变量配置驱动行为：\n\n';
+    configDoc += '- `LOG_LEVEL`: 日志级别 (debug, info, warn, error)\n';
+    configDoc += '- `CONNECTION_TIMEOUT`: 连接超时时间（毫秒）\n';
+    configDoc += '- `COMMAND_TIMEOUT`: 命令超时时间（毫秒）\n\n';
 
     return configDoc;
   }
@@ -632,26 +632,26 @@ export { basicUsageExample };
    * 生成示例文档
    */
   private static async generateExampleDocumentation(packagePath: string): Promise<string> {
-    let exampleDoc = `## 使用示例\n\n`;
-    
+    let exampleDoc = '## 使用示例\n\n';
+
     // 检查是否有示例文件
     const examplesDir = join(packagePath, 'examples');
     try {
       const files = await fs.readdir(examplesDir);
-      
+
       for (const file of files) {
         if (file.endsWith('.ts') || file.endsWith('.js')) {
           const filePath = join(examplesDir, file);
           const content = await fs.readFile(filePath, 'utf-8');
-          
+
           exampleDoc += `### ${file}\n\n`;
-          exampleDoc += `\\`\\`\\`typescript\n`;
+          exampleDoc += '```typescript\n';
           exampleDoc += content;
-          exampleDoc += `\\`\\`\\`\n\n`;
+          exampleDoc += '```\n\n';
         }
       }
     } catch (error) {
-      exampleDoc += `暂无示例文件。\n\n`;
+      exampleDoc += '暂无示例文件。\n\n';
     }
 
     return exampleDoc;
@@ -677,7 +677,7 @@ export { basicUsageExample };
   }> {
     const packageJsonPath = join(packagePath, 'package.json');
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
-    
+
     const result = {
       dependencies: Object.keys(packageJson.dependencies || {}),
       devDependencies: Object.keys(packageJson.devDependencies || {}),

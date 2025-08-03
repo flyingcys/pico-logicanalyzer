@@ -81,6 +81,12 @@ export interface WaitCondition {
 }
 
 /**
+ * 多条件等待数组
+ * 对应原软件的 wait([condition1, condition2, ...]) 用法
+ */
+export type WaitConditions = WaitCondition | WaitCondition[];
+
+/**
  * 等待结果
  * 对应原软件的 wait() 方法返回值
  */
@@ -89,8 +95,10 @@ export interface WaitResult {
   pins: number[];
   /** 样本编号 */
   sampleNumber: number;
-  /** 匹配的条件 */
+  /** 匹配的条件数组 (对应原版的 self.matched) */
   matched?: boolean[];
+  /** 匹配的条件索引 (哪一个条件匹配了) */
+  matchedIndex?: number;
 }
 
 /**

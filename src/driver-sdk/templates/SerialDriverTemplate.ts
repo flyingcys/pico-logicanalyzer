@@ -75,10 +75,10 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
   constructor(portPath: string, baudRate: number = 115200) {
     super();
     this._portPath = portPath;
-    
+
     // 获取串口配置
     this._serialConfig = ProtocolHelper.serial.getBaudRateConfig(baudRate);
-    
+
     console.log(`初始化串口驱动: ${portPath} @ ${baudRate}`);
   }
 
@@ -88,10 +88,10 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
   async connect(params?: ConnectionParams): Promise<ConnectionResult> {
     try {
       console.log(`连接串口设备: ${this._portPath}`);
-      
+
       // 动态导入serialport（如果可用）
       const { SerialPort } = await this.loadSerialPort();
-      
+
       // 配置串口参数
       const portConfig = {
         path: this._portPath,
@@ -103,10 +103,10 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
       };
 
       this._serialPort = new SerialPort(portConfig);
-      
+
       // 打开串口
       await this.openSerialPort();
-      
+
       // 设置数据接收处理器
       this._serialPort.on('data', this.handleSerialData.bind(this));
       this._serialPort.on('error', this.handleSerialError.bind(this));
@@ -114,10 +114,10 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
 
       // 初始化设备
       await this.initializeDevice();
-      
+
       // 查询设备信息
       await this.queryDeviceInfo();
-      
+
       this._isConnected = true;
 
       return {
@@ -171,7 +171,7 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
    */
   private handleSerialData(data: Buffer): void {
     this._responseBuffer = Buffer.concat([this._responseBuffer, data]);
-    
+
     // 处理完整的数据包
     this.processResponseBuffer();
   }
@@ -182,12 +182,12 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
   private processResponseBuffer(): void {
     // TODO: 根据设备协议实现数据包解析
     // 这里提供一个基于换行符的简单示例
-    
+
     let newlineIndex;
     while ((newlineIndex = this._responseBuffer.indexOf('\\n')) !== -1) {
       const packet = this._responseBuffer.subarray(0, newlineIndex);
       this._responseBuffer = this._responseBuffer.subarray(newlineIndex + 1);
-      
+
       // 处理完整的响应包
       this.handleResponse(packet);
     }
@@ -201,7 +201,7 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
       const pendingCommand = this._commandQueue.shift()!;
       clearTimeout(pendingCommand.timeout);
       pendingCommand.resolve(data);
-      
+
       // 处理队列中的下一个命令
       this.processCommandQueue();
     }
@@ -213,7 +213,7 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
   private handleSerialError(error: Error): void {
     console.error('串口错误:', error);
     this._isConnected = false;
-    
+
     // 拒绝所有待处理的命令
     this._commandQueue.forEach(cmd => {
       clearTimeout(cmd.timeout);
@@ -235,13 +235,13 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
    */
   private async initializeDevice(): Promise<void> {
     console.log('初始化串口设备...');
-    
+
     // 发送复位命令
     await this.sendRawCommand(Buffer.from('*RST\\n'));
-    
+
     // 等待设备稳定
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     // 清除状态
     await this.sendRawCommand(Buffer.from('*CLS\\n'));
   }
@@ -254,7 +254,7 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
       // 查询设备标识
       const idnResponse = await this.sendRawCommand(Buffer.from('*IDN?\\n'));
       this.parseDeviceIdentification(idnResponse.toString());
-      
+
       // 查询设备能力
       await this.queryDeviceCapabilities();
     } catch (error) {
@@ -314,7 +314,7 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
    */
   async disconnect(): Promise<void> {
     console.log('断开串口连接...');
-    
+
     if (this._capturing) {
       await this.stopCapture();
     }
@@ -360,14 +360,14 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
         isConnected: this._isConnected,
         isCapturing: this._capturing,
         batteryVoltage: await this.getBatteryVoltage(),
-        lastError: statusText.includes('ERROR') ? statusText : undefined
+        errorStatus: statusText.includes('ERROR') ? statusText : undefined
       };
     } catch (error) {
       return {
         isConnected: this._isConnected,
         isCapturing: this._capturing,
         batteryVoltage: 'N/A',
-        lastError: error instanceof Error ? error.message : '状态查询失败'
+        errorStatus: error instanceof Error ? error.message : '状态查询失败'
       };
     }
   }
@@ -498,7 +498,7 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
         // 请求通道数据
         const dataCommand = `DATA ${channel.channelNumber}\\n`;
         const dataResponse = await this.sendRawCommand(Buffer.from(dataCommand));
-        
+
         // 解析数据
         channel.samples = this.parseChannelData(dataResponse);
       }
@@ -522,12 +522,12 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
   private parseChannelData(rawData: Buffer): Uint8Array {
     // TODO: 根据设备的数据格式实现解析
     // 这里提供一个基本的二进制数据解析示例
-    
+
     const samples = new Uint8Array(rawData.length);
     for (let i = 0; i < rawData.length; i++) {
       samples[i] = rawData[i] !== 0 ? 1 : 0;
     }
-    
+
     return samples;
   }
 
@@ -572,10 +572,10 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
     try {
       console.log('进入引导加载程序模式...');
       await this.sendRawCommand(Buffer.from('BOOTLOADER\\n'));
-      
+
       // 等待设备进入引导模式
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
+
       return true;
     } catch (error) {
       console.error('进入引导加载程序失败:', error);
@@ -622,7 +622,7 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
 
     this._serialPort.write(command.command, (error: Error | null) => {
       this._isProcessingCommand = false;
-      
+
       if (error) {
         const cmd = this._commandQueue.shift();
         if (cmd) {
@@ -630,7 +630,7 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
           cmd.reject(error);
         }
       }
-      
+
       // 如果还有命令，继续处理
       if (this._commandQueue.length > 1) {
         setTimeout(() => this.processCommandQueue(), 10);
@@ -680,14 +680,14 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
    */
   override dispose(): void {
     console.log('清理串口驱动资源...');
-    
+
     if (this._isConnected) {
       this.disconnect();
     }
-    
+
     super.dispose();
   }
-  
+
   /**
    * 获取可用串口列表（静态方法）
    */
@@ -695,7 +695,7 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
     try {
       const { SerialPort } = await import('serialport');
       const ports = await SerialPort.list();
-      
+
       return ports.map(port => ({
         path: port.path,
         manufacturer: port.manufacturer,

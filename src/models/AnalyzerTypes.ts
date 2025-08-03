@@ -8,7 +8,8 @@ export enum AnalyzerDriverType {
   Serial = 'Serial',
   Network = 'Network',
   Multi = 'Multi',
-  Emulated = 'Emulated'
+  Emulated = 'Emulated',
+  Single = 'Single'
 }
 
 export enum CaptureMode {
@@ -59,6 +60,9 @@ export interface DeviceInfo {
   connectionPath?: string;
   isNetwork: boolean;
   capabilities: HardwareCapabilities;
+  manufacturer?: string;
+  model?: string;
+  serialNumber?: string;
 }
 
 export interface HardwareCapabilities {

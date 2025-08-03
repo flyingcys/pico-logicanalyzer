@@ -7,6 +7,7 @@ import i18n from './i18n';
 
 // 类型声明
 declare global {
+  // eslint-disable-next-line no-unused-vars
   interface Window {
     vscode: any;
     documentData: {

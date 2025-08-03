@@ -235,12 +235,12 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
     try {
       // 获取连接的设备列表
       const devicesResponse = await this.sendCommand({ command: 'GET_CONNECTED_DEVICES' });
-      
+
       if (devicesResponse.connected_devices && devicesResponse.connected_devices.length > 0) {
         const device = devicesResponse.connected_devices[0];
         this._deviceId = device.device_id;
         this._version = `Saleae Logic ${device.device_type}`;
-        
+
         // 根据设备类型设置通道数和频率
         this.setDeviceCapabilities(device.device_type);
       } else {
@@ -308,7 +308,7 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
     if (capabilities.digital_channels) {
       this._channelCount = capabilities.digital_channels.length;
     }
-    
+
     if (capabilities.supported_sample_rates) {
       const rates = capabilities.supported_sample_rates;
       this._maxFrequency = Math.max(...rates);
@@ -461,11 +461,11 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
     // Saleae Logic 2 API返回的数据格式处理
     if (dataResponse.digital_samples) {
       const samples = dataResponse.digital_samples;
-      
+
       for (let channelIndex = 0; channelIndex < session.captureChannels.length; channelIndex++) {
         const channel = session.captureChannels[channelIndex];
         const channelData = samples[channel.channelNumber];
-        
+
         if (channelData && channelData.samples) {
           // 转换Saleae的时间序列数据为样本数组
           channel.samples = this.convertSaleaeTimeSeriesToSamples(
@@ -499,7 +499,7 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
       const currentTime = sampleIndex / sampleRate;
 
       // 检查是否需要更新当前值
-      while (timeSeriesIndex < timeSeries.length && 
+      while (timeSeriesIndex < timeSeries.length &&
              timeSeries[timeSeriesIndex].time <= currentTime) {
         currentValue = timeSeries[timeSeriesIndex].value ? 1 : 0;
         timeSeriesIndex++;
@@ -538,14 +538,14 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
         return;
       }
 
-      const commandStr = JSON.stringify(command) + '\n';
-      
+      const commandStr = `${JSON.stringify(command)}\n`;
+
       // 设置响应处理器
       const responseHandler = (data: Buffer) => {
         try {
           const response = JSON.parse(data.toString());
           this._socket!.off('data', responseHandler);
-          
+
           if (response.success === false) {
             reject(new Error(response.error_message || '命令执行失败'));
           } else {

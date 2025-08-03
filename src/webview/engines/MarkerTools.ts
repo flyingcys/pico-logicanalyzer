@@ -56,18 +56,626 @@ export class MarkerTools {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private config: MarkerConfig;
-  
+
   // 标记管理
   private markers: Map<string, Marker> = new Map();
   private markerPairs: Map<string, MarkerPair> = new Map();
   private nextMarkerId = 1;
-  
+
   // 交互状态
   private draggedMarker: Marker | null = null;
   private dragOffset = { x: 0, y: 0 };
   private hoveredMarker: Marker | null = null;
-  
+
   // 采样和时间信息
   private sampleRate = 1000000; // 默认1MHz
   private firstSample = 0;
-  private visibleSamples = 1000;\n  private channels: AnalyzerChannel[] = [];\n  \n  // 事件监听器\n  private eventListeners: Map<string, ((data: any) => void)[]> = new Map();\n  \n  constructor(canvas: HTMLCanvasElement, config?: Partial<MarkerConfig>) {\n    this.canvas = canvas;\n    const ctx = canvas.getContext('2d');\n    if (!ctx) {\n      throw new Error('无法获取Canvas 2D上下文');\n    }\n    this.ctx = ctx;\n    \n    this.config = {\n      showLabels: true,\n      showValues: true,\n      labelFont: 'monospace',\n      labelSize: 12,\n      markerWidth: 2,\n      snapToEdge: true,\n      snapTolerance: 5, // 5个样本\n      enableDragging: true,\n      showCrosshair: true,\n      ...config\n    };\n    \n    this.setupEventListeners();\n  }\n  \n  /**\n   * 设置事件监听器\n   */\n  private setupEventListeners(): void {\n    this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));\n    this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));\n    this.canvas.addEventListener('mouseup', this.onMouseUp.bind(this));\n    this.canvas.addEventListener('dblclick', this.onDoubleClick.bind(this));\n    this.canvas.addEventListener('keydown', this.onKeyDown.bind(this));\n    \n    this.canvas.tabIndex = 0; // 允许接收键盘事件\n  }\n  \n  /**\n   * 设置采样信息\n   */\n  public setSampleInfo(\n    sampleRate: number,\n    firstSample: number,\n    visibleSamples: number,\n    channels: AnalyzerChannel[]\n  ): void {\n    this.sampleRate = sampleRate;\n    this.firstSample = firstSample;\n    this.visibleSamples = visibleSamples;\n    this.channels = channels;\n  }\n  \n  /**\n   * 添加标记\n   */\n  public addMarker(\n    sample: number,\n    type: Marker['type'] = 'user',\n    name?: string,\n    color?: string\n  ): Marker {\n    const id = `marker_${this.nextMarkerId++}`;\n    \n    // 自动吸附到边沿\n    if (this.config.snapToEdge && type === 'user') {\n      sample = this.snapToNearestEdge(sample);\n    }\n    \n    const marker: Marker = {\n      id,\n      name: name || `M${this.nextMarkerId - 1}`,\n      sample,\n      timestamp: sample / this.sampleRate,\n      color: color || this.getDefaultMarkerColor(type),\n      type,\n      visible: true,\n      locked: false\n    };\n    \n    this.markers.set(id, marker);\n    \n    this.emitEvent('markerAdded', { marker });\n    \n    return marker;\n  }\n  \n  /**\n   * 移除标记\n   */\n  public removeMarker(markerId: string): boolean {\n    const marker = this.markers.get(markerId);\n    if (marker) {\n      this.markers.delete(markerId);\n      \n      // 移除相关的标记对\n      for (const [pairId, pair] of this.markerPairs) {\n        if (pair.startMarker.id === markerId || pair.endMarker.id === markerId) {\n          this.markerPairs.delete(pairId);\n        }\n      }\n      \n      this.emitEvent('markerRemoved', { marker });\n      return true;\n    }\n    return false;\n  }\n  \n  /**\n   * 获取所有标记\n   */\n  public getMarkers(): Marker[] {\n    return Array.from(this.markers.values());\n  }\n  \n  /**\n   * 获取指定类型的标记\n   */\n  public getMarkersByType(type: Marker['type']): Marker[] {\n    return Array.from(this.markers.values()).filter(m => m.type === type);\n  }\n  \n  /**\n   * 创建标记对用于测量\n   */\n  public createMarkerPair(\n    startSample: number,\n    endSample: number,\n    measurementType: MarkerPair['measurementType'] = 'time',\n    name?: string\n  ): MarkerPair {\n    const startMarker = this.addMarker(startSample, 'measurement', `${name || 'Measure'}_Start`);\n    const endMarker = this.addMarker(endSample, 'measurement', `${name || 'Measure'}_End`);\n    \n    const pairId = `pair_${Date.now()}`;\n    const pair: MarkerPair = {\n      id: pairId,\n      startMarker,\n      endMarker,\n      name: name || `Measurement ${this.markerPairs.size + 1}`,\n      color: '#ffff00',\n      measurementType,\n      visible: true\n    };\n    \n    this.markerPairs.set(pairId, pair);\n    \n    this.emitEvent('markerPairCreated', { pair });\n    \n    return pair;\n  }\n  \n  /**\n   * 移除标记对\n   */\n  public removeMarkerPair(pairId: string): boolean {\n    const pair = this.markerPairs.get(pairId);\n    if (pair) {\n      this.removeMarker(pair.startMarker.id);\n      this.removeMarker(pair.endMarker.id);\n      this.markerPairs.delete(pairId);\n      \n      this.emitEvent('markerPairRemoved', { pair });\n      return true;\n    }\n    return false;\n  }\n  \n  /**\n   * 获取标记对\n   */\n  public getMarkerPairs(): MarkerPair[] {\n    return Array.from(this.markerPairs.values());\n  }\n  \n  /**\n   * 鼠标按下事件\n   */\n  private onMouseDown(event: MouseEvent): void {\n    if (!this.config.enableDragging) return;\n    \n    const rect = this.canvas.getBoundingClientRect();\n    const x = event.clientX - rect.left;\n    const y = event.clientY - rect.top;\n    \n    // 检查是否点击了标记\n    const clickedMarker = this.getMarkerAtPosition(x, y);\n    \n    if (clickedMarker && !clickedMarker.locked) {\n      this.draggedMarker = clickedMarker;\n      this.dragOffset.x = x - this.sampleToPixel(clickedMarker.sample);\n      this.dragOffset.y = 0;\n      \n      this.canvas.style.cursor = 'grabbing';\n      event.preventDefault();\n    } else if (event.ctrlKey || event.metaKey) {\n      // Ctrl+点击添加新标记\n      const sample = this.pixelToSample(x);\n      this.addMarker(sample, 'user');\n    }\n  }\n  \n  /**\n   * 鼠标移动事件\n   */\n  private onMouseMove(event: MouseEvent): void {\n    const rect = this.canvas.getBoundingClientRect();\n    const x = event.clientX - rect.left;\n    const y = event.clientY - rect.top;\n    \n    if (this.draggedMarker) {\n      // 拖拽标记\n      const newSample = this.pixelToSample(x - this.dragOffset.x);\n      const clampedSample = Math.max(0, Math.min(newSample, this.getMaxSample()));\n      \n      // 自动吸附到边沿\n      const finalSample = this.config.snapToEdge ? \n        this.snapToNearestEdge(clampedSample) : clampedSample;\n      \n      this.draggedMarker.sample = finalSample;\n      this.draggedMarker.timestamp = finalSample / this.sampleRate;\n      \n      this.emitEvent('markerMoved', { marker: this.draggedMarker });\n    } else {\n      // 检查鼠标悬停\n      const hoveredMarker = this.getMarkerAtPosition(x, y);\n      \n      if (hoveredMarker !== this.hoveredMarker) {\n        this.hoveredMarker = hoveredMarker;\n        \n        if (hoveredMarker) {\n          this.canvas.style.cursor = 'grab';\n          this.showMarkerTooltip(hoveredMarker, event.clientX, event.clientY);\n        } else {\n          this.canvas.style.cursor = 'default';\n          this.hideMarkerTooltip();\n        }\n      }\n    }\n  }\n  \n  /**\n   * 鼠标抬起事件\n   */\n  private onMouseUp(event: MouseEvent): void {\n    if (this.draggedMarker) {\n      this.emitEvent('markerDragEnd', { marker: this.draggedMarker });\n      this.draggedMarker = null;\n      this.canvas.style.cursor = 'default';\n    }\n  }\n  \n  /**\n   * 双击事件\n   */\n  private onDoubleClick(event: MouseEvent): void {\n    const rect = this.canvas.getBoundingClientRect();\n    const x = event.clientX - rect.left;\n    \n    const clickedMarker = this.getMarkerAtPosition(x, event.clientY - rect.top);\n    \n    if (clickedMarker) {\n      // 双击标记打开编辑对话框\n      this.emitEvent('markerEdit', { marker: clickedMarker });\n    }\n  }\n  \n  /**\n   * 键盘事件\n   */\n  private onKeyDown(event: KeyboardEvent): void {\n    if (this.hoveredMarker && !this.hoveredMarker.locked) {\n      switch (event.code) {\n        case 'Delete':\n        case 'Backspace':\n          this.removeMarker(this.hoveredMarker.id);\n          break;\n        case 'ArrowLeft':\n          this.moveMarker(this.hoveredMarker, -1);\n          break;\n        case 'ArrowRight':\n          this.moveMarker(this.hoveredMarker, 1);\n          break;\n      }\n    }\n  }\n  \n  /**\n   * 移动标记\n   */\n  private moveMarker(marker: Marker, deltaSamples: number): void {\n    const newSample = Math.max(0, Math.min(marker.sample + deltaSamples, this.getMaxSample()));\n    marker.sample = newSample;\n    marker.timestamp = newSample / this.sampleRate;\n    \n    this.emitEvent('markerMoved', { marker });\n  }\n  \n  /**\n   * 获取指定位置的标记\n   */\n  private getMarkerAtPosition(x: number, y: number): Marker | null {\n    const tolerance = 10; // 像素容差\n    \n    for (const marker of this.markers.values()) {\n      if (!marker.visible) continue;\n      \n      const markerX = this.sampleToPixel(marker.sample);\n      \n      if (Math.abs(x - markerX) <= tolerance) {\n        return marker;\n      }\n    }\n    \n    return null;\n  }\n  \n  /**\n   * 样本转像素坐标\n   */\n  private sampleToPixel(sample: number): number {\n    const rect = this.canvas.getBoundingClientRect();\n    const sampleWidth = rect.width / this.visibleSamples;\n    return (sample - this.firstSample) * sampleWidth;\n  }\n  \n  /**\n   * 像素坐标转样本\n   */\n  private pixelToSample(x: number): number {\n    const rect = this.canvas.getBoundingClientRect();\n    const sampleWidth = rect.width / this.visibleSamples;\n    return this.firstSample + Math.round(x / sampleWidth);\n  }\n  \n  /**\n   * 获取最大样本数\n   */\n  private getMaxSample(): number {\n    if (this.channels.length > 0 && this.channels[0].samples) {\n      return this.channels[0].samples.length - 1;\n    }\n    return this.firstSample + this.visibleSamples;\n  }\n  \n  /**\n   * 吸附到最近的边沿\n   */\n  private snapToNearestEdge(sample: number): number {\n    const tolerance = this.config.snapTolerance;\n    let bestSample = sample;\n    let minDistance = tolerance + 1;\n    \n    // 检查所有通道的边沿\n    for (const channel of this.channels) {\n      if (!channel.samples || channel.hidden) continue;\n      \n      // 在样本附近查找边沿\n      const startIndex = Math.max(0, sample - tolerance);\n      const endIndex = Math.min(channel.samples.length - 1, sample + tolerance);\n      \n      for (let i = startIndex; i < endIndex; i++) {\n        if (i > 0 && channel.samples[i] !== channel.samples[i - 1]) {\n          const distance = Math.abs(i - sample);\n          if (distance < minDistance) {\n            minDistance = distance;\n            bestSample = i;\n          }\n        }\n      }\n    }\n    \n    return bestSample;\n  }\n  \n  /**\n   * 获取默认标记颜色\n   */\n  private getDefaultMarkerColor(type: Marker['type']): string {\n    const colors = {\n      user: '#00ffff',\n      trigger: '#ffffff',\n      burst: '#f0ffff',\n      cursor: '#ffff00',\n      measurement: '#ff8c00'\n    };\n    \n    return colors[type] || '#ffffff';\n  }\n  \n  /**\n   * 显示标记提示\n   */\n  private showMarkerTooltip(marker: Marker, x: number, y: number): void {\n    const tooltip = document.getElementById('marker-tooltip') || document.createElement('div');\n    tooltip.id = 'marker-tooltip';\n    tooltip.style.position = 'fixed';\n    tooltip.style.left = `${x + 10}px`;\n    tooltip.style.top = `${y - 10}px`;\n    tooltip.style.background = 'rgba(0, 0, 0, 0.8)';\n    tooltip.style.color = 'white';\n    tooltip.style.padding = '4px 8px';\n    tooltip.style.borderRadius = '4px';\n    tooltip.style.fontSize = '12px';\n    tooltip.style.fontFamily = 'monospace';\n    tooltip.style.zIndex = '1000';\n    tooltip.style.whiteSpace = 'nowrap';\n    \n    const timeText = this.formatTime(marker.timestamp);\n    const sampleText = `Sample: ${marker.sample}`;\n    \n    tooltip.innerHTML = `\n      <div style=\"color: ${marker.color}; font-weight: bold;\">${marker.name}</div>\n      <div>Time: ${timeText}</div>\n      <div>${sampleText}</div>\n    `;\n    \n    if (!tooltip.parentElement) {\n      document.body.appendChild(tooltip);\n    }\n  }\n  \n  /**\n   * 隐藏标记提示\n   */\n  private hideMarkerTooltip(): void {\n    const tooltip = document.getElementById('marker-tooltip');\n    if (tooltip) {\n      tooltip.remove();\n    }\n  }\n  \n  /**\n   * 格式化时间显示\n   */\n  private formatTime(seconds: number): string {\n    if (seconds < 1e-6) {\n      return `${(seconds * 1e9).toFixed(2)} ns`;\n    } else if (seconds < 1e-3) {\n      return `${(seconds * 1e6).toFixed(2)} µs`;\n    } else if (seconds < 1) {\n      return `${(seconds * 1e3).toFixed(2)} ms`;\n    } else {\n      return `${seconds.toFixed(3)} s`;\n    }\n  }\n  \n  /**\n   * 渲染所有标记\n   */\n  public renderMarkers(): void {\n    for (const marker of this.markers.values()) {\n      if (marker.visible) {\n        this.renderMarker(marker);\n      }\n    }\n    \n    // 渲染标记对的连接线\n    for (const pair of this.markerPairs.values()) {\n      if (pair.visible) {\n        this.renderMarkerPair(pair);\n      }\n    }\n  }\n  \n  /**\n   * 渲染单个标记\n   */\n  private renderMarker(marker: Marker): void {\n    const x = this.sampleToPixel(marker.sample);\n    const rect = this.canvas.getBoundingClientRect();\n    \n    // 检查标记是否在可见区域内\n    if (x < -10 || x > rect.width + 10) {\n      return;\n    }\n    \n    this.ctx.save();\n    \n    // 绘制标记线\n    this.ctx.strokeStyle = marker.color;\n    this.ctx.lineWidth = this.config.markerWidth;\n    this.ctx.setLineDash(marker.type === 'trigger' ? [] : [5, 3]);\n    \n    this.ctx.beginPath();\n    this.ctx.moveTo(x, 0);\n    this.ctx.lineTo(x, rect.height);\n    this.ctx.stroke();\n    \n    // 重置线条样式\n    this.ctx.setLineDash([]);\n    \n    // 绘制标签\n    if (this.config.showLabels) {\n      this.renderMarkerLabel(marker, x, 20);\n    }\n    \n    // 绘制时间值\n    if (this.config.showValues) {\n      const timeText = this.formatTime(marker.timestamp);\n      this.renderMarkerValue(timeText, x, 40, marker.color);\n    }\n    \n    this.ctx.restore();\n  }\n  \n  /**\n   * 渲染标记标签\n   */\n  private renderMarkerLabel(marker: Marker, x: number, y: number): void {\n    this.ctx.font = `${this.config.labelSize}px ${this.config.labelFont}`;\n    this.ctx.textAlign = 'center';\n    this.ctx.textBaseline = 'middle';\n    \n    // 绘制背景\n    const textMetrics = this.ctx.measureText(marker.name);\n    const padding = 4;\n    \n    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';\n    this.ctx.fillRect(\n      x - textMetrics.width / 2 - padding,\n      y - this.config.labelSize / 2 - padding,\n      textMetrics.width + padding * 2,\n      this.config.labelSize + padding * 2\n    );\n    \n    // 绘制文字\n    this.ctx.fillStyle = marker.color;\n    this.ctx.fillText(marker.name, x, y);\n  }\n  \n  /**\n   * 渲染标记值\n   */\n  private renderMarkerValue(text: string, x: number, y: number, color: string): void {\n    this.ctx.font = `${this.config.labelSize - 2}px ${this.config.labelFont}`;\n    this.ctx.textAlign = 'center';\n    this.ctx.textBaseline = 'middle';\n    \n    // 绘制背景\n    const textMetrics = this.ctx.measureText(text);\n    const padding = 2;\n    \n    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';\n    this.ctx.fillRect(\n      x - textMetrics.width / 2 - padding,\n      y - (this.config.labelSize - 2) / 2 - padding,\n      textMetrics.width + padding * 2,\n      (this.config.labelSize - 2) + padding * 2\n    );\n    \n    // 绘制文字\n    this.ctx.fillStyle = color;\n    this.ctx.fillText(text, x, y);\n  }\n  \n  /**\n   * 渲染标记对\n   */\n  private renderMarkerPair(pair: MarkerPair): void {\n    const startX = this.sampleToPixel(pair.startMarker.sample);\n    const endX = this.sampleToPixel(pair.endMarker.sample);\n    const rect = this.canvas.getBoundingClientRect();\n    \n    // 绘制连接线\n    this.ctx.save();\n    this.ctx.strokeStyle = pair.color;\n    this.ctx.lineWidth = 1;\n    this.ctx.setLineDash([3, 3]);\n    \n    this.ctx.beginPath();\n    this.ctx.moveTo(startX, rect.height - 30);\n    this.ctx.lineTo(endX, rect.height - 30);\n    this.ctx.stroke();\n    \n    // 绘制测量结果\n    const measurement = this.calculateMeasurement(pair);\n    if (measurement) {\n      const centerX = (startX + endX) / 2;\n      this.renderMarkerValue(measurement.displayText, centerX, rect.height - 15, pair.color);\n    }\n    \n    this.ctx.restore();\n  }\n  \n  /**\n   * 计算测量结果\n   */\n  private calculateMeasurement(pair: MarkerPair): MeasurementResult | null {\n    const startSample = Math.min(pair.startMarker.sample, pair.endMarker.sample);\n    const endSample = Math.max(pair.startMarker.sample, pair.endMarker.sample);\n    const sampleDiff = endSample - startSample;\n    \n    if (sampleDiff === 0) return null;\n    \n    const timeDiff = sampleDiff / this.sampleRate;\n    \n    let result: MeasurementResult;\n    \n    switch (pair.measurementType) {\n      case 'time':\n        result = {\n          id: pair.id,\n          type: 'time',\n          value: timeDiff,\n          unit: 's',\n          displayText: this.formatTime(timeDiff),\n          startSample,\n          endSample,\n          sampleRate: this.sampleRate,\n          accuracy: 1 / this.sampleRate\n        };\n        break;\n        \n      case 'frequency':\n        const frequency = 1 / timeDiff;\n        result = {\n          id: pair.id,\n          type: 'frequency',\n          value: frequency,\n          unit: 'Hz',\n          displayText: this.formatFrequency(frequency),\n          startSample,\n          endSample,\n          sampleRate: this.sampleRate,\n          accuracy: 1 / (timeDiff * timeDiff * this.sampleRate)\n        };\n        break;\n        \n      case 'samples':\n        result = {\n          id: pair.id,\n          type: 'samples',\n          value: sampleDiff,\n          unit: 'samples',\n          displayText: `${sampleDiff} samples`,\n          startSample,\n          endSample,\n          sampleRate: this.sampleRate,\n          accuracy: 1\n        };\n        break;\n        \n      default:\n        return null;\n    }\n    \n    return result;\n  }\n  \n  /**\n   * 格式化频率显示\n   */\n  private formatFrequency(frequency: number): string {\n    if (frequency < 1000) {\n      return `${frequency.toFixed(2)} Hz`;\n    } else if (frequency < 1000000) {\n      return `${(frequency / 1000).toFixed(2)} kHz`;\n    } else {\n      return `${(frequency / 1000000).toFixed(2)} MHz`;\n    }\n  }\n  \n  /**\n   * 添加事件监听器\n   */\n  public addEventListener(type: string, listener: (data: any) => void): void {\n    if (!this.eventListeners.has(type)) {\n      this.eventListeners.set(type, []);\n    }\n    this.eventListeners.get(type)!.push(listener);\n  }\n  \n  /**\n   * 移除事件监听器\n   */\n  public removeEventListener(type: string, listener: (data: any) => void): void {\n    const listeners = this.eventListeners.get(type);\n    if (listeners) {\n      const index = listeners.indexOf(listener);\n      if (index !== -1) {\n        listeners.splice(index, 1);\n      }\n    }\n  }\n  \n  /**\n   * 发出事件\n   */\n  private emitEvent(type: string, data: any): void {\n    const listeners = this.eventListeners.get(type);\n    if (listeners) {\n      listeners.forEach(listener => listener(data));\n    }\n  }\n  \n  /**\n   * 更新配置\n   */\n  public updateConfig(config: Partial<MarkerConfig>): void {\n    this.config = { ...this.config, ...config };\n  }\n  \n  /**\n   * 清除所有标记\n   */\n  public clearAllMarkers(): void {\n    this.markers.clear();\n    this.markerPairs.clear();\n    this.nextMarkerId = 1;\n    \n    this.emitEvent('allMarkersCleared', {});\n  }\n  \n  /**\n   * 导出标记数据\n   */\n  public exportMarkers(): any {\n    return {\n      markers: Array.from(this.markers.values()),\n      markerPairs: Array.from(this.markerPairs.values()),\n      config: this.config\n    };\n  }\n  \n  /**\n   * 导入标记数据\n   */\n  public importMarkers(data: any): void {\n    if (data.markers) {\n      this.markers.clear();\n      data.markers.forEach((marker: Marker) => {\n        this.markers.set(marker.id, marker);\n        this.nextMarkerId = Math.max(this.nextMarkerId, parseInt(marker.id.split('_')[1]) + 1);\n      });\n    }\n    \n    if (data.markerPairs) {\n      this.markerPairs.clear();\n      data.markerPairs.forEach((pair: MarkerPair) => {\n        this.markerPairs.set(pair.id, pair);\n      });\n    }\n    \n    if (data.config) {\n      this.config = { ...this.config, ...data.config };\n    }\n  }\n  \n  /**\n   * 清理资源\n   */\n  public dispose(): void {\n    // 移除事件监听器\n    this.canvas.removeEventListener('mousedown', this.onMouseDown.bind(this));\n    this.canvas.removeEventListener('mousemove', this.onMouseMove.bind(this));\n    this.canvas.removeEventListener('mouseup', this.onMouseUp.bind(this));\n    this.canvas.removeEventListener('dblclick', this.onDoubleClick.bind(this));\n    this.canvas.removeEventListener('keydown', this.onKeyDown.bind(this));\n    \n    // 清理数据\n    this.markers.clear();\n    this.markerPairs.clear();\n    this.eventListeners.clear();\n    \n    // 清理tooltip\n    this.hideMarkerTooltip();\n  }\n}"
+  private visibleSamples = 1000;
+  private channels: AnalyzerChannel[] = [];
+
+  // 事件监听器
+  private eventListeners: Map<string, ((data: any) => void)[]> = new Map();
+
+  constructor(canvas: HTMLCanvasElement, config: Partial<MarkerConfig> = {}) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d')!;
+    this.config = {
+      showLabels: true,
+      showValues: true,
+      labelFont: 'Arial',
+      labelSize: 12,
+      markerWidth: 2,
+      snapToEdge: true,
+      snapTolerance: 5,
+      enableDragging: true,
+      showCrosshair: true,
+      ...config
+    };
+  }
+
+  /**
+   * 初始化事件监听器
+   */
+  public initializeEventListeners(): void {
+    this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
+    this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
+    this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
+    this.canvas.addEventListener('click', this.handleClick.bind(this));
+    this.canvas.addEventListener('dblclick', this.handleDoubleClick.bind(this));
+    this.canvas.addEventListener('contextmenu', this.handleContextMenu.bind(this));
+  }
+
+  /**
+   * 设置采样信息
+   */
+  public setSampleInfo(sampleRate: number, firstSample: number, visibleSamples: number, channels: AnalyzerChannel[]): void {
+    this.sampleRate = sampleRate;
+    this.firstSample = firstSample;
+    this.visibleSamples = visibleSamples;
+    this.channels = channels;
+  }
+
+  /**
+   * 添加标记
+   */
+  public addMarker(sample: number, type: Marker['type'] = 'user', name?: string, color?: string): Marker {
+    const id = `marker_${this.nextMarkerId++}`;
+    const timestamp = sample / this.sampleRate;
+
+    const marker: Marker = {
+      id,
+      name: name || `标记 ${this.nextMarkerId - 1}`,
+      sample,
+      timestamp,
+      color: color || this.getDefaultMarkerColor(type),
+      type,
+      visible: true,
+      locked: false
+    };
+
+    this.markers.set(id, marker);
+    this.emit('marker-added', marker);
+    this.render();
+
+    return marker;
+  }
+
+  /**
+   * 移除标记
+   */
+  public removeMarker(markerId: string): boolean {
+    const marker = this.markers.get(markerId);
+    if (!marker) {
+      return false;
+    }
+
+    this.markers.delete(markerId);
+    this.emit('marker-removed', marker);
+    this.render();
+
+    return true;
+  }
+
+  /**
+   * 更新标记位置
+   */
+  public updateMarker(markerId: string, sample: number): boolean {
+    const marker = this.markers.get(markerId);
+    if (!marker || marker.locked) {
+      return false;
+    }
+
+    marker.sample = sample;
+    marker.timestamp = sample / this.sampleRate;
+
+    this.emit('marker-updated', marker);
+    this.render();
+
+    return true;
+  }
+
+  /**
+   * 创建标记对
+   */
+  public createMarkerPair(startSample: number, endSample: number, type: MarkerPair['measurementType'] = 'time'): MarkerPair {
+    const startMarker = this.addMarker(startSample, 'cursor', '开始', '#00ff00');
+    const endMarker = this.addMarker(endSample, 'cursor', '结束', '#ff0000');
+
+    const id = `pair_${this.nextMarkerId++}`;
+    const pair: MarkerPair = {
+      id,
+      startMarker,
+      endMarker,
+      name: `测量对 ${this.nextMarkerId - 1}`,
+      color: '#409eff',
+      measurementType: type,
+      visible: true
+    };
+
+    this.markerPairs.set(id, pair);
+    this.emit('marker-pair-created', pair);
+    this.render();
+
+    return pair;
+  }
+
+  /**
+   * 测量标记对之间的值
+   */
+  public measureMarkerPair(pairId: string): MeasurementResult | null {
+    const pair = this.markerPairs.get(pairId);
+    if (!pair) {
+      return null;
+    }
+
+    const startSample = Math.min(pair.startMarker.sample, pair.endMarker.sample);
+    const endSample = Math.max(pair.startMarker.sample, pair.endMarker.sample);
+    const sampleDiff = endSample - startSample;
+
+    let value: number;
+    let unit: string;
+    let displayText: string;
+
+    switch (pair.measurementType) {
+      case 'time':
+        value = sampleDiff / this.sampleRate;
+        unit = this.getTimeUnit(value);
+        displayText = this.formatTime(value);
+        break;
+
+      case 'frequency':
+        const period = sampleDiff / this.sampleRate;
+        value = period > 0 ? 1 / period : 0;
+        unit = 'Hz';
+        displayText = this.formatFrequency(value);
+        break;
+
+      case 'samples':
+        value = sampleDiff;
+        unit = 'samples';
+        displayText = `${sampleDiff} 样本`;
+        break;
+
+      default:
+        value = sampleDiff / this.sampleRate;
+        unit = 's';
+        displayText = this.formatTime(value);
+    }
+
+    const result: MeasurementResult = {
+      id: `measurement_${Date.now()}`,
+      type: pair.measurementType,
+      value,
+      unit,
+      displayText,
+      startSample,
+      endSample,
+      sampleRate: this.sampleRate,
+      accuracy: this.calculateAccuracy(sampleDiff)
+    };
+
+    this.emit('measurement-completed', result);
+    return result;
+  }
+
+  /**
+   * 渲染所有标记
+   */
+  public render(): void {
+    // 清除画布
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // 渲染标记对
+    for (const pair of this.markerPairs.values()) {
+      if (pair.visible) {
+        this.renderMarkerPair(pair);
+      }
+    }
+
+    // 渲染单个标记
+    for (const marker of this.markers.values()) {
+      if (marker.visible) {
+        this.renderMarker(marker);
+      }
+    }
+
+    // 渲染十字游标
+    if (this.config.showCrosshair && this.hoveredMarker) {
+      this.renderCrosshair();
+    }
+  }
+
+  /**
+   * 渲染单个标记
+   */
+  private renderMarker(marker: Marker): void {
+    const x = this.sampleToCanvasX(marker.sample);
+
+    if (x < 0 || x > this.canvas.width) {
+      return; // 标记不在可见范围内
+    }
+
+    this.ctx.save();
+
+    // 绘制标记线
+    this.ctx.strokeStyle = marker.color;
+    this.ctx.lineWidth = this.config.markerWidth;
+    this.ctx.setLineDash(marker.type === 'trigger' ? [5, 5] : []);
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(x, 0);
+    this.ctx.lineTo(x, this.canvas.height);
+    this.ctx.stroke();
+
+    // 绘制标记标签
+    if (this.config.showLabels) {
+      this.renderMarkerLabel(marker, x);
+    }
+
+    // 绘制标记值
+    if (this.config.showValues) {
+      this.renderMarkerValue(marker, x);
+    }
+
+    this.ctx.restore();
+  }
+
+  /**
+   * 渲染标记对
+   */
+  private renderMarkerPair(pair: MarkerPair): void {
+    const startX = this.sampleToCanvasX(pair.startMarker.sample);
+    const endX = this.sampleToCanvasX(pair.endMarker.sample);
+
+    if (Math.max(startX, endX) < 0 || Math.min(startX, endX) > this.canvas.width) {
+      return; // 标记对不在可见范围内
+    }
+
+    this.ctx.save();
+
+    // 绘制测量区域
+    const leftX = Math.min(startX, endX);
+    const rightX = Math.max(startX, endX);
+
+    this.ctx.fillStyle = `${pair.color}20`; // 半透明填充
+    this.ctx.fillRect(leftX, 0, rightX - leftX, this.canvas.height);
+
+    // 绘制边界线
+    this.ctx.strokeStyle = pair.color;
+    this.ctx.lineWidth = 2;
+    this.ctx.setLineDash([]);
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(leftX, 0);
+    this.ctx.lineTo(leftX, this.canvas.height);
+    this.ctx.moveTo(rightX, 0);
+    this.ctx.lineTo(rightX, this.canvas.height);
+    this.ctx.stroke();
+
+    // 绘制测量结果
+    const measurement = this.measureMarkerPair(pair.id);
+    if (measurement) {
+      this.renderMeasurementResult(measurement, leftX, rightX);
+    }
+
+    this.ctx.restore();
+  }
+
+  /**
+   * 渲染标记标签
+   */
+  private renderMarkerLabel(marker: Marker, x: number): void {
+    this.ctx.font = `${this.config.labelSize}px ${this.config.labelFont}`;
+    this.ctx.fillStyle = marker.color;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'top';
+
+    const text = marker.name;
+    const textWidth = this.ctx.measureText(text).width;
+
+    // 绘制标签背景
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    this.ctx.fillRect(x - textWidth / 2 - 2, 5, textWidth + 4, this.config.labelSize + 4);
+
+    // 绘制标签文本
+    this.ctx.fillStyle = marker.color;
+    this.ctx.fillText(text, x, 7);
+  }
+
+  /**
+   * 渲染标记值
+   */
+  private renderMarkerValue(marker: Marker, x: number): void {
+    this.ctx.font = `${this.config.labelSize - 2}px ${this.config.labelFont}`;
+    this.ctx.fillStyle = '#666666';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'top';
+
+    const timeText = this.formatTime(marker.timestamp);
+    const sampleText = `样本: ${marker.sample}`;
+
+    this.ctx.fillText(timeText, x, this.config.labelSize + 15);
+    this.ctx.fillText(sampleText, x, this.config.labelSize + 30);
+  }
+
+  /**
+   * 渲染测量结果
+   */
+  private renderMeasurementResult(measurement: MeasurementResult, leftX: number, rightX: number): void {
+    const centerX = (leftX + rightX) / 2;
+    const y = this.canvas.height / 2;
+
+    this.ctx.font = `bold ${this.config.labelSize + 2}px ${this.config.labelFont}`;
+    this.ctx.fillStyle = '#409eff';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+
+    const text = measurement.displayText;
+    const textWidth = this.ctx.measureText(text).width;
+
+    // 绘制结果背景
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    this.ctx.fillRect(centerX - textWidth / 2 - 5, y - this.config.labelSize / 2 - 2, textWidth + 10, this.config.labelSize + 4);
+
+    // 绘制边框
+    this.ctx.strokeStyle = '#409eff';
+    this.ctx.lineWidth = 1;
+    this.ctx.strokeRect(centerX - textWidth / 2 - 5, y - this.config.labelSize / 2 - 2, textWidth + 10, this.config.labelSize + 4);
+
+    // 绘制结果文本
+    this.ctx.fillStyle = '#409eff';
+    this.ctx.fillText(text, centerX, y);
+  }
+
+  /**
+   * 渲染十字游标
+   */
+  private renderCrosshair(): void {
+    // 这里可以实现十字游标的渲染逻辑
+    // 暂时先留空，可以在后续需要时实现
+  }
+
+  /**
+   * 鼠标事件处理
+   */
+  private handleMouseDown(event: MouseEvent): void {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    const marker = this.getMarkerAtPosition(x, y);
+    if (marker && this.config.enableDragging && !marker.locked) {
+      this.draggedMarker = marker;
+      this.dragOffset.x = x - this.sampleToCanvasX(marker.sample);
+      this.dragOffset.y = y;
+    }
+  }
+
+  private handleMouseMove(event: MouseEvent): void {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    if (this.draggedMarker) {
+      // 拖拽标记
+      const newX = x - this.dragOffset.x;
+      const newSample = this.canvasXToSample(newX);
+
+      if (this.config.snapToEdge) {
+        const snappedSample = this.snapToNearestEdge(newSample);
+        this.updateMarker(this.draggedMarker.id, snappedSample);
+      } else {
+        this.updateMarker(this.draggedMarker.id, newSample);
+      }
+
+      this.canvas.style.cursor = 'grabbing';
+    } else {
+      // 检查悬停状态
+      const hoveredMarker = this.getMarkerAtPosition(x, y);
+      if (hoveredMarker !== this.hoveredMarker) {
+        this.hoveredMarker = hoveredMarker;
+        this.canvas.style.cursor = hoveredMarker ? 'grab' : 'default';
+        this.render();
+      }
+    }
+  }
+
+  private handleMouseUp(event: MouseEvent): void {
+    if (this.draggedMarker) {
+      this.emit('marker-drag-end', this.draggedMarker);
+      this.draggedMarker = null;
+      this.canvas.style.cursor = 'default';
+    }
+  }
+
+  private handleClick(event: MouseEvent): void {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const sample = this.canvasXToSample(x);
+
+    if (event.ctrlKey || event.metaKey) {
+      // Ctrl+点击创建新标记
+      this.addMarker(sample, 'user');
+    }
+  }
+
+  private handleDoubleClick(event: MouseEvent): void {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const sample = this.canvasXToSample(x);
+
+    // 双击创建测量对
+    const existingMarkers = Array.from(this.markers.values()).filter(m => m.type === 'cursor');
+    if (existingMarkers.length === 1) {
+      this.createMarkerPair(existingMarkers[0].sample, sample);
+    }
+  }
+
+  private handleContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    const marker = this.getMarkerAtPosition(x, y);
+    if (marker) {
+      this.emit('marker-context-menu', { marker, x: event.clientX, y: event.clientY });
+    }
+  }
+
+  /**
+   * 工具方法
+   */
+  private sampleToCanvasX(sample: number): number {
+    const relativeSample = sample - this.firstSample;
+    return (relativeSample / this.visibleSamples) * this.canvas.width;
+  }
+
+  private canvasXToSample(x: number): number {
+    const relativeSample = (x / this.canvas.width) * this.visibleSamples;
+    return Math.round(this.firstSample + relativeSample);
+  }
+
+  private getMarkerAtPosition(x: number, y: number): Marker | null {
+    const tolerance = 5;
+
+    for (const marker of this.markers.values()) {
+      if (!marker.visible) continue;
+
+      const markerX = this.sampleToCanvasX(marker.sample);
+      if (Math.abs(x - markerX) <= tolerance) {
+        return marker;
+      }
+    }
+
+    return null;
+  }
+
+  private snapToNearestEdge(sample: number): number {
+    // 简化的边沿吸附算法
+    // 在实际实现中，这里应该分析信号数据找到最近的边沿
+    return Math.round(sample);
+  }
+
+  private getDefaultMarkerColor(type: Marker['type']): string {
+    const colors = {
+      user: '#409eff',
+      trigger: '#f56c6c',
+      burst: '#e6a23c',
+      cursor: '#67c23a',
+      measurement: '#909399'
+    };
+    return colors[type] || '#409eff';
+  }
+
+  private formatTime(seconds: number): string {
+    if (seconds >= 1) {
+      return `${seconds.toFixed(3)}s`;
+    } else if (seconds >= 0.001) {
+      return `${(seconds * 1000).toFixed(3)}ms`;
+    } else if (seconds >= 0.000001) {
+      return `${(seconds * 1000000).toFixed(3)}μs`;
+    } else {
+      return `${(seconds * 1000000000).toFixed(3)}ns`;
+    }
+  }
+
+  private formatFrequency(hz: number): string {
+    if (hz >= 1000000000) {
+      return `${(hz / 1000000000).toFixed(3)}GHz`;
+    } else if (hz >= 1000000) {
+      return `${(hz / 1000000).toFixed(3)}MHz`;
+    } else if (hz >= 1000) {
+      return `${(hz / 1000).toFixed(3)}kHz`;
+    }
+    return `${hz.toFixed(3)}Hz`;
+  }
+
+  private getTimeUnit(seconds: number): string {
+    if (seconds >= 1) return 's';
+    if (seconds >= 0.001) return 'ms';
+    if (seconds >= 0.000001) return 'μs';
+    return 'ns';
+  }
+
+  private calculateAccuracy(sampleCount: number): number {
+    // 简化的精度计算
+    return Math.min(0.95, Math.max(0.1, sampleCount / 1000));
+  }
+
+  /**
+   * 事件系统
+   */
+  private emit(event: string, data: any): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      listeners.forEach(listener => listener(data));
+    }
+  }
+
+  public on(event: string, listener: (data: any) => void): void {
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, []);
+    }
+    this.eventListeners.get(event)!.push(listener);
+  }
+
+  public off(event: string, listener: (data: any) => void): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      const index = listeners.indexOf(listener);
+      if (index !== -1) {
+        listeners.splice(index, 1);
+      }
+    }
+  }
+
+  /**
+   * 导出功能
+   */
+  public exportMarkers(): any {
+    return {
+      markers: Array.from(this.markers.values()),
+      markerPairs: Array.from(this.markerPairs.values()),
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  public importMarkers(data: any): void {
+    this.markers.clear();
+    this.markerPairs.clear();
+
+    if (data.markers) {
+      data.markers.forEach((marker: Marker) => {
+        this.markers.set(marker.id, marker);
+      });
+    }
+
+    if (data.markerPairs) {
+      data.markerPairs.forEach((pair: MarkerPair) => {
+        this.markerPairs.set(pair.id, pair);
+      });
+    }
+
+    this.render();
+  }
+
+  /**
+   * 清理资源
+   */
+  public dispose(): void {
+    // 移除事件监听器
+    this.canvas.removeEventListener('mousedown', this.handleMouseDown.bind(this));
+    this.canvas.removeEventListener('mousemove', this.handleMouseMove.bind(this));
+    this.canvas.removeEventListener('mouseup', this.handleMouseUp.bind(this));
+    this.canvas.removeEventListener('click', this.handleClick.bind(this));
+    this.canvas.removeEventListener('dblclick', this.handleDoubleClick.bind(this));
+    this.canvas.removeEventListener('contextmenu', this.handleContextMenu.bind(this));
+
+    // 清空数据
+    this.markers.clear();
+    this.markerPairs.clear();
+    this.eventListeners.clear();
+  }
+}

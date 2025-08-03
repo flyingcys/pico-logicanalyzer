@@ -44,27 +44,27 @@ export interface CaptureProgress {
   sessionId: string;
   deviceId: string;
   phase: CapturePhase;
-  
+
   // 进度数据
   currentSample: number;
   totalSamples: number;
   progressPercentage: number;
-  
+
   // 时间信息
   startTime: number;
   elapsedTime: number;
   estimatedTimeRemaining: number;
   estimatedCompletionTime: number;
-  
+
   // 性能指标
   samplesPerSecond: number;
   dataRate: number; // 字节/秒
   bufferUtilization: number; // 缓冲区使用率 0-1
-  
+
   // 通道信息
   activeChannels: number;
   completedChannels: number;
-  
+
   // 质量指标
   lostSamples: number;
   errorCount: number;
@@ -78,22 +78,22 @@ export interface DeviceStatusInfo {
   deviceId: string;
   deviceName: string;
   status: DeviceStatus;
-  
+
   // 硬件状态
   temperature?: number; // 摄氏度
   batteryLevel?: number; // 0-100
   voltage?: number; // 伏特
-  
+
   // 连接信息
   connectionType: 'serial' | 'network' | 'usb';
   connectionQuality: number; // 0-100
   lastHeartbeat: number; // 时间戳
-  
+
   // 采集统计
   totalCaptures: number;
   successfulCaptures: number;
   failedCaptures: number;
-  
+
   // 错误信息
   lastError?: string;
   errorCount: number;
@@ -104,25 +104,25 @@ export interface DeviceStatusInfo {
  */
 export interface SystemStatusReport {
   timestamp: number;
-  
+
   // 整体状态
   overallStatus: 'normal' | 'warning' | 'error';
   activeCaptures: number;
   connectedDevices: number;
-  
+
   // 性能指标
   cpuUsage: number; // 0-100
   memoryUsage: number; // 字节
   diskUsage: number; // 字节
   networkLatency: number; // 毫秒
-  
+
   // 设备状态
   devices: DeviceStatusInfo[];
-  
+
   // 警告和错误
   warnings: string[];
   errors: string[];
-  
+
   // 统计信息
   statistics: {
     totalSamplesProcessed: number;
@@ -157,7 +157,7 @@ export class CaptureProgressMonitor extends EventEmitter {
   private progressHistory = new Map<string, CaptureProgress[]>();
   private systemStartTime: number;
   private updateTimer?: NodeJS.Timeout;
-  
+
   // 统计数据
   private totalSamplesProcessed = 0;
   private totalDataProcessed = 0;
@@ -166,7 +166,7 @@ export class CaptureProgressMonitor extends EventEmitter {
 
   constructor(config: Partial<ProgressMonitorConfig> = {}) {
     super();
-    
+
     this.config = {
       updateInterval: 100, // 100ms
       enableRealtime: true,
@@ -179,9 +179,9 @@ export class CaptureProgressMonitor extends EventEmitter {
       },
       ...config
     };
-    
+
     this.systemStartTime = Date.now();
-    
+
     if (this.config.enableRealtime) {
       this.startRealtimeUpdates();
     }
@@ -195,7 +195,7 @@ export class CaptureProgressMonitor extends EventEmitter {
     deviceId: string,
     session: CaptureSession
   ): void {
-    
+
     const progress: CaptureProgress = {
       sessionId,
       deviceId,
@@ -219,7 +219,7 @@ export class CaptureProgressMonitor extends EventEmitter {
 
     this.activeCaptures.set(sessionId, progress);
     this.progressHistory.set(sessionId, []);
-    
+
     this.emit('captureStarted', progress);
   }
 
@@ -230,7 +230,7 @@ export class CaptureProgressMonitor extends EventEmitter {
     sessionId: string,
     updates: Partial<CaptureProgress>
   ): void {
-    
+
     const progress = this.activeCaptures.get(sessionId);
     if (!progress) {
       return;
@@ -239,18 +239,19 @@ export class CaptureProgressMonitor extends EventEmitter {
     // 更新时间信息
     const currentTime = Date.now();
     const elapsedTime = currentTime - progress.startTime;
-    
+
     // 应用更新
-    Object.assign(progress, updates, {
-      elapsedTime,
-      progressPercentage: Math.min(100, (progress.currentSample / progress.totalSamples) * 100)
-    });
+    Object.assign(progress, updates, { elapsedTime });
+
+    // 重新计算进度百分比（在应用更新后）
+    progress.progressPercentage = progress.totalSamples > 0 ?
+      Math.min(100, Math.round((progress.currentSample / progress.totalSamples) * 10000) / 100) : 0;
 
     // 计算性能指标
     if (elapsedTime > 0) {
       progress.samplesPerSecond = (progress.currentSample / elapsedTime) * 1000;
       progress.dataRate = progress.samplesPerSecond * progress.activeChannels;
-      
+
       // 估算剩余时间
       if (progress.samplesPerSecond > 0) {
         const remainingSamples = progress.totalSamples - progress.currentSample;
@@ -280,7 +281,7 @@ export class CaptureProgressMonitor extends EventEmitter {
     success: boolean,
     error?: string
   ): void {
-    
+
     const progress = this.activeCaptures.get(sessionId);
     if (!progress) {
       return;
@@ -322,7 +323,7 @@ export class CaptureProgressMonitor extends EventEmitter {
     deviceInfo: DeviceInfo,
     status: Partial<DeviceStatusInfo>
   ): void {
-    
+
     const currentStatus = this.deviceStatuses.get(deviceId) || {
       deviceId,
       deviceName: deviceInfo.name,
@@ -342,7 +343,7 @@ export class CaptureProgressMonitor extends EventEmitter {
     });
 
     this.deviceStatuses.set(deviceId, currentStatus);
-    
+
     this.emit('deviceStatusUpdated', currentStatus);
   }
 
@@ -353,20 +354,20 @@ export class CaptureProgressMonitor extends EventEmitter {
     const currentTime = Date.now();
     const connectedDevices = Array.from(this.deviceStatuses.values())
       .filter(device => device.status !== DeviceStatus.Disconnected);
-    
+
     const warnings: string[] = [];
     const errors: string[] = [];
-    
+
     // 检查设备状态警告
     for (const device of connectedDevices) {
       if (device.status === DeviceStatus.Error) {
         errors.push(`Device ${device.deviceName} is in error state: ${device.lastError || 'Unknown error'}`);
       }
-      
+
       if (device.temperature && device.temperature > this.config.warningThresholds.temperatureC) {
         warnings.push(`Device ${device.deviceName} temperature is high: ${device.temperature}°C`);
       }
-      
+
       if (device.batteryLevel && device.batteryLevel < 20) {
         warnings.push(`Device ${device.deviceName} battery is low: ${device.batteryLevel}%`);
       }
@@ -375,7 +376,8 @@ export class CaptureProgressMonitor extends EventEmitter {
     // 系统性能指标
     const memoryUsage = process.memoryUsage();
     const cpuUsage = process.cpuUsage();
-    
+
+    // 检查内存使用警告（只在实际使用时检查）
     if (memoryUsage.heapUsed > this.config.warningThresholds.memoryUsage) {
       warnings.push(`High memory usage: ${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`);
     }
@@ -403,7 +405,7 @@ export class CaptureProgressMonitor extends EventEmitter {
       statistics: {
         totalSamplesProcessed: this.totalSamplesProcessed,
         totalDataProcessed: this.totalDataProcessed,
-        averageProcessingTime: this.processedCaptureCount > 0 ? 
+        averageProcessingTime: this.processedCaptureCount > 0 ?
           this.totalProcessingTime / this.processedCaptureCount : 0,
         uptimeSeconds: Math.floor((currentTime - this.systemStartTime) / 1000)
       }
@@ -438,9 +440,9 @@ export class CaptureProgressMonitor extends EventEmitter {
     this.updateTimer = setInterval(() => {
       // 更新活跃采集的时间信息
       for (const [sessionId, progress] of this.activeCaptures) {
-        if (progress.phase === CapturePhase.Capturing || 
+        if (progress.phase === CapturePhase.Capturing ||
             progress.phase === CapturePhase.ProcessingData) {
-          
+
           this.updateProgress(sessionId, {});
         }
       }
@@ -449,7 +451,7 @@ export class CaptureProgressMonitor extends EventEmitter {
       if (this.listenerCount('systemStatusUpdated') > 0) {
         this.emit('systemStatusUpdated', this.generateStatusReport());
       }
-      
+
     }, this.config.updateInterval);
   }
 
@@ -470,7 +472,7 @@ export class CaptureProgressMonitor extends EventEmitter {
     const history = this.progressHistory.get(sessionId);
     if (history) {
       history.push(progress);
-      
+
       // 限制历史记录数量
       if (history.length > this.config.maxHistoryEntries) {
         history.splice(0, history.length - this.config.maxHistoryEntries);
@@ -493,15 +495,15 @@ export class CaptureProgressMonitor extends EventEmitter {
   private calculateAverageNetworkLatency(): number {
     const networkDevices = Array.from(this.deviceStatuses.values())
       .filter(device => device.connectionType === 'network');
-    
+
     if (networkDevices.length === 0) {
       return 0;
     }
 
     // 基于连接质量估算延迟
-    const averageQuality = networkDevices.reduce((sum, device) => 
+    const averageQuality = networkDevices.reduce((sum, device) =>
       sum + device.connectionQuality, 0) / networkDevices.length;
-    
+
     return Math.max(1, 100 - averageQuality); // 简化的延迟估算
   }
 
@@ -511,8 +513,27 @@ export class CaptureProgressMonitor extends EventEmitter {
   public cancelCapture(sessionId: string): void {
     const progress = this.activeCaptures.get(sessionId);
     if (progress) {
+      // 设置取消状态，然后调用特殊的完成逻辑
       progress.phase = CapturePhase.Cancelled;
-      this.completeCapture(sessionId, false, 'Cancelled by user');
+      progress.elapsedTime = Date.now() - progress.startTime;
+
+      // 更新统计数据
+      this.totalSamplesProcessed += progress.currentSample;
+      this.totalDataProcessed += progress.currentSample * progress.activeChannels;
+      this.totalProcessingTime += progress.elapsedTime;
+      this.processedCaptureCount++;
+
+      // 最后一次历史记录更新
+      this.addToHistory(sessionId, { ...progress });
+
+      // 移除活跃采集
+      this.activeCaptures.delete(sessionId);
+
+      this.emit('captureCompleted', {
+        progress,
+        success: false,
+        error: 'Cancelled by user'
+      });
     }
   }
 
@@ -533,7 +554,7 @@ export class CaptureProgressMonitor extends EventEmitter {
   public updateConfig(config: Partial<ProgressMonitorConfig>): void {
     const wasRealtime = this.config.enableRealtime;
     this.config = { ...this.config, ...config };
-    
+
     // 处理实时更新状态变化
     if (this.config.enableRealtime && !wasRealtime) {
       this.startRealtimeUpdates();
@@ -552,23 +573,23 @@ export class CaptureProgressMonitor extends EventEmitter {
     dataRateMBps: number;
     successRate: number;
   } {
-    
+
     const totalCaptures = this.processedCaptureCount;
     const averageCaptureTime = totalCaptures > 0 ? this.totalProcessingTime / totalCaptures : 0;
-    const samplesPerSecond = this.totalProcessingTime > 0 ? 
+    const samplesPerSecond = this.totalProcessingTime > 0 ?
       (this.totalSamplesProcessed / this.totalProcessingTime) * 1000 : 0;
-    const dataRateMBps = (this.totalDataProcessed / (1024 * 1024)) / 
+    const dataRateMBps = (this.totalDataProcessed / (1024 * 1024)) /
       Math.max(1, (this.totalProcessingTime / 1000));
-    
+
     // 计算成功率
     let totalAttempts = 0;
     let successfulAttempts = 0;
-    
+
     for (const device of this.deviceStatuses.values()) {
       totalAttempts += device.totalCaptures;
       successfulAttempts += device.successfulCaptures;
     }
-    
+
     const successRate = totalAttempts > 0 ? (successfulAttempts / totalAttempts) * 100 : 100;
 
     return {

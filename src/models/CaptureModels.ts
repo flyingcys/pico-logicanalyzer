@@ -51,7 +51,7 @@ export class CaptureSession {
    */
   public clone(): CaptureSession {
     const newInst = new CaptureSession();
-    
+
     // 复制基础属性
     newInst.frequency = this.frequency;
     newInst.preTriggerSamples = this.preTriggerSamples;
@@ -69,7 +69,14 @@ export class CaptureSession {
 
     // 深拷贝突发信息
     if (this.bursts) {
-      newInst.bursts = this.bursts.map(burst => ({ ...burst }));
+      newInst.bursts = this.bursts.map(burst => {
+        const newBurst = new BurstInfo();
+        newBurst.burstSampleStart = burst.burstSampleStart;
+        newBurst.burstSampleEnd = burst.burstSampleEnd;
+        newBurst.burstSampleGap = burst.burstSampleGap;
+        newBurst.burstTimeGap = burst.burstTimeGap;
+        return newBurst;
+      });
     }
 
     return newInst;
@@ -80,7 +87,7 @@ export class CaptureSession {
    */
   public cloneSettings(): CaptureSession {
     const newInst = new CaptureSession();
-    
+
     // 复制基础属性
     newInst.frequency = this.frequency;
     newInst.preTriggerSamples = this.preTriggerSamples;
@@ -142,7 +149,7 @@ export class AnalyzerChannel {
     newInst.channelName = this.channelName;
     newInst.channelColor = this.channelColor;
     newInst.hidden = this.hidden;
-    
+
     // 深拷贝样本数据
     if (this.samples) {
       newInst.samples = new Uint8Array(this.samples);
@@ -202,9 +209,10 @@ export class CaptureLimitsImpl implements CaptureLimits {
 
   /**
    * 最大总样本数 - 对应C#的MaxTotalSamples getter
+   * 应该是maxPreSamples + maxPostSamples
    */
   public get maxTotalSamples(): number {
-    return this.minPreSamples + this.maxPostSamples;
+    return this.maxPreSamples + this.maxPostSamples;
   }
 }
 
@@ -269,7 +277,7 @@ export class OutputPacket {
    */
   public serialize(): Uint8Array {
     const finalData: number[] = [];
-    
+
     // 添加起始标记
     finalData.push(0x55);
     finalData.push(0xAA);
@@ -297,7 +305,7 @@ export class OutputPacket {
  */
 export interface CaptureRequestStruct {
   triggerType: number; // byte
-  trigger: number; // byte  
+  trigger: number; // byte
   invertedOrCount: number; // byte
   triggerValue: number; // ushort (16位)
   channels: Uint8Array; // byte[24]
@@ -315,7 +323,7 @@ export interface CaptureRequestStruct {
  */
 export interface NetConfigStruct {
   accessPointName: string; // 33字节固定长度
-  password: string; // 64字节固定长度  
+  password: string; // 64字节固定长度
   ipAddress: string; // 16字节固定长度
   port: number; // ushort (16位)
 }
@@ -362,7 +370,7 @@ export class CaptureRequestBuilder {
 
     // 计算采集模式
     const maxChannel = Math.max(...session.captureChannels.map(ch => ch.channelNumber));
-    const captureMode = maxChannel < 8 ? CaptureMode.Channels_8 : 
+    const captureMode = maxChannel < 8 ? CaptureMode.Channels_8 :
                        (maxChannel < 16 ? CaptureMode.Channels_16 : CaptureMode.Channels_24);
     view.setUint8(offset++, captureMode); // captureMode: byte
 
@@ -373,7 +381,7 @@ export class CaptureRequestBuilder {
    * 构建网络配置的二进制数据
    */
   public static buildNetConfig(config: NetConfigStruct): Uint8Array {
-    const buffer = new ArrayBuffer(113); // 33 + 64 + 16 + 2 = 115字节
+    const buffer = new ArrayBuffer(115); // 33 + 64 + 16 + 2 = 115字节
     const view = new DataView(buffer);
     let offset = 0;
 

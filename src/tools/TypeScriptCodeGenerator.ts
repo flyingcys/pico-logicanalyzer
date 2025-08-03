@@ -140,7 +140,7 @@ export class TypeScriptCodeGenerator {
       ` * 配置选项: ${metadata.options.length}个`,
       ' */'
     ];
-    return lines.join('\n') + '\n\n';
+    return `${lines.join('\n')}\n\n`;
   }
 
   /**
@@ -149,7 +149,7 @@ export class TypeScriptCodeGenerator {
   private generateImports(plan: ConversionPlan): string {
     const imports = [
       "import { DecoderBase, DecoderResult, WaitCondition, WaitResult } from '../base/DecoderBase';",
-      "import { AnalyzerChannel } from '../../models/AnalyzerChannel';",
+      "import { AnalyzerChannel } from '../../models/CaptureModels';",
       "import { DecoderOptionValue } from '../DecoderManager';"
     ];
 
@@ -167,16 +167,16 @@ export class TypeScriptCodeGenerator {
     if (plan.metadata.options.length === 0) return '';
 
     let code = `export interface ${plan.metadata.id.toUpperCase()}DecoderOptions {\n`;
-    
+
     for (const option of plan.metadata.options) {
       if (this.options.includeComments) {
         code += `  /** ${option.description} */\n`;
       }
-      
-      let typeStr = this.mapPythonTypeToTypeScript(option.type, option.values);
+
+      const typeStr = this.mapPythonTypeToTypeScript(option.type, option.values);
       code += `  ${option.id}: ${typeStr};\n`;
     }
-    
+
     code += '}\n';
     return code;
   }
@@ -211,7 +211,7 @@ export class TypeScriptCodeGenerator {
     // 基础属性
     code += `${indent}public readonly id = '${plan.metadata.id}';\n`;
     code += `${indent}public readonly name = '${plan.metadata.name}';\n`;
-    code += `${indent}public readonly channels = ${JSON.stringify(plan.metadata.channels, null, 2).split('\n').join('\n' + indent)};\n`;
+    code += `${indent}public readonly channels = ${JSON.stringify(plan.metadata.channels, null, 2).split('\n').join(`\n${indent}`)};\n`;
     code += `${indent}public readonly annotations = ${JSON.stringify(plan.metadata.annotations)};\n`;
     code += '\n';
 
@@ -272,10 +272,10 @@ export class TypeScriptCodeGenerator {
     const methodName = method.name === 'decode' ? 'decode' : method.name;
     const params = this.convertMethodParameters(method, plan);
     const returnType = this.convertReturnType(method);
-    
+
     const visibility = method.isCoreAPI ? 'public' : 'private';
     const asyncModifier = method.apiCalls.wait > 0 ? 'async ' : '';
-    
+
     code += `${indent}${visibility} ${asyncModifier}${methodName}(${params})${returnType} {\n`;
 
     // 方法体
@@ -318,7 +318,7 @@ export class TypeScriptCodeGenerator {
     if (method.name === 'decode') {
       return ': Promise<DecoderResult[]>';
     }
-    
+
     if (method.apiCalls.wait > 0) {
       return ': Promise<void>';
     }
@@ -335,20 +335,39 @@ export class TypeScriptCodeGenerator {
     }
 
     // 简单的方法体转换
-    let body = method.body;
-    
+    let { body } = method;
+
     // Python到TypeScript的基本转换
     body = body.replace(/self\./g, 'this.');
     body = body.replace(/def\s+\w+\s*\([^)]*\):/g, '');
-    body = body.replace(/:\s*$/gm, ' {');
-    body = body.replace(/elif/g, '} else if');
-    body = body.replace(/else:/g, '} else {');
-    body = body.replace(/True/g, 'true');
-    body = body.replace(/False/g, 'false');
-    body = body.replace(/None/g, 'null');
-    body = body.replace(/and/g, '&&');
-    body = body.replace(/or/g, '||');
-    body = body.replace(/not\s+/g, '!');
+
+    // 条件语句转换
+    body = body.replace(/if\s+(.+?)\s*:/g, 'if ($1) {');
+    body = body.replace(/elif\s+(.+?)\s*:/g, '} else if ($1) {');
+    body = body.replace(/\belif\b/g, '} else if');
+    body = body.replace(/else\s*:/g, '} else {');
+
+    // Python 比较运算符转换
+    body = body.replace(/\bis\s+True\b/g, '=== true');
+    body = body.replace(/\bis\s+False\b/g, '=== false');
+    body = body.replace(/\bis\s+None\b/g, '=== null');
+    body = body.replace(/\bis\s+not\s+None\b/g, '!== null');
+    body = body.replace(/\s==\s/g, ' === ');
+    body = body.replace(/\s!=\s/g, ' !== ');
+
+    // Python 字面量转换
+    body = body.replace(/\bTrue\b/g, 'true');
+    body = body.replace(/\bFalse\b/g, 'false');
+    body = body.replace(/\bNone\b/g, 'null');
+
+    // Python 逻辑运算符转换
+    body = body.replace(/\band\b/g, '&&');
+    body = body.replace(/\bor\b/g, '||');
+    body = body.replace(/\bnot\s+/g, '!');
+
+    // 返回语句转换
+    body = body.replace(/return\s+None/g, 'return null;');
+    body = body.replace(/return\s+([^;\n]+)$/gm, 'return $1;');
 
     // API调用转换
     body = body.replace(/this\.wait\s*\(/g, 'await this.wait(');
@@ -382,7 +401,7 @@ export class TypeScriptCodeGenerator {
   private inferParameterType(param: string, defaultValue?: string): string {
     if (!defaultValue) return 'any';
 
-    if (defaultValue === 'true' || defaultValue === 'false' || 
+    if (defaultValue === 'true' || defaultValue === 'false' ||
         defaultValue === 'True' || defaultValue === 'False') {
       return 'boolean';
     }
@@ -410,7 +429,7 @@ export class TypeScriptCodeGenerator {
       case 'int': return 'number';
       case 'str': return 'string';
       case 'bool': return 'boolean';
-      case 'list': 
+      case 'list':
         if (values && values.length > 0) {
           const valueTypes = values.map(v => typeof v === 'string' ? `'${v}'` : typeof v);
           return `(${[...new Set(valueTypes)].join(' | ')})[]`;
@@ -427,18 +446,18 @@ export class TypeScriptCodeGenerator {
     let code = '';
 
     code += `// ${plan.metadata.name} 类型定义\n`;
-    code += `// 自动生成，请勿手动修改\n\n`;
+    code += '// 自动生成，请勿手动修改\n\n';
 
     // 配置选项接口
     if (plan.metadata.options.length > 0) {
       code += `export interface ${plan.metadata.id.toUpperCase()}DecoderOptions {\n`;
-      
+
       for (const option of plan.metadata.options) {
         code += `  /** ${option.description} */\n`;
         const type = this.mapPythonTypeToTypeScript(option.type, option.values);
         code += `  ${option.id}: ${type};\n`;
       }
-      
+
       code += '}\n\n';
     }
 
@@ -458,31 +477,31 @@ export class TypeScriptCodeGenerator {
    */
   private generateTestCode(plan: ConversionPlan): string {
     const className = `${plan.metadata.id.charAt(0).toUpperCase() + plan.metadata.id.slice(1)}Decoder`;
-    
+
     let code = '';
     code += `// ${plan.metadata.name} 测试文件\n`;
     code += `import { ${className} } from '../${className}';\n`;
-    code += `import { generateTestChannelData } from '../../testing/TestDataGenerator';\n\n`;
+    code += 'import { generateTestChannelData } from \'../../testing/TestDataGenerator\';\n\n';
 
     code += `describe('${className}', () => {\n`;
     code += `  let decoder: ${className};\n\n`;
-    
-    code += `  beforeEach(() => {\n`;
-    code += `    decoder = new ${className}();\n`;
-    code += `  });\n\n`;
 
-    code += `  test('应该正确初始化', () => {\n`;
+    code += '  beforeEach(() => {\n';
+    code += `    decoder = new ${className}();\n`;
+    code += '  });\n\n';
+
+    code += '  test(\'应该正确初始化\', () => {\n';
     code += `    expect(decoder.id).toBe('${plan.metadata.id}');\n`;
     code += `    expect(decoder.name).toBe('${plan.metadata.name}');\n`;
-    code += `  });\n\n`;
+    code += '  });\n\n';
 
-    code += `  test('应该正确解码数据', async () => {\n`;
+    code += '  test(\'应该正确解码数据\', async () => {\n';
     code += `    const testData = generateTestChannelData(1000, ${plan.metadata.channels.length});\n`;
-    code += `    const results = await decoder.decode(1000000, testData, []);\n`;
-    code += `    expect(Array.isArray(results)).toBe(true);\n`;
-    code += `  });\n`;
+    code += '    const results = await decoder.decode(1000000, testData, []);\n';
+    code += '    expect(Array.isArray(results)).toBe(true);\n';
+    code += '  });\n';
 
-    code += `});\n`;
+    code += '});\n';
 
     return code;
   }
@@ -503,12 +522,12 @@ export class TypeScriptCodeGenerator {
   private formatCode(code: string): string {
     if (this.options.codeStyle === 'prettier') {
       // 简单的代码格式化
-      return code
+      return `${code
         .replace(/\n\n\n+/g, '\n\n') // 删除多余空行
         .replace(/^[ \t]+$/gm, '') // 删除空行的空白字符
-        .trim() + '\n';
+        .trim()}\n`;
     }
-    
+
     return code;
   }
 
@@ -517,15 +536,16 @@ export class TypeScriptCodeGenerator {
    */
   public async batchGenerate(plans: ConversionPlan[]): Promise<Map<string, GeneratedCode>> {
     console.log(`🔧 开始批量生成 ${plans.length} 个解码器...`);
-    
+
     const results = new Map<string, GeneratedCode>();
-    
+
     for (const plan of plans) {
       try {
         const generated = this.generateFromPlan(plan);
         results.set(plan.metadata.id, generated);
       } catch (error) {
-        console.error(`❌ 生成代码失败 ${plan.metadata.id}:`, error);
+        const planId = plan?.metadata?.id || 'unknown';
+        console.error(`❌ 生成代码失败 ${planId}:`, error);
       }
     }
 

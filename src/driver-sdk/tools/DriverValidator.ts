@@ -1,5 +1,5 @@
 import { AnalyzerDriverBase } from '../../drivers/AnalyzerDriverBase';
-import { 
+import {
   AnalyzerDriverType,
   ConnectionParams,
   ConnectionResult,
@@ -64,7 +64,7 @@ export class DriverValidator {
       severity: 'error',
       check: async (driver) => {
         const missing: string[] = [];
-        
+
         if (typeof driver.deviceVersion !== 'string' && driver.deviceVersion !== null) {
           missing.push('deviceVersion');
         }
@@ -86,11 +86,11 @@ export class DriverValidator {
 
         return {
           passed: missing.length === 0,
-          message: missing.length === 0 
+          message: missing.length === 0
             ? '所有必需属性已正确实现'
             : `缺少或类型错误的属性: ${missing.join(', ')}`,
-          suggestions: missing.length > 0 
-            ? ['请实现所有必需的属性getter方法'] 
+          suggestions: missing.length > 0
+            ? ['请实现所有必需的属性getter方法']
             : undefined
         };
       }
@@ -114,7 +114,7 @@ export class DriverValidator {
           // 测试方法签名
           const mockParams: ConnectionParams = { timeout: 5000 };
           const result = driver.connect(mockParams);
-          
+
           if (!(result instanceof Promise)) {
             return {
               passed: false,
@@ -144,7 +144,7 @@ export class DriverValidator {
       severity: 'error',
       check: async (driver) => {
         const missing: string[] = [];
-        
+
         if (typeof driver.startCapture !== 'function') {
           missing.push('startCapture');
         }
@@ -157,11 +157,11 @@ export class DriverValidator {
 
         return {
           passed: missing.length === 0,
-          message: missing.length === 0 
+          message: missing.length === 0
             ? '所有采集方法已实现'
             : `缺少方法: ${missing.join(', ')}`,
-          suggestions: missing.length > 0 
-            ? ['实现所有必需的采集方法'] 
+          suggestions: missing.length > 0
+            ? ['实现所有必需的采集方法']
             : undefined
         };
       }
@@ -174,7 +174,7 @@ export class DriverValidator {
       severity: 'warning',
       check: async (driver) => {
         const issues: string[] = [];
-        
+
         if (driver.maxFrequency > 10000000000) { // 10GHz
           issues.push('最大采样率超过10GHz，可能不现实');
         }
@@ -187,11 +187,11 @@ export class DriverValidator {
 
         return {
           passed: issues.length === 0,
-          message: issues.length === 0 
+          message: issues.length === 0
             ? '性能参数在合理范围内'
             : `性能参数警告: ${issues.join('; ')}`,
-          suggestions: issues.length > 0 
-            ? ['检查并调整性能参数到合理范围'] 
+          suggestions: issues.length > 0
+            ? ['检查并调整性能参数到合理范围']
             : undefined
         };
       }
@@ -226,11 +226,11 @@ export class DriverValidator {
 
         return {
           passed: hasEventMethods,
-          message: hasEventMethods 
-            ? '事件系统已正确实现' 
+          message: hasEventMethods
+            ? '事件系统已正确实现'
             : '事件系统可能未完全实现',
-          suggestions: !hasEventMethods 
-            ? ['确保继承自EventEmitter或实现事件方法'] 
+          suggestions: !hasEventMethods
+            ? ['确保继承自EventEmitter或实现事件方法']
             : undefined
         };
       }
@@ -278,7 +278,7 @@ export class DriverValidator {
       try {
         console.log(`执行验证规则: ${rule.name}`);
         const result = await rule.check(driver);
-        
+
         // 根据严重级别分类结果
         switch (rule.severity) {
           case 'error':
@@ -332,8 +332,8 @@ export class DriverValidator {
    * 生成验证报告的文本格式
    */
   generateTextReport(report: ValidationReport): string {
-    let text = `驱动验证报告\n`;
-    text += `================\n`;
+    let text = '驱动验证报告\n';
+    text += '================\n';
     text += `驱动名称: ${report.driverName}\n`;
     text += `验证时间: ${report.timestamp.toLocaleString()}\n`;
     text += `总体状态: ${report.overallStatus.toUpperCase()}\n`;
@@ -341,7 +341,7 @@ export class DriverValidator {
 
     if (report.errors.length > 0) {
       text += `错误 (${report.errors.length}):\n`;
-      text += `-----------\n`;
+      text += '-----------\n';
       report.errors.forEach((error, index) => {
         text += `${index + 1}. ${error.message}\n`;
         if (error.details) {
@@ -350,13 +350,13 @@ export class DriverValidator {
         if (error.suggestions) {
           text += `   建议: ${error.suggestions.join(', ')}\n`;
         }
-        text += `\n`;
+        text += '\n';
       });
     }
 
     if (report.warnings.length > 0) {
       text += `警告 (${report.warnings.length}):\n`;
-      text += `-----------\n`;
+      text += '-----------\n';
       report.warnings.forEach((warning, index) => {
         text += `${index + 1}. ${warning.message}\n`;
         if (warning.details) {
@@ -365,13 +365,13 @@ export class DriverValidator {
         if (warning.suggestions) {
           text += `   建议: ${warning.suggestions.join(', ')}\n`;
         }
-        text += `\n`;
+        text += '\n';
       });
     }
 
     if (report.recommendations.length > 0) {
-      text += `改进建议:\n`;
-      text += `---------\n`;
+      text += '改进建议:\n';
+      text += '---------\n';
       const uniqueRecommendations = [...new Set(report.recommendations)];
       uniqueRecommendations.forEach((rec, index) => {
         text += `${index + 1}. ${rec}\n`;

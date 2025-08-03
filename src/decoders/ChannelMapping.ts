@@ -4,7 +4,7 @@
  * 提供解码器通道映射的验证、管理和可视化功能
  */
 
-import type { DecoderInfo, DecoderSelectedChannel, ChannelData } from './types';
+import type { DecoderInfo, DecoderSelectedChannel } from './types';
 import type { AnalyzerChannel } from '../models/AnalyzerTypes';
 
 /**
@@ -110,8 +110,8 @@ export class ChannelMappingManager {
     // 检查通道冲突（同一解码器内）
     const usedIndices = new Set<number>();
     const duplicateIndices = new Set<number>();
-    
-    for (const [channelId, channelIndex] of Object.entries(mapping)) {
+
+    for (const [, channelIndex] of Object.entries(mapping)) {
       if (usedIndices.has(channelIndex)) {
         duplicateIndices.add(channelIndex);
       } else {
@@ -124,12 +124,12 @@ export class ChannelMappingManager {
         const conflictingChannels = Object.entries(mapping)
           .filter(([_, index]) => index === duplicateIndex)
           .map(([channelId, _]) => channelId);
-        
+
         result.conflictingMappings.push({
           channel: `CH${duplicateIndex + 1}`,
           conflicts: conflictingChannels
         });
-        
+
         result.errors.push(
           `通道 CH${duplicateIndex + 1} 被多个解码器通道使用: ${conflictingChannels.join(', ')}`
         );
@@ -202,7 +202,7 @@ export class ChannelMappingManager {
     }>;
   }> {
     const usage = this.getChannelUsage(activeMappings);
-    
+
     return usage
       .filter(channel => channel.usedBy.length > 1)
       .map(channel => ({
@@ -233,7 +233,7 @@ export class ChannelMappingManager {
       while (nextAvailableChannel < maxChannels && usedChannels.has(nextAvailableChannel)) {
         nextAvailableChannel++;
       }
-      
+
       if (nextAvailableChannel < maxChannels) {
         mapping[channel.id] = nextAvailableChannel;
         usedChannels.add(nextAvailableChannel);
@@ -248,7 +248,7 @@ export class ChannelMappingManager {
       while (nextAvailableChannel < maxChannels && usedChannels.has(nextAvailableChannel)) {
         nextAvailableChannel++;
       }
-      
+
       if (nextAvailableChannel < maxChannels) {
         mapping[channel.id] = nextAvailableChannel;
         usedChannels.add(nextAvailableChannel);
@@ -268,7 +268,7 @@ export class ChannelMappingManager {
   public saveChannelMapping(decoderId: string, decoderName: string, mapping: Record<string, number>): void {
     const now = new Date();
     const existingConfig = this.savedMappings.get(decoderId);
-    
+
     const config: ChannelMappingConfig = {
       decoderId,
       decoderName,
@@ -295,7 +295,7 @@ export class ChannelMappingManager {
    * @returns 所有保存的通道映射配置
    */
   public getAllSavedMappings(): ChannelMappingConfig[] {
-    return Array.from(this.savedMappings.values()).sort((a, b) => 
+    return Array.from(this.savedMappings.values()).sort((a, b) =>
       b.updatedAt.getTime() - a.updatedAt.getTime()
     );
   }
@@ -344,7 +344,7 @@ export class ChannelMappingManager {
   public importMappings(jsonData: string): { success: boolean; error?: string; imported: number } {
     try {
       const data = JSON.parse(jsonData);
-      
+
       if (!data.mappings || !Array.isArray(data.mappings)) {
         return { success: false, error: '无效的数据格式', imported: 0 };
       }
@@ -352,6 +352,11 @@ export class ChannelMappingManager {
       let imported = 0;
       for (const mappingData of data.mappings) {
         try {
+          // 验证必需字段
+          if (!mappingData.decoderId || !mappingData.decoderName || !mappingData.mapping) {
+            throw new Error('缺少必需字段');
+          }
+
           const config: ChannelMappingConfig = {
             decoderId: mappingData.decoderId,
             decoderName: mappingData.decoderName,
@@ -359,6 +364,11 @@ export class ChannelMappingManager {
             createdAt: new Date(mappingData.createdAt),
             updatedAt: new Date(mappingData.updatedAt)
           };
+
+          // 验证日期是否有效
+          if (isNaN(config.createdAt.getTime()) || isNaN(config.updatedAt.getTime())) {
+            throw new Error('无效的日期格式');
+          }
 
           this.savedMappings.set(config.decoderId, config);
           imported++;
@@ -369,10 +379,10 @@ export class ChannelMappingManager {
 
       return { success: true, imported };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : '未知错误', 
-        imported: 0 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '未知错误',
+        imported: 0
       };
     }
   }

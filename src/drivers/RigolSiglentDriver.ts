@@ -404,7 +404,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
       for (const channel of session.captureChannels) {
         const channelNum = channel.channelNumber + 1; // SCPI通常从1开始编号
         await this.sendSCPICommand(`LA:D${channelNum}:DISP ON`);
-        
+
         if (channel.channelName) {
           await this.sendSCPICommand(`LA:D${channelNum}:LAB "${channel.channelName}"`);
         }
@@ -461,7 +461,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
 
       // 设置触发位置
       if (session.preTriggerSamples > 0) {
-        const triggerPosition = session.preTriggerSamples / 
+        const triggerPosition = session.preTriggerSamples /
           (session.preTriggerSamples + session.postTriggerSamples);
         await this.sendSCPICommand(`LA:TRIG:POS ${triggerPosition * 100}`);
       }
@@ -501,7 +501,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
 
         // 查询采集状态
         const status = await this.sendSCPICommand('LA:STAT?');
-        
+
         if (status.includes('STOP') || status.includes('0')) {
           clearInterval(checkInterval);
           await this.processCaptureResults(session);
@@ -529,11 +529,11 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
       // 读取采集数据
       for (const channel of session.captureChannels) {
         const channelNum = channel.channelNumber + 1;
-        
+
         // 请求通道数据
         const dataCommand = `LA:D${channelNum}:DATA?`;
         const rawData = await this.sendSCPICommand(dataCommand);
-        
+
         // 解析数据
         channel.samples = this.parseSCPIBinaryData(rawData);
       }
@@ -560,26 +560,26 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
       const digitCount = parseInt(rawData[1], 10);
       const dataLength = parseInt(rawData.substring(2, 2 + digitCount), 10);
       const binaryStart = 2 + digitCount;
-      
+
       // 提取二进制数据部分
       const binaryData = rawData.substring(binaryStart, binaryStart + dataLength);
-      
+
       // 转换为Uint8Array
       const samples = new Uint8Array(binaryData.length);
       for (let i = 0; i < binaryData.length; i++) {
         samples[i] = binaryData.charCodeAt(i) !== 0 ? 1 : 0;
       }
-      
+
       return samples;
     }
-    
+
     // 如果不是二进制格式，尝试解析为ASCII格式
     const values = rawData.split(',').map(val => parseInt(val.trim(), 10));
     const samples = new Uint8Array(values.length);
     for (let i = 0; i < values.length; i++) {
       samples[i] = values[i] ? 1 : 0;
     }
-    
+
     return samples;
   }
 
@@ -631,13 +631,13 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
       // 数据接收处理器
       const dataHandler = (data: Buffer) => {
         responseData += data.toString();
-        
+
         // 检查响应是否完整（以换行符结束）
         if (responseData.includes('\\n')) {
           this._socket!.off('data', dataHandler);
           clearTimeout(timeoutId);
           resolve(responseData.trim());
-          
+
           // 继续处理队列中的其他命令
           this._isProcessingCommand = false;
           setTimeout(() => this.processCommandQueue(), 10);
@@ -665,7 +665,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
       }
 
       // 发送命令
-      this._socket.write(command + '\\n', error => {
+      this._socket.write(`${command}\\n`, error => {
         if (error) {
           if (isQuery) {
             this._socket!.off('data', dataHandler);
@@ -690,7 +690,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
   private handleIncomingData(data: Buffer): void {
     // 这个方法主要用于处理异步数据或状态更新
     const dataStr = data.toString();
-    
+
     // 可以在这里处理设备主动发送的状态信息
     if (dataStr.includes('ERROR') || dataStr.includes('FAIL')) {
       console.warn('设备报告错误:', dataStr);

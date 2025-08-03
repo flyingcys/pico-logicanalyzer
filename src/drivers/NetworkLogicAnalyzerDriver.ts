@@ -288,9 +288,9 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
         command: 'SET_NETWORK_CONFIG',
         config: {
           ssid: accessPointName,
-          password: password,
+          password,
           ip_address: ipAddress,
-          port: port
+          port
         },
         timestamp: Date.now()
       });
@@ -554,7 +554,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
       for (let i = 0; i < session.captureChannels.length; i++) {
         const channel = session.captureChannels[i];
         const channelData = data.channels.find((ch: any) => ch.number === channel.channelNumber);
-        
+
         if (channelData && channelData.samples) {
           channel.samples = new Uint8Array(channelData.samples);
         }
@@ -578,7 +578,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
     for (let i = 0; i < session.captureChannels.length; i++) {
       const channel = session.captureChannels[i];
       channel.samples = new Uint8Array(sampleCount);
-      
+
       for (let j = 0; j < sampleCount; j++) {
         const byteIndex = j * session.captureChannels.length + i;
         channel.samples[j] = binaryData[byteIndex];
@@ -653,7 +653,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
   private async sendNetworkCommand(command: any): Promise<any> {
     return new Promise((resolve, reject) => {
       const commandData = JSON.stringify(command);
-      
+
       if (this._protocol === ProtocolType.TCP && this._tcpSocket) {
         this.sendTCPCommand(commandData, resolve, reject);
       } else if (this._protocol === ProtocolType.UDP && this._udpSocket) {
@@ -676,12 +676,12 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
 
     const responseHandler = (data: Buffer) => {
       responseData += data.toString();
-      
+
       // 检查响应是否完整（简单的换行符检查）
       if (responseData.includes('\\n')) {
         this._tcpSocket!.off('data', responseHandler);
         clearTimeout(timeoutId);
-        
+
         try {
           const response = JSON.parse(responseData.trim());
           resolve(response);
@@ -697,7 +697,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
     }, 10000);
 
     this._tcpSocket!.on('data', responseHandler);
-    this._tcpSocket!.write(commandData + '\\n', error => {
+    this._tcpSocket!.write(`${commandData}\\n`, error => {
       if (error) {
         clearTimeout(timeoutId);
         reject(new Error(`发送TCP命令失败: ${error.message}`));
@@ -716,7 +716,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
     const responseHandler = (msg: Buffer, rinfo: any) => {
       this._udpSocket!.off('message', responseHandler);
       clearTimeout(timeoutId);
-      
+
       try {
         const response = JSON.parse(msg.toString());
         resolve(response);

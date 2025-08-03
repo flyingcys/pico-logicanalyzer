@@ -4,6 +4,54 @@
  */
 
 /**
+ * 协议定义接口
+ */
+export interface ProtocolDefinition {
+  name: string;
+  version: string;
+  commands: {
+    [commandName: string]: {
+      opcode: number;
+      parameters: string[];
+    };
+  };
+  responses: {
+    [responseName: string]: {
+      code: number;
+      format: string;
+    };
+  };
+}
+
+/**
+ * 协议处理器接口
+ */
+export interface ProtocolHandler {
+  handleCommand(command: string, parameters: any[]): Promise<any>;
+  handleResponse(response: any): any;
+}
+
+/**
+ * 命令构建器接口
+ */
+export interface CommandBuilder {
+  setCommand(command: string): this;
+  addParameter(name: string, value: any): this;
+  build(): Buffer | string;
+}
+
+/**
+ * 响应解析器接口
+ */
+export interface ResponseParser {
+  parse(data: Buffer | string): {
+    success: boolean;
+    data?: any;
+    error?: string;
+  };
+}
+
+/**
  * 串口协议配置
  */
 export interface SerialConfig {
@@ -51,6 +99,83 @@ export interface DataPacket {
  * 协议帮助工具类
  */
 export class ProtocolHelper {
+  private registeredProtocols: Map<string, ProtocolDefinition> = new Map();
+
+  /**
+   * 注册协议定义
+   */
+  registerProtocol(protocol: ProtocolDefinition): void {
+    this.registeredProtocols.set(protocol.name, protocol);
+  }
+
+  /**
+   * 获取已注册的协议列表
+   */
+  getRegisteredProtocols(): string[] {
+    return Array.from(this.registeredProtocols.keys());
+  }
+
+  /**
+   * 构建协议命令
+   */
+  buildCommand(protocolName: string, commandName: string, parameters: any[] = []): Buffer {
+    const protocol = this.registeredProtocols.get(protocolName);
+    if (!protocol) {
+      throw new Error(`未找到协议: ${protocolName}`);
+    }
+
+    const command = protocol.commands[commandName];
+    if (!command) {
+      throw new Error(`未找到命令: ${commandName}`);
+    }
+
+    // 简单的二进制命令构建
+    const buffer = Buffer.alloc(4 + parameters.length * 4);
+    buffer.writeUInt32BE(command.opcode, 0);
+
+    parameters.forEach((param, index) => {
+      if (typeof param === 'number') {
+        buffer.writeUInt32BE(param, 4 + index * 4);
+      }
+    });
+
+    return buffer;
+  }
+
+  /**
+   * 解析协议响应
+   */
+  parseResponse(protocolName: string, data: Buffer): any {
+    const protocol = this.registeredProtocols.get(protocolName);
+    if (!protocol) {
+      throw new Error(`未找到协议: ${protocolName}`);
+    }
+
+    // 简单的响应解析 - 从第一个字节读取响应代码
+    const responseCode = data.readUInt8(0);
+
+    // 查找匹配的响应
+    for (const [name, response] of Object.entries(protocol.responses)) {
+      if (response.code === responseCode) {
+        return { type: name, data: data.slice(1) };
+      }
+    }
+
+    return { type: 'UNKNOWN', data };
+  }
+
+  /**
+   * 验证协议消息
+   */
+  validateMessage(protocolName: string, commandName: string, parameters: any[]): boolean {
+    const protocol = this.registeredProtocols.get(protocolName);
+    if (!protocol) return false;
+
+    const command = protocol.commands[commandName];
+    if (!command) return false;
+
+    return parameters.length === command.parameters.length;
+  }
 
   /**
    * SCPI协议助手
@@ -62,14 +187,14 @@ export class ProtocolHelper {
     buildCommand(command: string, parameters?: (string | number)[]): string {
       let cmd = command.trim();
       if (parameters && parameters.length > 0) {
-        cmd += ' ' + parameters.map(p => {
+        cmd += ` ${parameters.map(p => {
           if (typeof p === 'string' && p.includes(' ')) {
             return `"${p}"`;
           }
           return p.toString();
-        }).join(',');
+        }).join(',')}`;
       }
-      return cmd + '\n';
+      return `${cmd}\n`;
     },
 
     /**
@@ -81,14 +206,14 @@ export class ProtocolHelper {
       error?: string;
     } {
       const trimmed = response.trim();
-      
+
       // 检查是否是错误响应
       if (trimmed.startsWith('+') || trimmed.startsWith('-')) {
         const match = trimmed.match(/^([+-]\d+),?"?([^"]*)"?$/);
         if (match) {
           const errorCode = parseInt(match[1]);
           const errorMessage = match[2];
-          
+
           return {
             isError: errorCode !== 0,
             error: errorCode !== 0 ? errorMessage : undefined
@@ -203,7 +328,7 @@ export class ProtocolHelper {
      */
     escapeBytes(data: Buffer, escapeMap: Map<number, Buffer>): Buffer {
       const result: Buffer[] = [];
-      
+
       for (let i = 0; i < data.length; i++) {
         const byte = data[i];
         if (escapeMap.has(byte)) {
@@ -212,7 +337,7 @@ export class ProtocolHelper {
           result.push(Buffer.from([byte]));
         }
       }
-      
+
       return Buffer.concat(result);
     },
 
@@ -222,7 +347,7 @@ export class ProtocolHelper {
     unescapeBytes(data: Buffer, unescapeMap: Map<number, number>): Buffer {
       const result: number[] = [];
       let i = 0;
-      
+
       while (i < data.length) {
         const byte = data[i];
         if (unescapeMap.has(byte) && i + 1 < data.length) {
@@ -237,7 +362,7 @@ export class ProtocolHelper {
         result.push(byte);
         i++;
       }
-      
+
       return Buffer.from(result);
     }
   };
@@ -258,16 +383,16 @@ export class ProtocolHelper {
         command,
         timestamp: Date.now()
       };
-      
+
       if (parameters) {
         jsonObj.parameters = parameters;
       }
-      
+
       if (id !== undefined) {
         jsonObj.id = id;
       }
-      
-      return JSON.stringify(jsonObj) + '\n';
+
+      return `${JSON.stringify(jsonObj)}\n`;
     },
 
     /**
@@ -282,7 +407,7 @@ export class ProtocolHelper {
     } {
       try {
         const obj = JSON.parse(response.trim());
-        
+
         return {
           success: obj.success !== false,
           command: obj.command,
@@ -306,16 +431,16 @@ export class ProtocolHelper {
         success: true,
         timestamp: Date.now()
       };
-      
+
       if (data !== undefined) {
         response.data = data;
       }
-      
+
       if (id !== undefined) {
         response.id = id;
       }
-      
-      return JSON.stringify(response) + '\n';
+
+      return `${JSON.stringify(response)}\n`;
     },
 
     /**
@@ -327,12 +452,12 @@ export class ProtocolHelper {
         error,
         timestamp: Date.now()
       };
-      
+
       if (id !== undefined) {
         response.id = id;
       }
-      
-      return JSON.stringify(response) + '\n';
+
+      return `${JSON.stringify(response)}\n`;
     }
   };
 
@@ -345,13 +470,13 @@ export class ProtocolHelper {
      */
     buildUrl(baseUrl: string, endpoint: string, params?: Record<string, string>): string {
       const url = new URL(endpoint, baseUrl);
-      
+
       if (params) {
         Object.entries(params).forEach(([key, value]) => {
           url.searchParams.append(key, value);
         });
       }
-      
+
       return url.toString();
     },
 
@@ -374,14 +499,14 @@ export class ProtocolHelper {
       const parts = contentType.split(';').map(part => part.trim());
       const type = parts[0];
       const result: any = { type };
-      
+
       for (let i = 1; i < parts.length; i++) {
         const [key, value] = parts[i].split('=');
         if (key && value) {
           result[key.trim()] = value.trim().replace(/"/g, '');
         }
       }
-      
+
       return result;
     }
   };
@@ -395,10 +520,10 @@ export class ProtocolHelper {
      */
     getBaudRateConfig(targetBaudRate: number): SerialConfig {
       const standardRates = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
-      const closestRate = standardRates.reduce((prev, curr) => 
+      const closestRate = standardRates.reduce((prev, curr) =>
         Math.abs(curr - targetBaudRate) < Math.abs(prev - targetBaudRate) ? curr : prev
       );
-      
+
       return {
         baudRate: closestRate,
         dataBits: 8,
@@ -417,7 +542,7 @@ export class ProtocolHelper {
       if (parameters && parameters.length > 0) {
         atCmd += parameters.join(',');
       }
-      return atCmd + '\r\n';
+      return `${atCmd}\r\n`;
     },
 
     /**
@@ -431,7 +556,7 @@ export class ProtocolHelper {
     } {
       const lines = response.split('\r\n').filter(line => line.trim());
       const lastLine = lines[lines.length - 1];
-      
+
       if (lastLine === 'OK') {
         return {
           isOK: true,
@@ -439,7 +564,7 @@ export class ProtocolHelper {
           data: lines.slice(0, -1)
         };
       }
-      
+
       if (lastLine.startsWith('ERROR') || lastLine.startsWith('+CME ERROR')) {
         const errorMatch = lastLine.match(/ERROR:?\s*(\d+)?/);
         return {
@@ -448,7 +573,7 @@ export class ProtocolHelper {
           errorCode: errorMatch?.[1] ? parseInt(errorMatch[1]) : undefined
         };
       }
-      
+
       return {
         isOK: false,
         isError: false,
@@ -467,7 +592,7 @@ export class ProtocolHelper {
     createTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage?: string): Promise<T> {
       return Promise.race([
         promise,
-        new Promise<T>((_, reject) => 
+        new Promise<T>((_, reject) =>
           setTimeout(() => reject(new Error(timeoutMessage || '操作超时')), timeoutMs)
         )
       ]);
@@ -482,23 +607,23 @@ export class ProtocolHelper {
       delayMs: number = 1000
     ): Promise<T> {
       let lastError: Error | undefined;
-      
+
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
           return await operation();
         } catch (error) {
           lastError = error as Error;
-          
+
           if (attempt === maxAttempts) {
             throw lastError;
           }
-          
+
           // 指数退避延迟
           const delay = delayMs * Math.pow(2, attempt - 1);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
-      
+
       throw lastError;
     },
 
@@ -519,12 +644,12 @@ export class ProtocolHelper {
       if (cleaned.length % 2 !== 0) {
         throw new Error('十六进制字符串长度必须是偶数');
       }
-      
+
       const bytes: number[] = [];
       for (let i = 0; i < cleaned.length; i += 2) {
         bytes.push(parseInt(cleaned.substr(i, 2), 16));
       }
-      
+
       return Buffer.from(bytes);
     },
 
@@ -537,16 +662,16 @@ export class ProtocolHelper {
       intervalMs: number = 100
     ): Promise<void> {
       const startTime = Date.now();
-      
+
       while (Date.now() - startTime < timeoutMs) {
         const result = await condition();
         if (result) {
           return;
         }
-        
+
         await new Promise(resolve => setTimeout(resolve, intervalMs));
       }
-      
+
       throw new Error('等待条件超时');
     },
 
@@ -559,21 +684,21 @@ export class ProtocolHelper {
     ): Promise<T[]> {
       const results: T[] = [];
       const executing: Promise<any>[] = [];
-      
+
       for (const task of tasks) {
         const promise = task().then(result => {
           results.push(result);
           executing.splice(executing.indexOf(promise), 1);
           return result;
         });
-        
+
         executing.push(promise);
-        
+
         if (executing.length >= maxConcurrency) {
           await Promise.race(executing);
         }
       }
-      
+
       await Promise.all(executing);
       return results;
     }

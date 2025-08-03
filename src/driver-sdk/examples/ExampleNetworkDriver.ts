@@ -1,5 +1,5 @@
-import { NetworkDriverTemplate } from '../templates/NetworkDriverTemplate';
-import { 
+import { NetworkDriverTemplate, ProtocolType } from '../templates/NetworkDriverTemplate';
+import {
   ConnectionParams,
   ConnectionResult,
   CaptureSession,
@@ -20,20 +20,20 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
   };
 
   constructor(
-    host: string, 
+    host: string,
     port: number = 8080,
     authToken?: string
   ) {
     // 使用HTTP协议
-    super(host, port, NetworkDriverTemplate.ProtocolType.HTTP, authToken);
-    
+    super(host, port, ProtocolType.HTTP, authToken);
+
     this._deviceCapabilities = {
       supportedProtocols: ['HTTP', 'WebSocket', 'TCP'],
       maxChannels: 32,
       maxSampleRate: 200000000, // 200MHz
       hasWiFi: true
     };
-    
+
     console.log(`ExampleNetworkDriver 初始化: ${host}:${port}`);
   }
 
@@ -42,7 +42,7 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
    */
   override async connect(params?: ConnectionParams): Promise<ConnectionResult> {
     console.log('ExampleNetworkDriver: 开始HTTP连接流程');
-    
+
     // 首先检查服务器可达性
     const isReachable = await this.checkServerReachability();
     if (!isReachable) {
@@ -51,14 +51,14 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
         error: '服务器不可达或服务未启动'
       };
     }
-    
+
     // 调用父类连接方法
     const result = await super.connect(params);
-    
+
     if (result.success) {
       // 执行HTTP特定的初始化
       await this.performHTTPInitialization();
-      
+
       // 更新设备信息
       if (result.deviceInfo) {
         result.deviceInfo.name = 'Example Network Logic Analyzer';
@@ -77,15 +77,17 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
             streamingSupport: true
           },
           features: {
-            remoteControl: true,
-            realTimeStreaming: true,
-            webInterface: true,
-            restAPI: true
+            signalGeneration: false,
+            powerSupply: false,
+            i2cSniffer: false,
+            canSupport: false,
+            customDecoders: true,
+            voltageMonitoring: true
           }
         };
       }
     }
-    
+
     return result;
   }
 
@@ -95,12 +97,12 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
   private async checkServerReachability(): Promise<boolean> {
     try {
       console.log('检查服务器可达性...');
-      
+
       // 模拟HTTP ping请求
       // 实际实现中会使用fetch或类似的HTTP客户端
       // const response = await fetch(`http://${this._host}:${this._port}/api/ping`);
       // return response.ok;
-      
+
       // 模拟成功响应
       await new Promise(resolve => setTimeout(resolve, 100));
       return true;
@@ -115,19 +117,19 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
    */
   private async performHTTPInitialization(): Promise<void> {
     console.log('执行HTTP特定初始化...');
-    
+
     try {
       // 获取服务器API版本
       const apiVersion = await this.getAPIVersion();
       console.log(`服务器API版本: ${apiVersion}`);
-      
+
       // 注册客户端会话
       const sessionId = await this.registerClientSession();
       console.log(`会话ID: ${sessionId}`);
-      
+
       // 配置默认参数
       await this.configureDefaultSettings();
-      
+
       console.log('HTTP初始化完成');
     } catch (error) {
       console.warn('HTTP初始化失败:', error);
@@ -142,7 +144,7 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
     // const response = await fetch(`http://${this._host}:${this._port}/api/version`);
     // const data = await response.json();
     // return data.version;
-    
+
     await new Promise(resolve => setTimeout(resolve, 50));
     return 'v2.1.0';
   }
@@ -162,9 +164,9 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
     // });
     // const data = await response.json();
     // return data.sessionId;
-    
+
     await new Promise(resolve => setTimeout(resolve, 100));
-    return 'session_' + Date.now();
+    return `session_${Date.now()}`;
   }
 
   /**
@@ -181,7 +183,7 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
     //     notificationMethod: 'polling'
     //   })
     // });
-    
+
     await new Promise(resolve => setTimeout(resolve, 50));
   }
 
@@ -193,16 +195,16 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
     captureCompletedHandler?: (args: any) => void
   ): Promise<CaptureError> {
     console.log('ExampleNetworkDriver: 开始HTTP采集流程');
-    
+
     // 验证网络连接
     if (!await this.checkServerReachability()) {
       return CaptureError.HardwareError;
     }
-    
+
     // 预处理采集配置
     const httpCaptureConfig = this.buildHTTPCaptureConfig(session);
     console.log('HTTP采集配置:', httpCaptureConfig);
-    
+
     // 调用父类方法
     return await super.startCapture(session, captureCompletedHandler);
   }
@@ -249,15 +251,15 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
     connectionType: 'ethernet' | 'wifi';
   }> {
     console.log('查询设备网络状态...');
-    
+
     try {
       // 模拟HTTP GET请求
       // const response = await fetch(`http://${this._host}:${this._port}/api/network/status`);
       // const data = await response.json();
       // return data;
-      
+
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       return {
         ip: '192.168.1.100',
         subnet: '255.255.255.0',
@@ -281,9 +283,9 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
       console.error('设备不支持WiFi');
       return false;
     }
-    
+
     console.log(`设置WiFi网络: ${ssid}`);
-    
+
     try {
       // 模拟HTTP POST请求
       // const response = await fetch(`http://${this._host}:${this._port}/api/network/wifi`, {
@@ -292,9 +294,9 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
       //   body: JSON.stringify({ ssid, password })
       // });
       // return response.ok;
-      
+
       await new Promise(resolve => setTimeout(resolve, 2000)); // 模拟连接时间
-      
+
       console.log(`WiFi连接成功: ${ssid}`);
       return true;
     } catch (error) {
@@ -315,17 +317,17 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
     if (!this._deviceCapabilities.hasWiFi) {
       return [];
     }
-    
+
     console.log('扫描WiFi网络...');
-    
+
     try {
       // 模拟HTTP GET请求
       // const response = await fetch(`http://${this._host}:${this._port}/api/network/wifi/scan`);
       // const data = await response.json();
       // return data.networks;
-      
+
       await new Promise(resolve => setTimeout(resolve, 3000)); // 模拟扫描时间
-      
+
       // 返回模拟的WiFi网络列表
       return [
         { ssid: 'MyNetwork', security: 'wpa2', signalStrength: -30, channel: 6 },
@@ -346,7 +348,7 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
     callback: (data: { channelId: number; timestamp: number; value: number }) => void
   ): Promise<boolean> {
     console.log('启用实时数据流...');
-    
+
     try {
       // 在实际实现中，这里会建立WebSocket连接或HTTP Server-Sent Events
       // const ws = new WebSocket(`ws://${this._host}:${this._port}/api/stream`);
@@ -354,7 +356,7 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
       //   const data = JSON.parse(event.data);
       //   callback(data);
       // };
-      
+
       // 模拟实时数据流
       const interval = setInterval(() => {
         const mockData = {
@@ -364,13 +366,13 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
         };
         callback(mockData);
       }, 100);
-      
+
       // 10秒后停止模拟流
       setTimeout(() => {
         clearInterval(interval);
         console.log('实时数据流已停止');
       }, 10000);
-      
+
       return true;
     } catch (error) {
       console.error('启用实时数据流失败:', error);
@@ -389,15 +391,15 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
     uptime: number;
   }> {
     console.log('查询设备性能统计...');
-    
+
     try {
       // 模拟HTTP GET请求
       // const response = await fetch(`http://${this._host}:${this._port}/api/system/stats`);
       // const data = await response.json();
       // return data;
-      
+
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       return {
         cpuUsage: Math.random() * 100,
         memoryUsage: 45.6,
@@ -420,30 +422,30 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
     error?: string;
   }> {
     console.log('开始固件更新...');
-    
+
     try {
       // 模拟固件上传和更新过程
       // const formData = new FormData();
       // formData.append('firmware', firmwareData);
-      // 
+      //
       // const response = await fetch(`http://${this._host}:${this._port}/api/firmware/update`, {
       //   method: 'POST',
       //   body: formData
       // });
-      
+
       // 模拟更新进度
       for (let progress = 0; progress <= 100; progress += 10) {
         console.log(`固件更新进度: ${progress}%`);
         await new Promise(resolve => setTimeout(resolve, 500));
       }
-      
+
       console.log('固件更新完成');
       return { success: true, progress: 100 };
     } catch (error) {
       console.error('固件更新失败:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : '固件更新失败' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '固件更新失败'
       };
     }
   }
@@ -453,10 +455,10 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
    */
   override dispose(): void {
     console.log('ExampleNetworkDriver: 清理资源');
-    
+
     // 清理HTTP特定资源
     // 例如：关闭WebSocket连接、取消定时器等
-    
+
     // 调用父类清理
     super.dispose();
   }

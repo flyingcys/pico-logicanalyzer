@@ -165,7 +165,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
       if (masterVersion === null) {
         masterVersion = deviceVersion;
       } else {
-        if (masterVersion.major !== deviceVersion.major || 
+        if (masterVersion.major !== deviceVersion.major ||
             masterVersion.minor !== deviceVersion.minor) {
           throw new Error(
             `设备版本不兼容。主设备版本: V${masterVersion.major}_${masterVersion.minor}, ` +
@@ -179,10 +179,10 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
   /**
    * 解析版本字符串
    */
-  private parseVersion(versionString: string | null): { 
-    major: number; 
-    minor: number; 
-    isValid: boolean; 
+  private parseVersion(versionString: string | null): {
+    major: number;
+    minor: number;
+    isValid: boolean;
   } {
     if (!versionString) {
       return { major: 0, minor: 0, isValid: false };
@@ -265,7 +265,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
 
       // 计算触发延迟偏移
       const samplePeriod = 1000000000.0 / session.frequency;
-      const delay = session.triggerType === TriggerType.Fast ? 
+      const delay = session.triggerType === TriggerType.Fast ?
         TriggerDelays.FastTriggerDelay : TriggerDelays.ComplexTriggerDelay;
       const offset = Math.round((delay / samplePeriod) + 0.3);
 
@@ -291,7 +291,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
 
         // 创建从设备采集会话
         const slaveSession = this.createSlaveSession(session, channels, offset);
-        
+
         this._connectedDevices[i].tag = channelsCapturing;
         const error = await this._connectedDevices[i].startCapture(slaveSession);
 
@@ -307,7 +307,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
       this._connectedDevices[0].tag = 0;
       const masterChannels = channelsPerDevice[0];
       const masterSession = this.createMasterSession(session, masterChannels);
-      
+
       const masterError = await this._connectedDevices[0].startCapture(masterSession);
       if (masterError !== CaptureError.None) {
         await this.stopCapture();
@@ -361,7 +361,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
       const deviceChannels = channels
         .filter(ch => ch >= firstChannel && ch < lastChannel)
         .map(ch => ch - firstChannel);
-      
+
       channelsPerDevice.push(deviceChannels);
     }
 
@@ -372,8 +372,8 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
    * 创建从设备采集会话
    */
   private createSlaveSession(
-    originalSession: CaptureSession, 
-    channels: number[], 
+    originalSession: CaptureSession,
+    channels: number[],
     offset: number
   ): CaptureSession {
     const slaveSession: CaptureSession = {
@@ -399,7 +399,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
    * 创建主设备采集会话
    */
   private createMasterSession(
-    originalSession: CaptureSession, 
+    originalSession: CaptureSession,
     channels: number[]
   ): CaptureSession {
     const masterSession: CaptureSession = {
@@ -466,25 +466,26 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
     }
 
     if (!args.success) {
-      this.stopCapture();
-      this._deviceCaptures = [];
+      this.stopCapture().then(() => {
+        this._deviceCaptures = [];
 
-      const eventArgs: CaptureEventArgs = {
-        success: false,
-        session: this._sourceSession
-      };
+        const eventArgs: CaptureEventArgs = {
+          success: false,
+          session: this._sourceSession
+        };
 
-      if (this._currentCaptureHandler) {
-        this._currentCaptureHandler(eventArgs);
-      } else {
-        this.emitCaptureCompleted(eventArgs);
-      }
+        if (this._currentCaptureHandler) {
+          this._currentCaptureHandler(eventArgs);
+        } else {
+          this.emitCaptureCompleted(eventArgs);
+        }
+      });
       return;
     }
 
     // 获取设备索引
     const deviceIndex = (args.session as any).deviceTag || 0;
-    
+
     this._deviceCaptures[deviceIndex].session = args.session;
     this._deviceCaptures[deviceIndex].completed = true;
 
@@ -505,12 +506,12 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
     // 合并所有设备的通道数据
     for (let deviceIndex = 0; deviceIndex < this._deviceCaptures.length; deviceIndex++) {
       const deviceCapture = this._deviceCaptures[deviceIndex];
-      
+
       if (deviceCapture.session) {
         for (const deviceChannel of deviceCapture.session.captureChannels) {
           // 计算在源会话中的通道索引
           const globalChannelNumber = deviceChannel.channelNumber + deviceIndex * maxChannelsPerDevice;
-          
+
           // 找到对应的源会话通道
           const sourceChannel = this._sourceSession.captureChannels.find(
             ch => ch.channelNumber === globalChannelNumber
@@ -556,18 +557,23 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
    */
   override getLimits(channels: number[]): any {
     const splitChannels = this.splitChannelsPerDevice(channels);
-    const deviceLimits = this._connectedDevices.map((device, index) => 
+    const deviceLimits = this._connectedDevices.map((device, index) =>
       device.getLimits(splitChannels[index] || [])
     );
 
     // 返回所有设备的最严格限制
+    const minPreSamples = Math.max(...deviceLimits.map(limit => limit.minPreSamples));
+    const maxPreSamples = Math.min(...deviceLimits.map(limit => limit.maxPreSamples));
+    const minPostSamples = Math.max(...deviceLimits.map(limit => limit.minPostSamples));
+    const maxPostSamples = Math.min(...deviceLimits.map(limit => limit.maxPostSamples));
+
     return {
-      minPreSamples: Math.max(...deviceLimits.map(limit => limit.minPreSamples)),
-      maxPreSamples: Math.min(...deviceLimits.map(limit => limit.maxPreSamples)),
-      minPostSamples: Math.max(...deviceLimits.map(limit => limit.minPostSamples)),
-      maxPostSamples: Math.min(...deviceLimits.map(limit => limit.maxPostSamples)),
+      minPreSamples,
+      maxPreSamples,
+      minPostSamples,
+      maxPostSamples,
       get maxTotalSamples(): number {
-        return this.minPreSamples + this.maxPostSamples;
+        return maxPreSamples + maxPostSamples;
       }
     };
   }

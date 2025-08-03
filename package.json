@@ -62,6 +62,24 @@
         "command": "logicAnalyzer.startCapture",
         "title": "Start Capture",
         "category": "Logic Analyzer"
+      },
+      {
+        "command": "logicAnalyzer.scanNetworkDevices",
+        "title": "Scan Network Devices",
+        "category": "Logic Analyzer",
+        "icon": "$(search)"
+      },
+      {
+        "command": "logicAnalyzer.networkDiagnostics",
+        "title": "Network Diagnostics",
+        "category": "Logic Analyzer",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "logicAnalyzer.configureWiFi",
+        "title": "Configure WiFi",
+        "category": "Logic Analyzer",
+        "icon": "$(broadcast)"
       }
     ],
     "customEditors": [
@@ -87,6 +105,64 @@
           "type": "number",
           "default": 24000000,
           "description": "Default sample rate in Hz"
+        },
+        "logicAnalyzer.network.enableAutoDiscovery": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic discovery of network devices"
+        },
+        "logicAnalyzer.network.scanTimeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "maximum": 30000,
+          "description": "Network device scan timeout in milliseconds"
+        },
+        "logicAnalyzer.network.maxConcurrentConnections": {
+          "type": "number",
+          "default": 50,
+          "minimum": 5,
+          "maximum": 200,
+          "description": "Maximum concurrent connections during network scan"
+        },
+        "logicAnalyzer.network.defaultPorts": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "default": [4045, 80, 8080, 8000, 3000],
+          "description": "Default ports to scan for network devices"
+        },
+        "logicAnalyzer.network.enableBroadcastDiscovery": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable UDP broadcast discovery for network devices"
+        },
+        "logicAnalyzer.network.heartbeatIntervalMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "Network connection heartbeat interval in milliseconds"
+        },
+        "logicAnalyzer.network.connectionTimeoutMs": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 3000,
+          "maximum": 30000,
+          "description": "Network connection timeout in milliseconds"
+        },
+        "logicAnalyzer.network.enableAutoReconnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic reconnection for network devices"
+        },
+        "logicAnalyzer.network.maxRetries": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Maximum retry attempts for network connections"
         }
       }
     }
@@ -100,16 +176,42 @@
     "watch": "npm run clean && webpack --mode development --watch",
     "watch:production": "npm run clean && cross-env NODE_ENV=production webpack --mode production --watch",
     "dev": "npm run watch",
-    "clean": "rimraf out dist",
+    "clean": "rimraf out dist coverage .jest-cache",
     "typecheck": "tsc --noEmit",
     "typecheck:watch": "tsc --noEmit --watch",
     "pretest": "npm run build && npm run lint && npm run typecheck",
-    "test": "node ./out/test/runTest.js",
-    "test:watch": "npm run test -- --watch",
+    
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:watchAll": "jest --watchAll",
     "test:coverage": "jest --coverage",
-    "test:drivers": "ts-node scripts/test-drivers.ts",
-    "test:compatibility": "ts-node scripts/test-drivers.ts compatibility",
-    "test:summary": "ts-node scripts/test-drivers.ts report",
+    "test:coverage:open": "jest --coverage && open coverage/lcov-report/index.html",
+    
+    "test:unit": "jest --testPathPattern=unit --maxWorkers=2",
+    "test:integration": "jest --testPathPattern=integration --runInBand",
+    "test:e2e": "jest --testPathPattern=e2e --runInBand --detectOpenHandles",
+    "test:performance": "jest --testPathPattern=performance --runInBand --forceExit",
+    
+    "test:drivers": "jest --testPathPattern=drivers",
+    "test:decoders": "jest --testPathPattern=decoders",
+    "test:webview": "jest --testPathPattern=webview",
+    "test:extensions": "jest --testPathPattern=extension",
+    
+    "test:debug": "node --inspect-brk node_modules/.bin/jest --runInBand",
+    "test:debug:chrome": "node --inspect-brk=0.0.0.0:9229 node_modules/.bin/jest --runInBand",
+    
+    "test:clear": "jest --clearCache",
+    "test:clean": "rimraf coverage .jest-cache",
+    
+    "test:lint": "eslint 'src/tests/**/*.{ts,tsx}' --fix",
+    "test:type-check": "tsc --project tsconfig.test.json --noEmit",
+    
+    "test:ci": "jest --ci --coverage --watchAll=false --maxWorkers=2",
+    "test:ci:performance": "jest --testPathPattern=performance --ci --maxWorkers=1",
+    
+    "test:report": "jest --coverage && open coverage/html-report/report.html",
+    "test:badges": "npx coverage-badges-cli --output coverage/badges",
+    
     "benchmark:drivers": "ts-node scripts/test-drivers.ts benchmark",
     "quality-gate": "ts-node scripts/test-drivers.ts run --required-grade B",
     "update-badges": "echo \"Badge update not implemented\"",
@@ -145,8 +247,13 @@
     "@vue/compiler-sfc": "^3.2.45",
     "@vue/eslint-config-typescript": "^11.0.2",
     "@vue/test-utils": "^2.2.6",
+    "@vue/vue-jest": "^29.2.2",
     "@vue/vue3-jest": "^29.2.2",
+    "@testing-library/vue": "^7.0.0",
+    "@testing-library/jest-dom": "^5.16.0",
+    "@vscode/test-electron": "^2.3.0",
     "babel-jest": "^29.3.1",
+    "coverage-badges-cli": "^1.2.4",
     "cross-env": "^7.0.3",
     "css-loader": "^6.7.1",
     "eslint": "^8.28.0",
@@ -154,6 +261,10 @@
     "html-webpack-plugin": "^5.5.0",
     "jest": "^29.3.1",
     "jest-environment-jsdom": "^29.3.1",
+    "jest-extended": "^3.2.0",
+    "jest-html-reporters": "^3.0.11",
+    "jest-junit": "^15.0.0",
+    "jest-watch-typeahead": "^2.2.1",
     "prettier": "^2.8.1",
     "rimraf": "^3.0.2",
     "sass": "^1.56.2",
@@ -164,6 +275,7 @@
     "ts-node": "^10.9.2",
     "typescript": "^4.9.4",
     "vsce": "^2.15.0",
+    "vscode-test": "^1.6.1",
     "vue-loader": "^17.0.0",
     "webpack": "^5.75.0",
     "webpack-bundle-analyzer": "^4.7.0",

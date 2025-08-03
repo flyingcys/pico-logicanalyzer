@@ -79,7 +79,7 @@ export class BinaryDataParser {
     session: CaptureSession,
     mode: CaptureMode
   ): Promise<ParseResult> {
-    
+
     this.parseStartTime = performance.now();
     const warnings: string[] = [];
 
@@ -95,13 +95,13 @@ export class BinaryDataParser {
 
       // 解析数据头部
       const headerInfo = this.parseDataHeader(rawData, mode);
-      
+
       // 根据采集模式提取样本数据
       const sampleData = this.extractSampleData(rawData, headerInfo, mode);
-      
+
       // 提取各个通道的数据
       const channels = await this.extractChannelData(sampleData, session, mode);
-      
+
       // 应用优化处理
       if (this.config.enableOptimization) {
         await this.optimizeChannelData(channels);
@@ -135,20 +135,20 @@ export class BinaryDataParser {
    * 验证原始数据
    */
   private validateRawData(
-    data: Uint8Array, 
-    session: CaptureSession, 
+    data: Uint8Array,
+    session: CaptureSession,
     mode: CaptureMode
   ): { isValid: boolean; error?: string; warnings: string[] } {
-    
+
     const warnings: string[] = [];
-    
+
     // 最小数据长度检查
     if (data.length < 8) {
       return { isValid: false, error: 'Data too short (minimum 8 bytes required)', warnings };
     }
 
     // 计算期望的数据长度
-    const bytesPerSample = mode === CaptureMode.Channels_8 ? 1 : 
+    const bytesPerSample = mode === CaptureMode.Channels_8 ? 1 :
                           (mode === CaptureMode.Channels_16 ? 2 : 4);
     const expectedHeaderSize = 4; // uint32 sample count
     const expectedSampleSize = session.totalSamples * bytesPerSample;
@@ -166,12 +166,12 @@ export class BinaryDataParser {
     const maxChannelNumber = Math.max(...session.captureChannels.map(ch => ch.channelNumber));
     const maxSupportedChannels = mode === CaptureMode.Channels_8 ? 8 :
                                 (mode === CaptureMode.Channels_16 ? 16 : 24);
-    
+
     if (maxChannelNumber >= maxSupportedChannels) {
-      return { 
-        isValid: false, 
+      return {
+        isValid: false,
         error: `Channel ${maxChannelNumber} exceeds max supported channels ${maxSupportedChannels} for mode ${mode}`,
-        warnings 
+        warnings
       };
     }
 
@@ -186,15 +186,15 @@ export class BinaryDataParser {
     dataOffset: number;
     bytesPerSample: number;
   } {
-    
+
     const view = new DataView(data.buffer, data.byteOffset);
-    
+
     // 读取样本数量 (uint32, little endian)
     const sampleCount = view.getUint32(0, true);
-    
+
     const bytesPerSample = mode === CaptureMode.Channels_8 ? 1 :
                           (mode === CaptureMode.Channels_16 ? 2 : 4);
-    
+
     return {
       sampleCount,
       dataOffset: 4, // 跳过样本数量字段
@@ -210,15 +210,15 @@ export class BinaryDataParser {
     headerInfo: { sampleCount: number; dataOffset: number; bytesPerSample: number },
     mode: CaptureMode
   ): Uint32Array {
-    
+
     const { sampleCount, dataOffset, bytesPerSample } = headerInfo;
     const samples = new Uint32Array(sampleCount);
     const view = new DataView(data.buffer, data.byteOffset + dataOffset);
-    
+
     // 根据采集模式读取不同大小的数据
     for (let i = 0; i < sampleCount; i++) {
       const offset = i * bytesPerSample;
-      
+
       switch (mode) {
         case CaptureMode.Channels_8:
           samples[i] = view.getUint8(offset);
@@ -231,7 +231,7 @@ export class BinaryDataParser {
           break;
       }
     }
-    
+
     return samples;
   }
 
@@ -243,24 +243,24 @@ export class BinaryDataParser {
     session: CaptureSession,
     mode: CaptureMode
   ): Promise<AnalyzerChannel[]> {
-    
+
     const channels: AnalyzerChannel[] = [];
-    
+
     for (let channelIndex = 0; channelIndex < session.captureChannels.length; channelIndex++) {
       const originalChannel = session.captureChannels[channelIndex];
       const newChannel = originalChannel.clone();
-      
+
       // 提取该通道的样本数据
       const channelSamples = this.extractSingleChannelData(
         sampleData,
         originalChannel.channelNumber,
         mode
       );
-      
+
       newChannel.samples = channelSamples;
       channels.push(newChannel);
     }
-    
+
     return channels;
   }
 
@@ -272,15 +272,15 @@ export class BinaryDataParser {
     channelNumber: number,
     mode: CaptureMode
   ): Uint8Array {
-    
+
     const mask = 1 << channelNumber;
     const channelSamples = new Uint8Array(sampleData.length);
-    
+
     // 使用位掩码提取通道数据
     for (let i = 0; i < sampleData.length; i++) {
       channelSamples[i] = (sampleData[i] & mask) !== 0 ? 1 : 0;
     }
-    
+
     return channelSamples;
   }
 
@@ -307,7 +307,7 @@ export class BinaryDataParser {
     const compressed: number[] = [];
     let currentValue = data[0];
     let count = 1;
-    
+
     for (let i = 1; i < data.length; i++) {
       if (data[i] === currentValue && count < 255) {
         count++;
@@ -318,10 +318,10 @@ export class BinaryDataParser {
         count = 1;
       }
     }
-    
+
     // 写入最后一组
     compressed.push(currentValue, count);
-    
+
     return new Uint8Array(compressed);
   }
 
@@ -330,16 +330,16 @@ export class BinaryDataParser {
    */
   private decompressChannelData(compressedData: Uint8Array): Uint8Array {
     const decompressed: number[] = [];
-    
+
     for (let i = 0; i < compressedData.length; i += 2) {
       const value = compressedData[i];
       const count = compressedData[i + 1];
-      
+
       for (let j = 0; j < count; j++) {
         decompressed.push(value);
       }
     }
-    
+
     return new Uint8Array(decompressed);
   }
 
@@ -348,7 +348,7 @@ export class BinaryDataParser {
    */
   private calculateMemoryUsage(channels: AnalyzerChannel[]): number {
     let totalMemory = 0;
-    
+
     for (const channel of channels) {
       if (channel.samples) {
         totalMemory += channel.samples.byteLength;
@@ -356,7 +356,7 @@ export class BinaryDataParser {
       // 加上对象本身的内存估算
       totalMemory += 64; // 估算对象开销
     }
-    
+
     return totalMemory;
   }
 
@@ -368,7 +368,7 @@ export class BinaryDataParser {
     session: CaptureSession,
     deviceInfo: any
   ): DigitalSampleData {
-    
+
     return {
       data: channels.map(ch => ch.samples || new Uint8Array()),
       encoding: 'binary',
@@ -383,24 +383,24 @@ export class BinaryDataParser {
     digitalData: DigitalSampleData,
     channelInfo: { channelNumber: number; channelName: string }[]
   ): AnalyzerChannel[] {
-    
+
     const channels: AnalyzerChannel[] = [];
-    
+
     for (let i = 0; i < digitalData.data.length && i < channelInfo.length; i++) {
       const channel = new AnalyzerChannel(
         channelInfo[i].channelNumber,
         channelInfo[i].channelName
       );
-      
+
       if (digitalData.encoding === 'rle') {
         channel.samples = this.decompressChannelData(digitalData.data[i]);
       } else {
         channel.samples = digitalData.data[i];
       }
-      
+
       channels.push(channel);
     }
-    
+
     return channels;
   }
 
@@ -411,30 +411,30 @@ export class BinaryDataParser {
     sampleData: Uint32Array,
     configs: ChannelExtractionConfig[]
   ): Uint8Array[] {
-    
+
     const results: Uint8Array[] = [];
-    
+
     for (const config of configs) {
       const channelData = new Uint8Array(sampleData.length);
-      
+
       for (let i = 0; i < sampleData.length; i++) {
         let value = (sampleData[i] & config.channelMask) >> config.bitOffset;
-        
+
         if (config.invertLogic) {
           value = value ? 0 : 1;
         }
-        
+
         channelData[i] = value & 0xFF;
       }
-      
+
       // 应用滤波
       if (config.enableFiltering && config.filterWidth > 1) {
         this.applyMedianFilter(channelData, config.filterWidth);
       }
-      
+
       results.push(channelData);
     }
-    
+
     return results;
   }
 
@@ -444,14 +444,14 @@ export class BinaryDataParser {
   private applyMedianFilter(data: Uint8Array, width: number): void {
     const halfWidth = Math.floor(width / 2);
     const filtered = new Uint8Array(data.length);
-    
+
     for (let i = 0; i < data.length; i++) {
       const start = Math.max(0, i - halfWidth);
       const end = Math.min(data.length - 1, i + halfWidth);
       const window = Array.from(data.slice(start, end + 1)).sort((a, b) => a - b);
       filtered[i] = window[Math.floor(window.length / 2)];
     }
-    
+
     data.set(filtered);
   }
 
@@ -467,22 +467,22 @@ export class BinaryDataParser {
       averageSampleRate: number;
     };
   } {
-    
+
     const errors: string[] = [];
     let totalSamples = 0;
     let channelsWithData = 0;
-    
+
     for (const channel of channels) {
       if (!channel.samples) {
         errors.push(`Channel ${channel.channelNumber} has no sample data`);
         continue;
       }
-      
+
       if (channel.samples.length === 0) {
         errors.push(`Channel ${channel.channelNumber} has empty sample data`);
         continue;
       }
-      
+
       // 检查数据值范围
       for (let i = 0; i < channel.samples.length; i++) {
         if (channel.samples[i] > 1) {
@@ -490,18 +490,18 @@ export class BinaryDataParser {
           break;
         }
       }
-      
+
       totalSamples = Math.max(totalSamples, channel.samples.length);
       channelsWithData++;
     }
-    
+
     // 检查所有通道的样本数量是否一致
     for (const channel of channels) {
       if (channel.samples && channel.samples.length !== totalSamples) {
         errors.push(`Channel ${channel.channelNumber} sample count ${channel.samples.length} differs from expected ${totalSamples}`);
       }
     }
-    
+
     return {
       isValid: errors.length === 0,
       errors,

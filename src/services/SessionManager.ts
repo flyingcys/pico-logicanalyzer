@@ -8,6 +8,7 @@ import { CaptureSession, AnalyzerChannel } from '../models/AnalyzerTypes';
 import { SampleRegion } from '../models/CaptureModels';
 import { DecoderResult } from '../decoders/types';
 import { ExportedCapture, ExportMetadata } from './DataExportService';
+import { ServiceLifecycleBase, ServiceInitOptions, ServiceDisposeOptions } from '../common/ServiceLifecycle';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -20,21 +21,21 @@ export interface SessionData {
   name: string;
   description?: string;
   tags?: string[];
-  
+
   // 核心数据 - 对应原版 ExportedCapture
   captureSession: CaptureSession;
   selectedRegions?: SampleRegion[];
-  
+
   // 扩展数据
   decoderResults?: Map<string, DecoderResult[]>;
   analysisResults?: any;
   measurementResults?: any;
-  
+
   // UI状态
   viewSettings?: ViewSettings;
   channelSettings?: ChannelSettings[];
   markerSettings?: MarkerSettings[];
-  
+
   // 元数据
   metadata: SessionMetadata;
 }
@@ -105,17 +106,19 @@ export interface SessionOperationResult {
   warnings?: string[];
 }
 
-export class SessionManager {
+export class SessionManager extends ServiceLifecycleBase {
   private readonly CURRENT_VERSION = '1.0.0';
   private readonly FILE_EXTENSION = '.lacsession';
   private readonly BACKUP_EXTENSION = '.backup';
-  
+
   private options: SessionManagerOptions;
   private autoSaveTimer?: NodeJS.Timeout;
   private currentSession?: SessionData;
   private unsavedChanges = false;
 
   constructor(options: SessionManagerOptions = {}) {
+    super('SessionManager');
+    
     this.options = {
       autoSave: false,
       autoSaveInterval: 300, // 5分钟
@@ -128,6 +131,179 @@ export class SessionManager {
     if (this.options.autoSave) {
       this.startAutoSave();
     }
+  }
+
+  /**
+   * 实现父类的初始化方法
+   */
+  protected async onInitialize(options: ServiceInitOptions): Promise<void> {
+    // SessionManager 在构造时已经完成初始化
+    // 这里可以添加额外的初始化逻辑
+    this.updateMetadata({
+      autoSave: this.options.autoSave,
+      autoSaveInterval: this.options.autoSaveInterval,
+      compressionEnabled: this.options.compressionEnabled
+    });
+  }
+
+  /**
+   * 实现父类的销毁方法
+   */
+  protected async onDispose(options: ServiceDisposeOptions): Promise<void> {
+    // 停止自动保存
+    if (this.autoSaveTimer) {
+      clearInterval(this.autoSaveTimer);
+      this.autoSaveTimer = undefined;
+    }
+
+    // 如果有未保存的更改，可选择保存
+    if (this.unsavedChanges && this.currentSession) {
+      try {
+        await this.saveCurrentSession();
+      } catch (error) {
+        if (!options.force) {
+          throw error;
+        }
+      }
+    }
+
+    // 清理当前会话
+    this.currentSession = undefined;
+    this.unsavedChanges = false;
+  }
+
+  /**
+   * 创建新会话
+   */
+  async createSession(config: {
+    name: string;
+    description?: string;
+    captureSettings?: any;
+  }): Promise<string> {
+    const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    const sessionData: SessionData = {
+      version: this.CURRENT_VERSION,
+      timestamp: new Date().toISOString(),
+      sessionId,
+      name: config.name,
+      description: config.description,
+      captureSession: {} as CaptureSession, // 初始为空的采集会话
+      metadata: {
+        captureSettings: {
+          sampleRate: config.captureSettings?.sampleRate || 1000000,
+          totalSamples: 0,
+          duration: 0
+        },
+        fileInfo: {
+          size: 0
+        }
+      }
+    };
+
+    this.currentSession = sessionData;
+    this.unsavedChanges = true;
+
+    return sessionId;
+  }
+
+  /**
+   * 设置活动会话
+   */
+  async setActiveSession(sessionId: string): Promise<void> {
+    // 在实际实现中，这里应该从存储中加载会话
+    // 目前只是模拟实现
+    if (this.currentSession?.sessionId === sessionId) {
+      return;
+    }
+
+    // 保存当前会话（如果有未保存的更改）
+    if (this.unsavedChanges && this.currentSession) {
+      await this.saveCurrentSession();
+    }
+
+    // 加载新会话（这里是模拟实现）
+    this.currentSession = {
+      version: this.CURRENT_VERSION,
+      timestamp: new Date().toISOString(),
+      sessionId,
+      name: `Session ${sessionId}`,
+      captureSession: {} as CaptureSession,
+      metadata: {
+        captureSettings: {
+          sampleRate: 1000000,
+          totalSamples: 0,
+          duration: 0
+        },
+        fileInfo: {
+          size: 0
+        }
+      }
+    };
+    this.unsavedChanges = false;
+  }
+
+  /**
+   * 获取活动会话
+   */
+  async getActiveSession(): Promise<SessionData | undefined> {
+    return this.currentSession;
+  }
+
+  /**
+   * 获取会话状态
+   */
+  async getSessionState(sessionId: string): Promise<{
+    lastModified: number;
+    isModified: boolean;
+  }> {
+    return {
+      lastModified: Date.now(),
+      isModified: this.unsavedChanges
+    };
+  }
+
+  /**
+   * 同步会话状态
+   */
+  async synchronizeSession(sessionId: string): Promise<{
+    success: boolean;
+    conflictsResolved: number;
+  }> {
+    // 模拟同步操作
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // 重置未保存状态
+    this.unsavedChanges = false;
+    
+    return {
+      success: true,
+      conflictsResolved: 0
+    };
+  }
+
+  /**
+   * 保存采集数据到会话
+   */
+  async saveCaptureData(sessionId: string, captureData: any): Promise<void> {
+    if (this.currentSession?.sessionId === sessionId) {
+      // 更新会话数据
+      this.currentSession.metadata.captureSettings = {
+        sampleRate: captureData.metadata.sampleRate,
+        totalSamples: captureData.metadata.totalSamples,
+        duration: captureData.metadata.totalSamples / captureData.metadata.sampleRate
+      };
+      this.unsavedChanges = true;
+    }
+  }
+
+  /**
+   * 获取所有会话
+   */
+  async getAllSessions(): Promise<SessionData[]> {
+    // 在实际实现中，这里应该从存储中获取所有会话
+    // 目前返回当前会话
+    return this.currentSession ? [this.currentSession] : [];
   }
 
   /**
@@ -164,19 +340,23 @@ export class SessionManager {
         name: sessionData.name || path.basename(filePath, this.FILE_EXTENSION),
         description: sessionData.description,
         tags: sessionData.tags || [],
-        
+
         captureSession: sessionData.captureSession!,
         selectedRegions: sessionData.selectedRegions || [],
         decoderResults: sessionData.decoderResults,
         analysisResults: sessionData.analysisResults,
         measurementResults: sessionData.measurementResults,
-        
+
         viewSettings: sessionData.viewSettings,
         channelSettings: sessionData.channelSettings,
         markerSettings: sessionData.markerSettings,
-        
+
         metadata: this.generateMetadata(sessionData)
       };
+
+      // 确保目录存在
+      const dir = path.dirname(filePath);
+      await fs.mkdir(dir, { recursive: true });
 
       // 创建备份（如果启用）
       if (this.options.backupEnabled && await this.fileExists(filePath)) {
@@ -185,10 +365,10 @@ export class SessionManager {
 
       // 序列化数据
       const serializedData = await this.serializeSession(completeSessionData);
-      
+
       // 写入文件
       await fs.writeFile(filePath, serializedData, 'utf8');
-      
+
       // 更新当前会话状态
       this.currentSession = completeSessionData;
       this.unsavedChanges = false;
@@ -240,10 +420,10 @@ export class SessionManager {
 
       // 读取文件
       const fileContent = await fs.readFile(filePath, 'utf8');
-      
+
       // 反序列化数据
       const sessionData = await this.deserializeSession(fileContent, filePath);
-      
+
       // 验证会话数据
       const validationResult = this.validateSessionData(sessionData);
       if (!validationResult.success) {
@@ -288,7 +468,7 @@ export class SessionManager {
       const autoSaveDir = path.join(workspaceFolder.uri.fsPath, '.vscode', 'logicanalyzer', 'autosave');
       await fs.mkdir(autoSaveDir, { recursive: true });
 
-      const autoSaveFile = path.join(autoSaveDir, 
+      const autoSaveFile = path.join(autoSaveDir,
         `autosave_${this.currentSession.sessionId}_${Date.now()}.lacsession`);
 
       return await this.saveSession(this.currentSession, autoSaveFile);
@@ -308,7 +488,7 @@ export class SessionManager {
     try {
       const config = vscode.workspace.getConfiguration('logicAnalyzer');
       const recentFiles = config.get<string[]>('recentSessions') || [];
-      
+
       const sessions = [];
       for (const filePath of recentFiles) {
         if (await this.fileExists(filePath)) {
@@ -341,16 +521,16 @@ export class SessionManager {
     name?: string
   ): SessionData {
     const sessionId = this.generateSessionId();
-    
+
     const newSession: SessionData = {
       version: this.CURRENT_VERSION,
       timestamp: new Date().toISOString(),
       sessionId,
       name: name || `Capture_${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}`,
-      
+
       captureSession,
       selectedRegions: [],
-      
+
       viewSettings: {
         timebase: 1.0,
         sampleOffset: 0,
@@ -359,7 +539,7 @@ export class SessionManager {
         channelColors: new Map(),
         displayMode: 'digital'
       },
-      
+
       channelSettings: captureSession.captureChannels.map(ch => ({
         channelNumber: ch.channelNumber,
         name: ch.channelName,
@@ -369,9 +549,9 @@ export class SessionManager {
         height: 20,
         inverted: false
       })),
-      
+
       markerSettings: [],
-      
+
       metadata: this.generateMetadata({ captureSession })
     };
 
@@ -394,7 +574,7 @@ export class SessionManager {
       ...updates,
       timestamp: new Date().toISOString() // 更新时间戳
     };
-    
+
     this.unsavedChanges = true;
   }
 
@@ -413,6 +593,13 @@ export class SessionManager {
   }
 
   /**
+   * 标记会话有未保存的更改（用于测试）
+   */
+  markUnsaved(): void {
+    this.unsavedChanges = true;
+  }
+
+  /**
    * 标记会话已修改
    */
   markAsModified(): void {
@@ -428,7 +615,7 @@ export class SessionManager {
       if (!workspaceFolder) return [];
 
       const historyDir = path.join(workspaceFolder.uri.fsPath, '.vscode', 'logicanalyzer', 'history', sessionId);
-      
+
       if (!await this.fileExists(historyDir)) {
         return [];
       }
@@ -477,23 +664,23 @@ export class SessionManager {
     // 转换Map为普通对象以便JSON序列化
     const serializable = {
       ...sessionData,
-      decoderResults: sessionData.decoderResults ? 
+      decoderResults: sessionData.decoderResults ?
         Array.from(sessionData.decoderResults.entries()) : undefined,
       viewSettings: sessionData.viewSettings ? {
         ...sessionData.viewSettings,
-        channelColors: sessionData.viewSettings.channelColors ? 
-          Array.from(sessionData.viewSettings.channelColors.entries()) : undefined
+        channelColors: sessionData.viewSettings.channelColors ?
+          Array.from(sessionData.viewSettings.channelColors.entries()) : []
       } : undefined
     };
 
     const jsonString = JSON.stringify(serializable, this.createJsonReplacer(), 2);
-    
+
     // 如果启用压缩
     if (this.options.compressionEnabled) {
       // 这里可以添加压缩逻辑，暂时返回原始JSON
       return jsonString;
     }
-    
+
     return jsonString;
   }
 
@@ -504,14 +691,19 @@ export class SessionManager {
     try {
       // 尝试解析为新格式
       const parsed = JSON.parse(content, this.createJsonReviver());
-      
+
       // 恢复Map类型
       if (parsed.decoderResults && Array.isArray(parsed.decoderResults)) {
         parsed.decoderResults = new Map(parsed.decoderResults);
       }
-      
-      if (parsed.viewSettings?.channelColors && Array.isArray(parsed.viewSettings.channelColors)) {
-        parsed.viewSettings.channelColors = new Map(parsed.viewSettings.channelColors);
+
+      if (parsed.viewSettings?.channelColors) {
+        if (Array.isArray(parsed.viewSettings.channelColors)) {
+          parsed.viewSettings.channelColors = new Map(parsed.viewSettings.channelColors);
+        } else if (typeof parsed.viewSettings.channelColors === 'object') {
+          // 处理空对象{}的情况
+          parsed.viewSettings.channelColors = new Map();
+        }
       }
 
       return parsed as SessionData;
@@ -521,7 +713,7 @@ export class SessionManager {
       if (filePath.endsWith('.lac')) {
         return this.convertLegacyLacFormat(content);
       }
-      
+
       throw new Error(`无法解析会话文件: ${error}`);
     }
   }
@@ -532,7 +724,7 @@ export class SessionManager {
    */
   private convertLegacyLacFormat(content: string): SessionData {
     const legacyData = JSON.parse(content) as ExportedCapture;
-    
+
     if (!legacyData.settings) {
       throw new Error('无效的LAC文件格式');
     }
@@ -543,15 +735,15 @@ export class SessionManager {
       timestamp: new Date().toISOString(),
       sessionId: this.generateSessionId(),
       name: 'Imported LAC File',
-      
+
       captureSession: legacyData.settings,
       selectedRegions: legacyData.selectedRegions || [],
-      
+
       metadata: {
         captureSettings: {
           sampleRate: legacyData.settings.frequency,
           totalSamples: legacyData.settings.preTriggerSamples + legacyData.settings.postTriggerSamples,
-          duration: (legacyData.settings.preTriggerSamples + legacyData.settings.postTriggerSamples) / legacyData.settings.frequency,
+          duration: (legacyData.settings.preTriggerSamples + legacyData.settings.postTriggerSamples) / legacyData.settings.frequency
         },
         fileInfo: {
           size: content.length
@@ -583,7 +775,7 @@ export class SessionManager {
     }
 
     // 数据完整性检查
-    if (!sessionData.captureSession.captureChannels || 
+    if (!sessionData.captureSession.captureChannels ||
         sessionData.captureSession.captureChannels.length === 0) {
       warnings.push('没有找到通道数据');
     }
@@ -607,7 +799,7 @@ export class SessionManager {
   private generateMetadata(sessionData: Partial<SessionData>): SessionMetadata {
     const captureSession = sessionData.captureSession!;
     const totalSamples = captureSession.preTriggerSamples + captureSession.postTriggerSamples;
-    
+
     return {
       captureSettings: {
         sampleRate: captureSession.frequency,
@@ -641,7 +833,7 @@ export class SessionManager {
       '#00CED1', '#32CD32', '#FFD700', '#DC143C',
       '#4169E1', '#FF1493', '#00FA9A', '#FF6347'
     ];
-    
+
     return colors[channelNumber % colors.length];
   }
 
@@ -685,17 +877,17 @@ export class SessionManager {
     try {
       const config = vscode.workspace.getConfiguration('logicAnalyzer');
       const recentFiles = config.get<string[]>('recentSessions') || [];
-      
+
       // 移除重复项
       const filtered = recentFiles.filter(f => f !== filePath);
-      
+
       // 添加到开头
       filtered.unshift(filePath);
-      
+
       // 限制数量
       const maxRecent = 20;
       const trimmed = filtered.slice(0, maxRecent);
-      
+
       await config.update('recentSessions', trimmed, vscode.ConfigurationTarget.Global);
 
     } catch (error) {

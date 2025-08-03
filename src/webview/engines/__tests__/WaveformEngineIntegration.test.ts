@@ -133,7 +133,7 @@ describe('第四阶段 - 波形显示核心集成测试', () => {
     }
   }
 
-  test('组件初始化测试', () => {
+  it('组件初始化测试', () => {
     // 验证所有组件都已正确初始化
     expect(waveformRenderer).toBeDefined();
     expect(interactionEngine).toBeDefined();
@@ -147,7 +147,7 @@ describe('第四阶段 - 波形显示核心集成测试', () => {
     console.log('✅ 所有组件初始化验证通过');
   });
 
-  test('数据设置和配置测试', () => {
+  it('数据设置和配置测试', () => {
     const sampleRate = 1000000; // 1MHz
     const firstSample = 0;
     const visibleSamples = 1000;
@@ -168,7 +168,7 @@ describe('第四阶段 - 波形显示核心集成测试', () => {
     }
   });
 
-  test('渲染功能基础测试', () => {
+  it('渲染功能基础测试', () => {
     const sampleRate = 1000000;
     const firstSample = 0;
     const visibleSamples = 1000;
@@ -192,7 +192,7 @@ describe('第四阶段 - 波形显示核心集成测试', () => {
     }
   });
 
-  test('通道布局管理测试', () => {
+  it('通道布局管理测试', () => {
     try {
       // 计算通道布局
       const layout = channelLayoutManager.calculateLayout(mockChannels, canvas.height);
@@ -216,7 +216,7 @@ describe('第四阶段 - 波形显示核心集成测试', () => {
     }
   });
 
-  test('交互功能测试', () => {
+  it('交互功能测试', () => {
     const sampleRate = 1000000;
     const firstSample = 0;
     const visibleSamples = 1000;
@@ -246,7 +246,7 @@ describe('第四阶段 - 波形显示核心集成测试', () => {
     }
   });
 
-  test('标记工具测试', () => {
+  it('标记工具测试', () => {
     const sampleRate = 1000000;
     const firstSample = 0;
     const visibleSamples = 1000;
@@ -281,7 +281,7 @@ describe('第四阶段 - 波形显示核心集成测试', () => {
     }
   });
 
-  test('测量工具测试', () => {
+  it('测量工具测试', () => {
     const sampleRate = 1000000;
 
     try {
@@ -323,7 +323,7 @@ describe('第四阶段 - 波形显示核心集成测试', () => {
     }
   });
 
-  test('时间轴渲染测试', () => {
+  it('时间轴渲染测试', () => {
     const sampleRate = 1000000;
     const firstSample = 0;
     const visibleSamples = 1000;
@@ -353,7 +353,7 @@ describe('第四阶段 - 波形显示核心集成测试', () => {
     }
   });
 
-  test('性能优化器测试', () => {
+  it('性能优化器测试', () => {
     try {
       // 开始帧测量
       performanceOptimizer.startFrame();
@@ -389,7 +389,7 @@ describe('第四阶段 - 波形显示核心集成测试', () => {
     }
   });
 
-  test('虚拟化渲染测试', async () => {
+  it('虚拟化渲染测试', async () => {
     try {
       // 创建通道显示信息
       const channelLayout = channelLayoutManager.calculateLayout(mockChannels, canvas.height);
@@ -416,7 +416,7 @@ describe('第四阶段 - 波形显示核心集成测试', () => {
     }
   });
 
-  test('综合集成测试', async () => {
+  it('综合集成测试', async () => {
     const sampleRate = 1000000;
     const firstSample = 0;
     const visibleSamples = 1000;
@@ -505,7 +505,7 @@ describe('第四阶段 - 波形显示核心集成测试', () => {
     }
   });
 
-  test('性能基准测试', async () => {
+  it('性能基准测试', async () => {
     const sampleRate = 10000000; // 10MHz - 更高的采样率
     const largeDataSize = 100000; // 更大的数据集
     

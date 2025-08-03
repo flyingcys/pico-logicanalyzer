@@ -238,7 +238,7 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="visible = false" :disabled="isExporting">
-            取消
+            关闭
           </el-button>
           <el-button @click="resetOptions" :disabled="isExporting">
             重置
@@ -247,12 +247,19 @@
             预览
           </el-button>
           <el-button
+            v-if="isExporting"
+            type="danger"
+            @click="cancelExport"
+          >
+            取消导出
+          </el-button>
+          <el-button
+            v-else
             type="primary"
             @click="startExport"
-            :loading="isExporting"
             :disabled="!isValidConfiguration"
           >
-            {{ isExporting ? '导出中...' : '开始导出' }}
+            开始导出
           </el-button>
         </div>
       </template>
@@ -350,6 +357,7 @@ const exportStatus = ref<'success' | 'exception' | ''>('');
 const exportStatusText = ref('');
 const processedItems = ref(0);
 const startTime = ref(0);
+const currentCancelToken = ref<{ cancelled: boolean } | null>(null);
 
 const previewVisible = ref(false);
 const previewTab = ref('data');
@@ -533,9 +541,26 @@ function onDialogOpen(): void {
   resetDecoderSelection();
 }
 
-function onDialogClose(): void {
+async function onDialogClose(): Promise<void> {
   if (isExporting.value) {
-    // 可以在这里取消导出操作
+    // 弹出确认对话框
+    try {
+      await ElMessageBox.confirm(
+        '导出正在进行中，确定要取消吗？',
+        '确认取消',
+        {
+          confirmButtonText: '取消导出',
+          cancelButtonText: '继续导出',
+          type: 'warning'
+        }
+      );
+      
+      // 用户选择取消导出
+      cancelExport();
+    } catch {
+      // 用户选择继续导出，不关闭对话框
+      return;
+    }
   }
 }
 
@@ -662,29 +687,109 @@ function startExportFromPreview(): void {
   startExport();
 }
 
-async function performExport(): Promise<string> {
-  const totalSteps = 100;
-  const stepDelay = 50; // 模拟处理时间
-  
-  for (let i = 0; i <= totalSteps; i++) {
-    exportProgress.value = i;
-    processedItems.value = Math.floor((i / totalSteps) * getTotalItems());
-    
-    if (i < 20) {
-      exportStatusText.value = '读取数据';
-    } else if (i < 60) {
-      exportStatusText.value = '处理数据';
-    } else if (i < 90) {
-      exportStatusText.value = '格式化输出';
-    } else {
-      exportStatusText.value = '完成导出';
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, stepDelay));
+function cancelExport(): void {
+  if (currentCancelToken.value) {
+    currentCancelToken.value.cancelled = true;
   }
   
-  // 根据导出类型和格式生成实际数据
-  return generateExportData();
+  exportStatus.value = 'exception';
+  exportStatusText.value = '导出已取消';
+  isExporting.value = false;
+  
+  ElMessage.warning('导出已取消');
+}
+
+async function performExport(): Promise<string> {
+  // 创建取消令牌
+  const cancelToken = { cancelled: false };
+  currentCancelToken.value = cancelToken;
+  
+  // 构建导出选项
+  const options = {
+    filename: exportOptions.value.filename,
+    timeRange: exportOptions.value.timeRange as 'all' | 'visible' | 'selection' | 'custom',
+    customStart: exportOptions.value.customStart,
+    customEnd: exportOptions.value.customEnd,
+    selectedChannels: exportOptions.value.selectedChannels,
+    selectedDecoders: exportOptions.value.selectedDecoders,
+    samplingMode: exportOptions.value.samplingMode as 'original' | 'compressed' | 'interpolated',
+    includeDetails: exportOptions.value.includeDetails,
+    reportSections: exportOptions.value.reportSections,
+    reportFormat: exportOptions.value.reportFormat as 'detailed' | 'summary' | 'technical',
+    advancedOptions: exportOptions.value.advancedOptions,
+    chunkSize: 10000, // 性能优化
+    useStreaming: true, // 启用流式处理
+    cancelToken,
+    onProgress: (progress: number, message: string) => {
+      exportProgress.value = progress;
+      exportStatusText.value = message;
+      processedItems.value = Math.floor((progress / 100) * getTotalItems());
+    }
+  };
+
+  try {
+    // 动态导入DataExportService
+    const { dataExportService } = await import('../../services/DataExportService');
+    
+    let result;
+    
+    switch (exportType.value) {
+      case 'waveform':
+        if (!props.waveformData) {
+          throw new Error('没有可用的波形数据');
+        }
+        result = await dataExportService.exportWaveformData(
+          props.waveformData,
+          exportFormat.value,
+          options
+        );
+        break;
+        
+      case 'decoder':
+        if (!props.decoderResults) {
+          throw new Error('没有可用的解码结果');
+        }
+        result = await dataExportService.exportDecoderResults(
+          props.decoderResults,
+          exportFormat.value,
+          options
+        );
+        break;
+        
+      case 'analysis':
+        if (!props.analysisData) {
+          throw new Error('没有可用的分析数据');
+        }
+        result = await dataExportService.exportAnalysisReport(
+          props.analysisData,
+          exportFormat.value,
+          options
+        );
+        break;
+        
+      case 'all':
+        result = await dataExportService.exportCompleteProject(
+          props.waveformData || {},
+          props.decoderResults || new Map(),
+          props.analysisData || {},
+          options
+        );
+        break;
+        
+      default:
+        throw new Error('不支持的导出类型');
+    }
+    
+    if (!result.success) {
+      throw new Error(result.error || '导出失败');
+    }
+    
+    return result.data as string;
+    
+  } catch (error) {
+    console.error('Export error:', error);
+    throw error;
+  }
 }
 
 function generateExportData(): string {

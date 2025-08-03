@@ -116,7 +116,7 @@ export class DecoderBenchmark {
 
     try {
       console.log(`🚀 开始基准测试: ${decoderId} (${configuration.name})`);
-      
+
       // 生成测试数据
       const testData = this.generateBenchmarkData(
         configuration.sampleCount,
@@ -132,10 +132,10 @@ export class DecoderBenchmark {
 
       for (let i = 0; i < configuration.iterations; i++) {
         const iterationStart = performance.now();
-        
+
         // 记录内存使用
         const memoryBefore = this.getMemoryUsage();
-        
+
         try {
           // 执行解码
           let decodeResult;
@@ -195,7 +195,7 @@ export class DecoderBenchmark {
       // 计算详细统计
       const avgTime = iterationTimes.reduce((sum, time) => sum + time, 0) / iterationTimes.length;
       const variance = iterationTimes.reduce((sum, time) => sum + Math.pow(time - avgTime, 2), 0) / iterationTimes.length;
-      
+
       result.statistics = {
         averageIterationTime: avgTime,
         minIterationTime: Math.min(...iterationTimes),
@@ -303,7 +303,7 @@ export class DecoderBenchmark {
 
     for (let i = 0; i < channelCount; i++) {
       const samples = new Uint8Array(sampleCount);
-      
+
       // 生成不同协议的测试模式
       for (let j = 0; j < sampleCount; j++) {
         if (i === 0) { // 时钟信号
@@ -410,7 +410,7 @@ export class DecoderBenchmark {
     // 为每个解码器计算基线
     decoderGroups.forEach((decoderResults, decoderId) => {
       const successfulResults = decoderResults.filter(r => r.success);
-      
+
       if (successfulResults.length > 0) {
         const avgSpeed = successfulResults.reduce((sum, r) => sum + r.processingSpeed, 0) / successfulResults.length;
         const avgMemory = successfulResults.reduce((sum, r) => sum + r.peakMemoryUsage, 0) / successfulResults.length;
@@ -432,7 +432,7 @@ export class DecoderBenchmark {
    */
   public generateReport(report: BenchmarkReport): string {
     let reportText = '# 解码器性能基准测试报告\n\n';
-    
+
     // 测试概览
     reportText += '## 测试概览\n';
     reportText += `- 测试开始时间: ${new Date(report.startTime).toLocaleString()}\n`;
@@ -443,7 +443,7 @@ export class DecoderBenchmark {
 
     // 性能排名
     reportText += '## 性能排名\n\n';
-    
+
     reportText += '### 处理速度排名\n';
     report.rankings.bySpeed.slice(0, 5).forEach((result, index) => {
       reportText += `${index + 1}. ${result.decoderId}: ${(result.processingSpeed / 1000).toFixed(1)}K样本/秒\n`;
@@ -483,7 +483,7 @@ export class DecoderBenchmark {
       reportText += `- 平均迭代时间: ${result.statistics.averageIterationTime.toFixed(2)}ms\n`;
       reportText += `- 标准差: ${result.statistics.standardDeviation.toFixed(2)}ms\n`;
       reportText += `- 吞吐量: ${result.statistics.throughput.toFixed(2)}MB/s\n`;
-      
+
       if (result.errors.length > 0) {
         reportText += `- 错误信息: ${result.errors.join(', ')}\n`;
       }

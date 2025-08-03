@@ -55,6 +55,8 @@ export class HardwareDriverManager extends EventEmitter {
   private detectors: IDeviceDetector[] = [];
   private detectionCache = new Map<string, DetectedDevice[]>();
   private cacheTimeout = 30000; // 30秒缓存超时
+  private currentDevice: AnalyzerDriverBase | null = null;
+  private connectedDeviceInfo: DetectedDevice | null = null;
 
   constructor() {
     super();
@@ -137,7 +139,7 @@ export class HardwareDriverManager extends EventEmitter {
       new SigrokDetector(),
       new RigolSiglentDetector()
     ];
-    
+
     console.log(`初始化了 ${this.detectors.length} 个设备检测器`);
   }
 
@@ -165,6 +167,13 @@ export class HardwareDriverManager extends EventEmitter {
    */
   getRegisteredDrivers(): DriverRegistration[] {
     return Array.from(this.drivers.values()).sort((a, b) => b.priority - a.priority);
+  }
+
+  /**
+   * 获取所有可用的驱动列表（别名方法）
+   */
+  getAvailableDrivers(): DriverRegistration[] {
+    return this.getRegisteredDrivers();
   }
 
   /**
@@ -258,8 +267,8 @@ export class HardwareDriverManager extends EventEmitter {
       case 'serial':
         return driver.id === 'pico-logic-analyzer' || driver.id === 'sigrok-adapter';
       case 'network':
-        return driver.id === 'saleae-logic' || 
-               driver.id === 'rigol-siglent' || 
+        return driver.id === 'saleae-logic' ||
+               driver.id === 'rigol-siglent' ||
                driver.id === 'network-analyzer';
       case 'usb':
         return driver.id === 'sigrok-adapter';
@@ -387,10 +396,160 @@ export class HardwareDriverManager extends EventEmitter {
   }
 
   /**
+   * 连接到指定设备
+   */
+  async connectToDevice(deviceId: string, params?: any): Promise<{ success: boolean; deviceInfo?: any; error?: string }> {
+    try {
+      // 如果已有设备连接，先断开
+      if (this.currentDevice) {
+        await this.currentDevice.disconnect();
+        this.currentDevice = null;
+        this.connectedDeviceInfo = null;
+      }
+
+      let device: DetectedDevice | null = null;
+
+      if (deviceId === 'autodetect') {
+        // 自动检测最佳设备
+        const devices = await this.detectHardware();
+        if (devices.length === 0) {
+          return { success: false, error: '未检测到任何设备' };
+        }
+        device = devices[0];
+      } else if (deviceId === 'network') {
+        // 网络连接
+        if (!params?.networkConfig) {
+          return { success: false, error: '缺少网络配置参数' };
+        }
+
+        const { host, port } = params.networkConfig;
+        device = {
+          id: 'network',
+          name: 'Network Device',
+          type: 'network',
+          connectionString: `${host}:${port}`,
+          driverType: AnalyzerDriverType.Network,
+          confidence: 0.8
+        };
+      } else {
+        // 查找指定设备
+        const devices = await this.detectHardware();
+        device = devices.find(d => d.id === deviceId) || null;
+
+        if (!device) {
+          // 尝试直接作为连接字符串处理
+          device = {
+            id: deviceId,
+            name: 'Manual Device',
+            type: deviceId.includes(':') ? 'network' : 'serial',
+            connectionString: deviceId,
+            driverType: deviceId.includes(':') ? AnalyzerDriverType.Network : AnalyzerDriverType.Serial,
+            confidence: 0.6
+          };
+        }
+      }
+
+      if (!device) {
+        return { success: false, error: '设备不存在或无法识别' };
+      }
+
+      // 创建驱动实例
+      const driver = await this.createDriver(device);
+
+      // 尝试连接
+      const result = await driver.connect(params);
+
+      if (result.success) {
+        this.currentDevice = driver;
+        this.connectedDeviceInfo = device;
+        this.activeConnections.set(device.id, driver);
+
+        this.emit('deviceConnected', { device, driver });
+
+        return {
+          success: true,
+          deviceInfo: result.deviceInfo
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || '连接失败'
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '未知错误'
+      };
+    }
+  }
+
+  /**
+   * 获取当前连接的设备
+   */
+  getCurrentDevice(): AnalyzerDriverBase | null {
+    return this.currentDevice;
+  }
+
+  /**
+   * 获取当前连接的设备信息
+   */
+  getCurrentDeviceInfo(): DetectedDevice | null {
+    return this.connectedDeviceInfo;
+  }
+
+  /**
+   * 断开当前设备连接
+   */
+  async disconnectCurrentDevice(): Promise<void> {
+    if (this.currentDevice) {
+      try {
+        await this.currentDevice.disconnect();
+
+        if (this.connectedDeviceInfo) {
+          this.activeConnections.delete(this.connectedDeviceInfo.id);
+          this.emit('deviceDisconnected', { device: this.connectedDeviceInfo });
+        }
+      } catch (error) {
+        console.error('断开设备连接失败:', error);
+      } finally {
+        this.currentDevice = null;
+        this.connectedDeviceInfo = null;
+      }
+    }
+  }
+
+  /**
+   * 检查是否有设备连接
+   */
+  isDeviceConnected(): boolean {
+    return this.currentDevice !== null;
+  }
+
+  /**
+   * 获取所有活动连接
+   */
+  getActiveConnections(): Map<string, AnalyzerDriverBase> {
+    return new Map(this.activeConnections);
+  }
+
+  /**
    * 清理资源
    */
-  dispose(): void {
+  async dispose(): Promise<void> {
+    // 断开所有连接
+    const disconnectPromises = Array.from(this.activeConnections.values()).map(
+      driver => driver.disconnect().catch(error => {
+        console.error('清理驱动连接失败:', error);
+      })
+    );
+
+    await Promise.allSettled(disconnectPromises);
+
+    this.activeConnections.clear();
     this.detectionCache.clear();
+    this.currentDevice = null;
+    this.connectedDeviceInfo = null;
     this.removeAllListeners();
   }
 }
@@ -455,12 +614,12 @@ export class NetworkDetector implements IDeviceDetector {
       const baseIPs = this.getLocalNetworkRange();
 
       // 并行扫描多个IP地址
-      const scanPromises = baseIPs.slice(0, 50).map(ip => 
+      const scanPromises = baseIPs.slice(0, 50).map(ip =>
         this.scanHostPorts(ip, commonPorts)
       );
 
       const results = await Promise.allSettled(scanPromises);
-      
+
       for (const result of results) {
         if (result.status === 'fulfilled' && result.value) {
           devices.push(result.value);
@@ -476,11 +635,11 @@ export class NetworkDetector implements IDeviceDetector {
   private getLocalNetworkRange(): string[] {
     // 获取本地网络IP范围（简化实现）
     const baseIPs: string[] = [];
-    
+
     // 常见的私有网络段
     const networks = [
       '192.168.1',
-      '192.168.0', 
+      '192.168.0',
       '10.0.0',
       '172.16.0'
     ];
@@ -550,7 +709,7 @@ export class SaleaeDetector implements IDeviceDetector {
     try {
       // 检查Saleae Logic软件API端口
       const isApiAvailable = await this.checkSaleaeAPI();
-      
+
       if (isApiAvailable) {
         // 查询连接的设备
         const connectedDevices = await this.querySaleaeDevices();
@@ -566,7 +725,7 @@ export class SaleaeDetector implements IDeviceDetector {
   private async checkSaleaeAPI(): Promise<boolean> {
     try {
       const socket = new (require('net').Socket)();
-      
+
       return new Promise((resolve) => {
         socket.setTimeout(2000);
         socket.connect(10429, 'localhost', () => {
@@ -619,7 +778,7 @@ export class SigrokDetector implements IDeviceDetector {
     try {
       // 检查sigrok-cli是否可用
       const isSigrokAvailable = await this.checkSigrokCli();
-      
+
       if (isSigrokAvailable) {
         // 扫描sigrok设备
         const sigrokDevices = await this.scanSigrokDevices();
@@ -635,14 +794,14 @@ export class SigrokDetector implements IDeviceDetector {
   private async checkSigrokCli(): Promise<boolean> {
     try {
       const { spawn } = require('child_process');
-      
+
       return new Promise((resolve) => {
         const process = spawn('sigrok-cli', ['--version']);
-        
+
         process.on('close', (code: number) => {
           resolve(code === 0);
         });
-        
+
         process.on('error', () => {
           resolve(false);
         });
@@ -657,7 +816,7 @@ export class SigrokDetector implements IDeviceDetector {
 
     try {
       const { spawn } = require('child_process');
-      
+
       return new Promise((resolve) => {
         const process = spawn('sigrok-cli', ['--scan']);
         let output = '';
@@ -716,7 +875,7 @@ export class SigrokDetector implements IDeviceDetector {
 }
 
 /**
- * Rigol/Siglent设备检测器  
+ * Rigol/Siglent设备检测器
  */
 export class RigolSiglentDetector implements IDeviceDetector {
   readonly name = 'Rigol/Siglent Detector';
@@ -730,12 +889,12 @@ export class RigolSiglentDetector implements IDeviceDetector {
       const baseIPs = this.getCommonInstrumentIPs();
 
       // 并行扫描
-      const scanPromises = baseIPs.map(ip => 
+      const scanPromises = baseIPs.map(ip =>
         this.scanInstrumentPorts(ip, scpiPorts)
       );
 
       const results = await Promise.allSettled(scanPromises);
-      
+
       for (const result of results) {
         if (result.status === 'fulfilled' && result.value) {
           devices.push(result.value);
@@ -781,15 +940,15 @@ export class RigolSiglentDetector implements IDeviceDetector {
   private async checkInstrumentPort(host: string, port: number): Promise<boolean> {
     return new Promise((resolve) => {
       const socket = new (require('net').Socket)();
-      
+
       socket.setTimeout(2000);
       socket.connect(port, host, () => {
         // 发送IDN查询命令
         socket.write('*IDN?\n');
-        
+
         socket.on('data', (data: Buffer) => {
           const response = data.toString();
-          const isRigolSiglent = response.toLowerCase().includes('rigol') || 
+          const isRigolSiglent = response.toLowerCase().includes('rigol') ||
                                 response.toLowerCase().includes('siglent');
           socket.destroy();
           resolve(isRigolSiglent);

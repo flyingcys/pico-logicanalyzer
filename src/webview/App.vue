@@ -107,6 +107,7 @@
               @mousemove="onCanvasMouseMove"
               @mouseup="onCanvasMouseUp"
               @wheel="onCanvasWheel"
+              @contextmenu="onCanvasRightClick"
             />
 
             <!-- 数据为空时的提示 -->
@@ -171,14 +172,45 @@
 
     <!-- 底部状态栏 -->
     <el-footer height="32px" class="status-bar">
-      <div class="status-left">
-        <span v-if="sampleRate">采样率: {{ formatFrequency(sampleRate) }}</span>
-        <span v-if="totalSamples">样本数: {{ totalSamples.toLocaleString() }}</span>
-      </div>
-      <div class="status-right">
-        <span>{{ fileName || '未命名文件' }}</span>
-      </div>
+      <StatusBar
+        :device-connected="isConnected"
+        :device-name="currentDevice?.name"
+        :capture-state="captureStatus"
+        :sample-data="{ totalSamples, sampleRate, duration: totalSamples / (sampleRate || 1) }"
+        :channels="enabledChannels"
+        :decoders="activeDecoderConfigs"
+        :file-name="fileName"
+        :file-modified="false"
+        :show-performance="true"
+        :show-zoom="true"
+        @zoom-in="zoomIn"
+        @zoom-out="zoomOut"
+        @cancel-operation="handleGlobalOperationCancelled"
+      />
     </el-footer>
+
+    <!-- 右键菜单 -->
+    <ContextMenu
+      v-model:visible="contextMenu.visible"
+      :x="contextMenu.x"
+      :y="contextMenu.y"
+      :items="contextMenu.items"
+      @item-click="handleContextMenuClick"
+    />
+
+    <!-- 快捷键帮助对话框 -->
+    <ShortcutHelpDialog v-model="showShortcutHelp" />
+
+    <!-- 通知中心 -->
+    <NotificationCenter
+      ref="notificationCenterRef"
+      :show-performance-indicator="true"
+      :show-memory-usage="true"
+      @global-operation-cancelled="handleGlobalOperationCancelled"
+      @performance-warning-clicked="handlePerformanceWarningClicked"
+      @memory-details-requested="handleMemoryDetailsRequested"
+      @connection-details-requested="handleConnectionDetailsRequested"
+    />
   </div>
 </template>
 
@@ -193,7 +225,8 @@
     Refresh,
     ZoomIn,
     ZoomOut,
-    FullScreen
+    FullScreen,
+    SuccessFilled
   } from '@element-plus/icons-vue';
   import LanguageSwitcher from './components/LanguageSwitcher.vue';
   import DecoderPanel from './components/DecoderPanel.vue';
@@ -201,9 +234,17 @@
   import MeasurementTools from './components/MeasurementTools.vue';
   import DecoderStatusMonitor from './components/DecoderStatusMonitor.vue';
   import PerformanceAnalyzer from './components/PerformanceAnalyzer.vue';
+  import ContextMenu from './components/ContextMenu.vue';
+  import ShortcutHelpDialog from './components/ShortcutHelpDialog.vue';
+  import NotificationCenter from './components/NotificationCenter.vue';
+  import StatusBar from './components/StatusBar.vue';
   import { decoderManager } from '../decoders/DecoderManager';
   import { channelMappingManager } from '../decoders/ChannelMapping';
   import type { AnalyzerChannel } from '../models/AnalyzerTypes';
+  import { WaveformRenderer } from './engines/WaveformRenderer';
+  import { keyboardShortcutManager } from './utils/KeyboardShortcutManager';
+  import { layoutManager } from './utils/LayoutManager';
+  import type { MenuItem } from './components/ContextMenu.vue';
 
   // 国际化
   const { t } = useI18n();
@@ -242,6 +283,23 @@
   // 画布相关
   const waveformContainer = ref<HTMLElement>();
   const waveformCanvas = ref<HTMLCanvasElement>();
+  let waveformRenderer: WaveformRenderer | null = null;
+
+  // UI优化相关
+  const showShortcutHelp = ref(false);
+  const notificationCenterRef = ref<InstanceType<typeof NotificationCenter>>();
+  const contextMenu = ref({
+    visible: false,
+    x: 0,
+    y: 0,
+    items: [] as MenuItem[]
+  });
+  
+  // 波形渲染状态
+  const viewRange = ref({ firstSample: 0, visibleSamples: 1000 });
+  const zoomLevel = ref(1);
+  const panOffset = ref(0);
+  const captureData = ref<AnalyzerChannel[] | null>(null);
   
   // 计算属性
   const enabledChannels = computed<AnalyzerChannel[]>(() => {
@@ -262,10 +320,12 @@
     await setupCanvas();
     setupMessageHandlers();
     await initializeDecoders();
+    setupUIOptimizations();
   });
 
   onUnmounted(() => {
     cleanupCanvas();
+    cleanupUIOptimizations();
   });
 
   // 初始化应用
@@ -311,23 +371,37 @@
 
     if (!canvas || !container) return;
 
-    const resizeCanvas = () => {
-      const rect = container.getBoundingClientRect();
-      canvas.width = rect.width;
-      canvas.height = rect.height;
-      renderWaveform();
-    };
+    try {
+      // 创建 WaveformRenderer 实例
+      waveformRenderer = new WaveformRenderer(canvas);
+      
+      // 设置初始视图范围
+      waveformRenderer.updateVisibleSamples(
+        viewRange.value.firstSample, 
+        viewRange.value.visibleSamples
+      );
 
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
+      const resizeCanvas = () => {
+        if (waveformRenderer) {
+          waveformRenderer.resize();
+        }
+      };
 
-    // 初始渲染
-    renderWaveform();
+      window.addEventListener('resize', resizeCanvas);
+    } catch (error) {
+      console.error('设置Canvas失败:', error);
+      ElMessage.error('波形渲染器初始化失败');
+    }
   }
 
   // 清理画布
   function cleanupCanvas() {
-    // TODO: 清理画布资源
+    if (waveformRenderer) {
+      waveformRenderer.dispose();
+      waveformRenderer = null;
+    }
+    
+    window.removeEventListener('resize', () => {});
   }
 
   // 设置消息处理器
@@ -360,12 +434,12 @@
       sampleRate.value = data.sampleRate || 0;
       totalSamples.value = data.totalSamples || 0;
       
-      // 更新解码器通道数据
+      // 更新采集数据
       if (data.channels && Array.isArray(data.channels)) {
+        captureData.value = data.channels;
         updateDecoderChannelData(data.channels, data.sampleRate);
+        updateWaveformData();
       }
-      
-      renderWaveform();
     }
   }
   
@@ -373,6 +447,32 @@
   function updateDecoderChannelData(channelData: AnalyzerChannel[], sampleRate: number) {
     if (decoderPanelRef.value && decoderPanelRef.value.updateChannelData) {
       decoderPanelRef.value.updateChannelData(channelData, sampleRate);
+    }
+  }
+
+  // 更新波形数据
+  function updateWaveformData() {
+    if (!waveformRenderer || !captureData.value) return;
+    
+    try {
+      // 设置通道数据和采样频率
+      waveformRenderer.setChannels(captureData.value, sampleRate.value);
+      
+      // 更新视图范围
+      if (totalSamples.value > 0) {
+        const newVisibleSamples = Math.min(viewRange.value.visibleSamples, totalSamples.value);
+        viewRange.value.visibleSamples = newVisibleSamples;
+        waveformRenderer.updateVisibleSamples(viewRange.value.firstSample, newVisibleSamples);
+      }
+      
+      console.log('波形数据已更新:', {
+        channels: captureData.value.length,
+        sampleRate: sampleRate.value,
+        totalSamples: totalSamples.value
+      });
+    } catch (error) {
+      console.error('更新波形数据失败:', error);
+      ElMessage.error('更新波形数据失败');
     }
   }
 
@@ -416,41 +516,161 @@
 
   // 通道操作
   function onChannelToggle(channel: any) {
-    renderWaveform();
+    if (!waveformRenderer || !captureData.value) return;
+    
+    // 更新通道可见性
+    const channelData = captureData.value.find(ch => ch.channelNumber === channel.id);
+    if (channelData) {
+      channelData.hidden = !channel.enabled;
+    }
+    
+    // 触发重新渲染
+    waveformRenderer.invalidateVisual();
   }
 
   function showColorPicker(channel: any) {
     // TODO: 显示颜色选择器
+    ElMessage.info('颜色选择器功能开发中...');
   }
 
   // 波形操作
   function zoomIn() {
-    // TODO: 放大波形
+    if (!waveformRenderer || totalSamples.value === 0) return;
+    
+    const currentVisible = viewRange.value.visibleSamples;
+    const newVisible = Math.max(100, Math.floor(currentVisible * 0.5));
+    
+    if (newVisible !== currentVisible) {
+      viewRange.value.visibleSamples = newVisible;
+      zoomLevel.value *= 2;
+      
+      waveformRenderer.updateVisibleSamples(viewRange.value.firstSample, newVisible);
+      
+      console.log('放大波形:', { newVisible, zoomLevel: zoomLevel.value });
+    }
   }
 
   function zoomOut() {
-    // TODO: 缩小波形
+    if (!waveformRenderer || totalSamples.value === 0) return;
+    
+    const currentVisible = viewRange.value.visibleSamples;
+    const newVisible = Math.min(totalSamples.value, Math.floor(currentVisible * 2));
+    
+    if (newVisible !== currentVisible) {
+      viewRange.value.visibleSamples = newVisible;
+      zoomLevel.value *= 0.5;
+      
+      // 调整起始位置以保持居中
+      const centerSample = viewRange.value.firstSample + currentVisible / 2;
+      const newFirstSample = Math.max(0, Math.min(
+        totalSamples.value - newVisible,
+        Math.floor(centerSample - newVisible / 2)
+      ));
+      
+      viewRange.value.firstSample = newFirstSample;
+      waveformRenderer.updateVisibleSamples(newFirstSample, newVisible);
+      
+      console.log('缩小波形:', { newVisible, newFirstSample, zoomLevel: zoomLevel.value });
+    }
   }
 
   function fitToWindow() {
-    // TODO: 适应窗口
+    if (!waveformRenderer || totalSamples.value === 0) return;
+    
+    viewRange.value.firstSample = 0;
+    viewRange.value.visibleSamples = totalSamples.value;
+    zoomLevel.value = 1;
+    
+    waveformRenderer.updateVisibleSamples(0, totalSamples.value);
+    
+    console.log('适应窗口:', { totalSamples: totalSamples.value });
   }
+
+  // 画布交互状态
+  const isDragging = ref(false);
+  const dragStartX = ref(0);
+  const dragStartFirstSample = ref(0);
 
   // 画布事件处理
   function onCanvasMouseDown(event: MouseEvent) {
-    // TODO: 处理鼠标按下
+    if (!waveformRenderer || totalSamples.value === 0) return;
+    
+    isDragging.value = true;
+    dragStartX.value = event.clientX;
+    dragStartFirstSample.value = viewRange.value.firstSample;
+    
+    event.preventDefault();
   }
 
   function onCanvasMouseMove(event: MouseEvent) {
-    // TODO: 处理鼠标移动
+    if (!isDragging.value || !waveformRenderer || totalSamples.value === 0) return;
+    
+    const canvas = waveformCanvas.value;
+    if (!canvas) return;
+    
+    // 计算拖拽距离
+    const deltaX = event.clientX - dragStartX.value;
+    const canvasWidth = canvas.getBoundingClientRect().width;
+    
+    // 转换为样本偏移
+    const sampleDelta = Math.floor((deltaX / canvasWidth) * viewRange.value.visibleSamples);
+    const newFirstSample = Math.max(0, Math.min(
+      totalSamples.value - viewRange.value.visibleSamples,
+      dragStartFirstSample.value - sampleDelta
+    ));
+    
+    if (newFirstSample !== viewRange.value.firstSample) {
+      viewRange.value.firstSample = newFirstSample;
+      waveformRenderer.updateVisibleSamples(newFirstSample, viewRange.value.visibleSamples);
+    }
+    
+    event.preventDefault();
   }
 
   function onCanvasMouseUp(event: MouseEvent) {
-    // TODO: 处理鼠标释放
+    isDragging.value = false;
+    event.preventDefault();
   }
 
   function onCanvasWheel(event: WheelEvent) {
-    // TODO: 处理滚轮缩放
+    if (!waveformRenderer || totalSamples.value === 0) {
+      event.preventDefault();
+      return;
+    }
+    
+    const canvas = waveformCanvas.value;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseRatio = mouseX / rect.width;
+    
+    // 计算鼠标位置对应的样本
+    const mouseSample = viewRange.value.firstSample + 
+      Math.floor(mouseRatio * viewRange.value.visibleSamples);
+    
+    // 缩放
+    const zoomFactor = event.deltaY > 0 ? 1.2 : 0.8;
+    const currentVisible = viewRange.value.visibleSamples;
+    const newVisible = Math.max(100, Math.min(
+      totalSamples.value,
+      Math.floor(currentVisible * zoomFactor)
+    ));
+    
+    if (newVisible !== currentVisible) {
+      // 以鼠标位置为中心缩放
+      const newFirstSample = Math.max(0, Math.min(
+        totalSamples.value - newVisible,
+        Math.floor(mouseSample - mouseRatio * newVisible)
+      ));
+      
+      viewRange.value.firstSample = newFirstSample;
+      viewRange.value.visibleSamples = newVisible;
+      zoomLevel.value = totalSamples.value / newVisible;
+      
+      waveformRenderer.updateVisibleSamples(newFirstSample, newVisible);
+    }
+    
     event.preventDefault();
   }
 
@@ -564,114 +784,290 @@
     }
   }
 
-  // 渲染波形
-  function renderWaveform() {
-    const canvas = waveformCanvas.value;
-    if (!canvas || !hasData.value) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // 清空画布
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (!hasData.value) return;
-
-    // 绘制波形
-    drawSampleWaveform(ctx, canvas.width, canvas.height);
-    
-    // 绘制解码结果
-    if (decoderResults.value.size > 0) {
-      drawDecoderAnnotations(ctx, canvas.width, canvas.height);
-    }
-  }
-  
   // 渲染解码结果
   function renderDecoderResults(results: Map<string, any>) {
-    // 触发波形重新渲染以包含解码注释
-    renderWaveform();
-  }
-  
-  // 绘制解码器注释
-  function drawDecoderAnnotations(ctx: CanvasRenderingContext2D, width: number, height: number) {
-    const annotationHeight = 20;
-    let yOffset = height - annotationHeight;
-    
-    for (const [decoderId, results] of decoderResults.value) {
-      if (!Array.isArray(results)) continue;
-      
-      ctx.fillStyle = 'rgba(64, 158, 255, 0.1)';
-      ctx.strokeStyle = '#409eff';
-      ctx.lineWidth = 1;
-      
-      for (const result of results.slice(0, 10)) { // 限制显示数量
-        const startX = (result.startSample / totalSamples.value) * width;
-        const endX = (result.endSample / totalSamples.value) * width;
-        
-        // 绘制注释背景
-        ctx.fillRect(startX, yOffset, endX - startX, annotationHeight);
-        ctx.strokeRect(startX, yOffset, endX - startX, annotationHeight);
-        
-        // 绘制注释文本
-        ctx.fillStyle = '#409eff';
-        ctx.font = '10px monospace';
-        const text = result.values[0] || 'Unknown';
-        const textWidth = ctx.measureText(text).width;
-        
-        if (textWidth <= endX - startX - 4) {
-          ctx.fillText(text, startX + 2, yOffset + 12);
-        }
-      }
-      
-      yOffset -= annotationHeight + 2;
-      if (yOffset < 0) break; // 避免超出画布
+    // 使用 WaveformRenderer 的注释系统
+    if (waveformRenderer) {
+      // TODO: 将解码结果转换为 WaveformRenderer 的注释格式
+      console.log('解码结果已更新，需要实现注释显示功能');
     }
   }
 
-  // 绘制示例波形
-  function drawSampleWaveform(ctx: CanvasRenderingContext2D, width: number, height: number) {
-    const channelHeight = height / Math.max(channels.value.filter(c => c.enabled).length, 1);
-    let yOffset = 0;
-
-    channels.value.forEach((channel, index) => {
-      if (!channel.enabled) return;
-
-      ctx.strokeStyle = channel.color;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-
-      // 绘制数字信号波形示例
-      const samples = 100;
-      let isHigh = false;
-      let x = 0;
-      const stepWidth = width / samples;
-
-      ctx.moveTo(
-        0,
-        yOffset + channelHeight / 2 + (isHigh ? -channelHeight / 4 : channelHeight / 4)
-      );
-
-      for (let i = 0; i < samples; i++) {
-        // 模拟数字信号变化
-        if (Math.random() < 0.1) {
-          isHigh = !isHigh;
-        }
-
-        const y = yOffset + channelHeight / 2 + (isHigh ? -channelHeight / 4 : channelHeight / 4);
-        ctx.lineTo(x, y);
-        x += stepWidth;
-        ctx.lineTo(x, y);
-      }
-
-      ctx.stroke();
-
-      // 绘制通道标签
-      ctx.fillStyle = '#666';
-      ctx.font = '12px monospace';
-      ctx.fillText(channel.name, 5, yOffset + 15);
-
-      yOffset += channelHeight;
+  // UI优化相关方法
+  function setupUIOptimizations() {
+    // 设置键盘快捷键事件监听
+    window.addEventListener('waveform-action', handleWaveformAction);
+    window.addEventListener('channel-toggle', handleChannelToggle);
+    window.addEventListener('panel-toggle', handlePanelToggle);
+    window.addEventListener('show-shortcut-help', () => {
+      showShortcutHelp.value = true;
     });
+    
+    // 加载保存的布局
+    const savedLayout = layoutManager.getCurrentLayout();
+    applyLayout(savedLayout);
+    
+    // 设置连接状态监控
+    if (notificationCenterRef.value) {
+      notificationCenterRef.value.updateConnectionStatus('disconnected');
+    }
+  }
+
+  function cleanupUIOptimizations() {
+    window.removeEventListener('waveform-action', handleWaveformAction);
+    window.removeEventListener('channel-toggle', handleChannelToggle);
+    window.removeEventListener('panel-toggle', handlePanelToggle);
+    
+    // 保存当前布局
+    layoutManager.saveCurrentLayout();
+    
+    // 销毁管理器
+    keyboardShortcutManager.destroy();
+    layoutManager.destroy();
+  }
+
+  function handleWaveformAction(event: CustomEvent) {
+    const action = event.detail;
+    switch (action) {
+      case 'zoomIn':
+        zoomIn();
+        break;
+      case 'zoomOut':
+        zoomOut();
+        break;
+      case 'fitToWindow':
+        fitToWindow();
+        break;
+      case 'panLeft':
+        panHorizontal(-0.1);
+        break;
+      case 'panRight':
+        panHorizontal(0.1);
+        break;
+      case 'panUp':
+        panVertical(-1);
+        break;
+      case 'panDown':
+        panVertical(1);
+        break;
+    }
+  }
+
+  function handleChannelToggle(event: CustomEvent) {
+    const channelIndex = event.detail;
+    if (channelIndex >= 0 && channelIndex < channels.value.length) {
+      channels.value[channelIndex].enabled = !channels.value[channelIndex].enabled;
+      onChannelToggle(channels.value[channelIndex]);
+    }
+  }
+
+  function handlePanelToggle(event: CustomEvent) {
+    const panel = event.detail;
+    if (panel === 'decoder') {
+      activeTab.value = 'decoder';
+    } else if (panel === 'measurement') {
+      activeTab.value = 'measurement';
+    }
+  }
+
+  function panHorizontal(ratio: number) {
+    if (!waveformRenderer || totalSamples.value === 0) return;
+    
+    const panAmount = Math.floor(viewRange.value.visibleSamples * ratio);
+    const newFirstSample = Math.max(0, Math.min(
+      totalSamples.value - viewRange.value.visibleSamples,
+      viewRange.value.firstSample + panAmount
+    ));
+    
+    if (newFirstSample !== viewRange.value.firstSample) {
+      viewRange.value.firstSample = newFirstSample;
+      waveformRenderer.updateVisibleSamples(newFirstSample, viewRange.value.visibleSamples);
+      
+      // 更新布局管理器
+      layoutManager.updateWaveformState({
+        firstSample: newFirstSample,
+        visibleSamples: viewRange.value.visibleSamples
+      });
+    }
+  }
+
+  function panVertical(direction: number) {
+    // 垂直滚动通道 - 实现通道列表滚动
+    const channelList = document.querySelector('.channels-list');
+    if (channelList) {
+      channelList.scrollTop += direction * 30; // 滚动一个通道的高度
+    }
+  }
+
+  function onCanvasRightClick(event: MouseEvent) {
+    event.preventDefault();
+    
+    const items: MenuItem[] = [
+      {
+        id: 'zoom-in',
+        label: '放大',
+        icon: ZoomIn,
+        shortcut: keyboardShortcutManager.formatShortcut(['Ctrl', '+']),
+        action: zoomIn
+      },
+      {
+        id: 'zoom-out',
+        label: '缩小',
+        icon: ZoomOut,
+        shortcut: keyboardShortcutManager.formatShortcut(['Ctrl', '-']),
+        action: zoomOut
+      },
+      {
+        id: 'fit-window',
+        label: '适应窗口',
+        icon: FullScreen,
+        shortcut: keyboardShortcutManager.formatShortcut(['Ctrl', '0']),
+        action: fitToWindow
+      },
+      {
+        id: 'divider-1',
+        type: 'divider'
+      },
+      {
+        id: 'add-marker',
+        label: '添加标记',
+        icon: ZoomIn,
+        action: () => addMarkerAtPosition(event.offsetX)
+      },
+      {
+        id: 'measure-time',
+        label: '测量时间间隔',
+        icon: ZoomIn,
+        action: () => startTimeMeasurement(event.offsetX)
+      },
+      {
+        id: 'divider-2',
+        type: 'divider'
+      },
+      {
+        id: 'export-visible',
+        label: '导出可见区域',
+        icon: ZoomIn,
+        action: exportVisibleArea
+      },
+      {
+        id: 'save-region',
+        label: '保存为区域',
+        icon: ZoomIn,
+        action: () => saveAsRegion(event.offsetX)
+      }
+    ];
+    
+    contextMenu.value = {
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      items
+    };
+  }
+
+  function handleContextMenuClick(item: MenuItem) {
+    console.log('右键菜单项点击:', item.label);
+  }
+
+  function addMarkerAtPosition(x: number) {
+    if (!waveformRenderer) return;
+    
+    // 计算点击位置对应的样本号
+    const canvas = waveformCanvas.value;
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = x / rect.width;
+      const samplePosition = viewRange.value.firstSample + 
+        Math.floor(ratio * viewRange.value.visibleSamples);
+      
+      // 添加标记 - 这里需要实现标记功能
+      console.log('在样本', samplePosition, '位置添加标记');
+      
+      if (notificationCenterRef.value) {
+        notificationCenterRef.value.showTooltip({
+          type: 'success',
+          title: '标记已添加',
+          description: `在样本 ${samplePosition} 位置添加了标记`,
+          icon: SuccessFilled,
+          position: { x: event?.clientX || 0, y: event?.clientY || 0 },
+          duration: 3000
+        });
+      }
+    }
+  }
+
+  function startTimeMeasurement(x: number) {
+    console.log('开始时间测量，起始位置:', x);
+    if (notificationCenterRef.value) {
+      notificationCenterRef.value.showHelpBubble(
+        '时间测量',
+        '拖拽鼠标到结束位置来测量时间间隔',
+        waveformCanvas.value!,
+        'top'
+      );
+    }
+  }
+
+  function exportVisibleArea() {
+    if (window.vscode) {
+      window.vscode.postMessage({
+        type: 'exportVisibleArea',
+        data: {
+          firstSample: viewRange.value.firstSample,
+          visibleSamples: viewRange.value.visibleSamples
+        }
+      });
+    }
+  }
+
+  function saveAsRegion(x: number) {
+    console.log('保存为区域，位置:', x);
+    // 实现区域保存功能
+  }
+
+  function applyLayout(layout: any) {
+    // 应用保存的布局配置
+    if (layout.panels.leftPanel) {
+      // 应用左面板配置
+    }
+    if (layout.panels.rightPanel) {
+      // 应用右面板配置
+    }
+    if (layout.waveform) {
+      // 应用波形视图配置  
+      viewRange.value.firstSample = layout.waveform.firstSample || 0;
+      viewRange.value.visibleSamples = layout.waveform.visibleSamples || 1000;
+      zoomLevel.value = layout.waveform.zoomLevel || 1;
+    }
+    if (layout.channels) {
+      // 应用通道配置
+      layout.channels.forEach((channelConfig: any, index: number) => {
+        if (index < channels.value.length) {
+          channels.value[index].enabled = channelConfig.visible;
+          if (channelConfig.color) {
+            channels.value[index].color = channelConfig.color;
+          }
+        }
+      });
+    }
+  }
+
+  // 通知中心事件处理
+  function handleGlobalOperationCancelled() {
+    console.log('全局操作已取消');
+  }
+
+  function handlePerformanceWarningClicked() {
+    console.log('性能警告被点击');
+  }
+
+  function handleMemoryDetailsRequested() {
+    console.log('请求内存详情');
+  }
+
+  function handleConnectionDetailsRequested() {
+    console.log('请求连接详情');
   }
 
   // 工具函数

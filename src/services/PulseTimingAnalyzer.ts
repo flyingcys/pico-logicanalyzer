@@ -129,34 +129,34 @@ export class PulseTimingAnalyzer {
     }
   ): Promise<TimingAnalysisResult> {
     const startTime = Date.now();
-    
+
     // 检测所有脉冲事件
     const pulseEvents = await this.detectPulseEvents(channels, sampleRate, options);
-    
+
     // 分析时序关系
     const timingRelations = await this.analyzeTimingRelations(pulseEvents, sampleRate);
-    
+
     // 协议合规性检查
     let protocolCompliance: ProtocolComplianceResult | undefined;
     if (options?.protocolTemplate) {
       protocolCompliance = await this.checkProtocolCompliance(
-        pulseEvents, 
-        timingRelations, 
+        pulseEvents,
+        timingRelations,
         options.protocolTemplate
       );
     }
-    
+
     // 生成眼图
     let eyeDiagram: EyeDiagramData | undefined;
     if (options?.generateEyeDiagram) {
       eyeDiagram = await this.generateEyeDiagram(channels, sampleRate);
     }
-    
+
     // 统计分析
     const statisticalSummary = await this.generateTimingStatistics(
-      pulseEvents, 
-      timingRelations, 
-      channels, 
+      pulseEvents,
+      timingRelations,
+      channels,
       sampleRate
     );
 
@@ -181,14 +181,14 @@ export class PulseTimingAnalyzer {
     options?: any
   ): Promise<PulseEvent[]> {
     const events: PulseEvent[] = [];
-    const glitchThresholdSamples = options?.glitchThreshold ? 
-      Math.max(1, Math.floor((options.glitchThreshold * 1e-9) * sampleRate)) : 
+    const glitchThresholdSamples = options?.glitchThreshold ?
+      Math.max(1, Math.floor((options.glitchThreshold * 1e-9) * sampleRate)) :
       Math.max(1, Math.floor(sampleRate / 1000000)); // 默认1μs
 
     for (const channel of channels) {
       if (!channel.samples || channel.hidden) continue;
 
-      const samples = channel.samples;
+      const { samples } = channel;
       let currentState = -1;
       let stateStartSample = 0;
       let stateStartTime = 0;
@@ -288,10 +288,10 @@ export class PulseTimingAnalyzer {
       // 跨通道时序关系
       if (currentEvent.channel !== nextEvent.channel) {
         // 时钟到数据的建立时间
-        if (currentEvent.type === 'rising' && 
+        if (currentEvent.type === 'rising' &&
             (nextEvent.type === 'high' || nextEvent.type === 'low')) {
           const setupTime = nextEvent.startTime - currentEvent.startTime;
-          
+
           relations.push({
             type: 'setup',
             source: currentEvent,
@@ -304,10 +304,10 @@ export class PulseTimingAnalyzer {
         }
 
         // 保持时间
-        if (nextEvent.type === 'rising' && 
+        if (nextEvent.type === 'rising' &&
             (currentEvent.type === 'high' || currentEvent.type === 'low')) {
           const holdTime = nextEvent.startTime - currentEvent.endTime;
-          
+
           relations.push({
             type: 'hold',
             source: currentEvent,
@@ -322,11 +322,11 @@ export class PulseTimingAnalyzer {
         // 时钟偏移
         if (currentEvent.type === 'rising' && nextEvent.type === 'rising') {
           const skew = Math.abs(nextEvent.startTime - currentEvent.startTime);
-          
+
           relations.push({
             type: 'skew',
             source: currentEvent,
-            target: nextEvent,  
+            target: nextEvent,
             measured: skew,
             margin: skew,
             passed: skew < 1e-9, // 小于1ns认为是好的
@@ -351,7 +351,7 @@ export class PulseTimingAnalyzer {
         // 周期测量
         if (currentEvent.type === 'rising' && nextEvent.type === 'rising') {
           const period = nextEvent.startTime - currentEvent.startTime;
-          
+
           relations.push({
             type: 'period',
             source: currentEvent,
@@ -385,13 +385,13 @@ export class PulseTimingAnalyzer {
       totalChecks++;
 
       // 查找相关的时序关系
-      const relevantRelations = relations.filter(r => 
-        r.type === requirement.type || 
+      const relevantRelations = relations.filter(r =>
+        r.type === requirement.type ||
         (requirement.type === 'clock_period' && r.type === 'period')
       );
 
       for (const relation of relevantRelations) {
-        const measured = relation.measured;
+        const { measured } = relation;
         let passed = true;
         let margin = 0;
 
@@ -400,7 +400,7 @@ export class PulseTimingAnalyzer {
           if (measured < requirement.minValue) {
             passed = false;
             margin = requirement.minValue - measured;
-            
+
             violations.push({
               type: requirement.name,
               severity: 'critical',
@@ -424,7 +424,7 @@ export class PulseTimingAnalyzer {
           if (measured > requirement.maxValue) {
             passed = false;
             margin = measured - requirement.maxValue;
-            
+
             violations.push({
               type: requirement.name,
               severity: 'critical',
@@ -451,10 +451,10 @@ export class PulseTimingAnalyzer {
     if (violations.length > 0) {
       recommendations.push('检查信号完整性和PCB布线');
       recommendations.push('验证时钟质量和电源稳定性');
-      
+
       const setupViolations = violations.filter(v => v.type.includes('setup'));
       const holdViolations = violations.filter(v => v.type.includes('hold'));
-      
+
       if (setupViolations.length > 0) {
         recommendations.push('增加建立时间余量，考虑降低时钟频率');
       }
@@ -485,13 +485,13 @@ export class PulseTimingAnalyzer {
     const width = 100;
     const height = 100;
     const data: number[][] = Array(height).fill(null).map(() => Array(width).fill(0));
-    
+
     // 寻找时钟通道
-    const clockChannel = channels.find(ch => 
-      ch.channelName.toLowerCase().includes('clk') || 
+    const clockChannel = channels.find(ch =>
+      ch.channelName.toLowerCase().includes('clk') ||
       ch.channelName.toLowerCase().includes('clock')
     );
-    
+
     if (!clockChannel || !clockChannel.samples) {
       return {
         width,
@@ -504,8 +504,8 @@ export class PulseTimingAnalyzer {
 
     // 检测时钟边沿
     const clockEdges: number[] = [];
-    const samples = clockChannel.samples;
-    
+    const { samples } = clockChannel;
+
     for (let i = 1; i < samples.length; i++) {
       if (samples[i] === 1 && samples[i - 1] === 0) {
         clockEdges.push(i);
@@ -523,8 +523,8 @@ export class PulseTimingAnalyzer {
       };
     }
 
-    const averagePeriod = clockEdges.length > 1 ? 
-      (clockEdges[clockEdges.length - 1] - clockEdges[0]) / (clockEdges.length - 1) : 
+    const averagePeriod = clockEdges.length > 1 ?
+      (clockEdges[clockEdges.length - 1] - clockEdges[0]) / (clockEdges.length - 1) :
       100;
 
     // 对于每个数据通道，叠加到眼图中
@@ -539,7 +539,7 @@ export class PulseTimingAnalyzer {
         for (let i = startSample; i < endSample; i++) {
           const x = Math.floor(((i - startSample) / averagePeriod) * width);
           const y = channel.samples[i] === 1 ? height - 1 : 0;
-          
+
           if (x >= 0 && x < width && y >= 0 && y < height) {
             data[y][x]++;
           }
@@ -565,31 +565,31 @@ export class PulseTimingAnalyzer {
   private calculateEyeOpening(data: number[][]): number {
     const height = data.length;
     const width = data[0].length;
-    
+
     // 简化的眼图开度计算
     let maxOpening = 0;
-    
+
     for (let x = Math.floor(width * 0.3); x < Math.floor(width * 0.7); x++) {
       let highestLow = 0;
       let lowestHigh = height - 1;
-      
+
       // 寻找在这个时间点的最高低电平和最低高电平
       for (let y = 0; y < Math.floor(height / 2); y++) {
         if (data[y][x] > 0) {
           highestLow = Math.max(highestLow, y);
         }
       }
-      
+
       for (let y = Math.floor(height / 2); y < height; y++) {
         if (data[y][x] > 0) {
-          lowestHigh = Math.min(lowestHigh, y);  
+          lowestHigh = Math.min(lowestHigh, y);
         }
       }
-      
+
       const opening = lowestHigh - highestLow;
       maxOpening = Math.max(maxOpening, opening);
     }
-    
+
     return (maxOpening / height) * 100;
   }
 
@@ -605,21 +605,21 @@ export class PulseTimingAnalyzer {
     // 脉冲统计
     const pulseEvents = events.filter(e => e.type === 'high' || e.type === 'low');
     const totalPulses = pulseEvents.length;
-    
+
     const pulseWidths = pulseEvents.map(e => e.duration);
-    const averagePulseWidth = pulseWidths.length > 0 ? 
+    const averagePulseWidth = pulseWidths.length > 0 ?
       pulseWidths.reduce((sum, w) => sum + w, 0) / pulseWidths.length : 0;
-    
-    const pulseWidthVariance = pulseWidths.length > 1 ? 
+
+    const pulseWidthVariance = pulseWidths.length > 1 ?
       Math.sqrt(pulseWidths.reduce((sum, w) => sum + Math.pow(w - averagePulseWidth, 2), 0) / pulseWidths.length) : 0;
 
     // 周期统计
     const periodRelations = relations.filter(r => r.type === 'period');
     const periods = periodRelations.map(r => r.measured);
-    const averagePeriod = periods.length > 0 ? 
+    const averagePeriod = periods.length > 0 ?
       periods.reduce((sum, p) => sum + p, 0) / periods.length : 0;
-    
-    const periodJitter = periods.length > 1 ? 
+
+    const periodJitter = periods.length > 1 ?
       Math.sqrt(periods.reduce((sum, p) => sum + Math.pow(p - averagePeriod, 2), 0) / periods.length) : 0;
 
     // 时钟偏移统计
@@ -655,22 +655,22 @@ export class PulseTimingAnalyzer {
     // 简化的信号完整性计算
     const risingEdges = events.filter(e => e.type === 'rising');
     const fallingEdges = events.filter(e => e.type === 'falling');
-    
+
     // 假设边沿时间为一个采样周期（简化）
     const samplePeriod = 1 / sampleRate;
     const averageRiseTime = samplePeriod;
     const averageFallTime = samplePeriod;
-    
+
     // 边沿速率估算 (V/s)
     const assumedVoltageSwing = 3.3; // 假设3.3V摆幅
     const edgeRate = assumedVoltageSwing / averageRiseTime;
-    
+
     // 噪声容限估算
     const noiseMargin = assumedVoltageSwing * 0.1; // 假设10%噪声容限
-    
+
     // 功耗估算 (非常简化)
     const totalTransitions = risingEdges.length + fallingEdges.length;
-    const averageFrequency = totalTransitions > 0 ? 
+    const averageFrequency = totalTransitions > 0 ?
       totalTransitions / (events[events.length - 1]?.endTime || 1) : 0;
     const powerConsumption = averageFrequency * 0.001; // 假设每Hz消耗1μW
 
@@ -719,7 +719,7 @@ export class PulseTimingAnalyzer {
         clockChannel: 0, // SCL
         dataChannels: [1] // SDA
       },
-      
+
       'SPI': {
         name: 'SPI',
         requirements: [

@@ -1,7 +1,7 @@
 import { HardwareCompatibilityDatabase } from './HardwareCompatibilityDatabase';
 import { DatabaseManager } from './DatabaseManager';
 import { DeviceInfo } from '../models/AnalyzerTypes';
-import { AnalyzerDriverBase } from '../drivers/AnalyzerDriverBase';
+// import { AnalyzerDriverBase } from '../drivers/AnalyzerDriverBase'; // 暂时注释掉未使用的导入
 
 /**
  * 数据库集成工具
@@ -40,7 +40,7 @@ export class DatabaseIntegration {
       await this.database.initialize();
       await this.manager.initialize();
       this.isInitialized = true;
-      
+
       console.log('数据库集成已初始化');
     } catch (error) {
       console.error('数据库集成初始化失败:', error);
@@ -63,7 +63,7 @@ export class DatabaseIntegration {
 
     // 使用智能匹配获取推荐
     const matchResult = await this.manager.smartDeviceMatching(deviceInfo);
-    
+
     const recommendedDrivers: string[] = [];
     const compatibilityInfo: any[] = [];
     const connectionStrings: string[] = [];
@@ -82,9 +82,9 @@ export class DatabaseIntegration {
         knownIssues: match.driverCompatibility.knownIssues,
         workarounds: match.driverCompatibility.workarounds
       });
-      
+
       connectionStrings.push(match.connectionOptions.defaultConnectionString);
-      
+
       // 生成设置说明
       setupInstructions.push(...this.generateSetupInstructions(match));
     }
@@ -117,7 +117,7 @@ export class DatabaseIntegration {
    */
   private generateSetupInstructions(deviceEntry: any): string[] {
     const instructions: string[] = [];
-    
+
     // 基于设备类别生成说明
     switch (deviceEntry.category) {
       case 'usb-la':
@@ -127,13 +127,13 @@ export class DatabaseIntegration {
           instructions.push(`3. 配置串口参数: ${deviceEntry.connectionOptions.connectionParameters.baudRate} bps`);
         }
         break;
-        
+
       case 'network-la':
         instructions.push('1. 确保设备连接到网络');
         instructions.push(`2. 配置设备IP地址或使用默认地址: ${deviceEntry.connectionOptions.defaultConnectionString}`);
         instructions.push('3. 检查网络连通性');
         break;
-        
+
       case 'benchtop':
         instructions.push('1. 通过以太网或USB连接设备');
         instructions.push('2. 配置设备网络设置（如适用）');
@@ -157,7 +157,7 @@ export class DatabaseIntegration {
    * 基于历史数据预测驱动性能
    */
   async predictDriverPerformance(
-    driverName: string, 
+    driverName: string,
     deviceInfo: Partial<DeviceInfo>
   ): Promise<{
     expectedPerformance: {
@@ -174,7 +174,7 @@ export class DatabaseIntegration {
     // 查询相似设备的历史性能数据
     const similarDevices = await this.database.queryDevices({
       manufacturer: deviceInfo.manufacturer,
-      driverName: driverName
+      driverName
     });
 
     if (similarDevices.length === 0) {
@@ -191,10 +191,10 @@ export class DatabaseIntegration {
     }
 
     // 计算平均性能指标
-    const avgValidationScore = similarDevices.reduce((sum, device) => 
+    const avgValidationScore = similarDevices.reduce((sum, device) =>
       sum + device.testStatus.testResults.driverValidation, 0) / similarDevices.length;
-    
-    const avgUserRating = similarDevices.reduce((sum, device) => 
+
+    const avgUserRating = similarDevices.reduce((sum, device) =>
       sum + device.communityFeedback.userRating, 0) / similarDevices.length;
 
     // 收集风险因素
@@ -290,9 +290,9 @@ export class DatabaseIntegration {
 
     try {
       await this.database.addUserFeedback(
-        deviceId, 
-        feedback.rating, 
-        feedback.comment, 
+        deviceId,
+        feedback.rating,
+        feedback.comment,
         feedback.issues || []
       );
 
@@ -326,26 +326,26 @@ export class DatabaseIntegration {
     }
 
     const timestamp = new Date().toLocaleString();
-    
+
     if (format === 'markdown') {
-      let report = `# 硬件兼容性报告\n\n`;
+      let report = '# 硬件兼容性报告\n\n';
       report += `**生成时间**: ${timestamp}\n\n`;
-      
-      report += `## 总体统计\n\n`;
+
+      report += '## 总体统计\n\n';
       report += `- 总设备数: ${stats.totalDevices}\n`;
       report += `- 平均用户评分: ${stats.averageUserRating.toFixed(2)}/5.0\n\n`;
-      
-      report += `## 设备类别分布\n\n`;
+
+      report += '## 设备类别分布\n\n';
       Object.entries(stats.devicesByCategory).forEach(([category, count]) => {
         report += `- ${category}: ${count}\n`;
       });
-      
-      report += `\n## 制造商分布\n\n`;
+
+      report += '\n## 制造商分布\n\n';
       Object.entries(stats.devicesByManufacturer).forEach(([manufacturer, count]) => {
         report += `- ${manufacturer}: ${count}\n`;
       });
 
-      report += `\n## 认证级别分布\n\n`;
+      report += '\n## 认证级别分布\n\n';
       Object.entries(stats.certificationLevels).forEach(([level, count]) => {
         report += `- ${level}: ${count}\n`;
       });
@@ -354,7 +354,7 @@ export class DatabaseIntegration {
     }
 
     // HTML格式
-    let html = `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html>
 <head>
     <title>硬件兼容性报告</title>

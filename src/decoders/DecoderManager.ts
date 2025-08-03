@@ -5,12 +5,12 @@
  */
 
 import { DecoderBase } from './DecoderBase';
-import { 
-  StreamingDecoderBase, 
-  StreamingConfig, 
-  StreamingProgress, 
-  StreamingResult,
-  PerformanceMonitor 
+import {
+  StreamingDecoderBase,
+  StreamingConfig,
+  StreamingProgress,
+  _StreamingResult,
+  PerformanceMonitor
 } from './StreamingDecoder';
 import {
   DecoderInfo,
@@ -79,13 +79,13 @@ export interface DecodingTree {
 export class DecoderManager {
   /** 注册的解码器映射 */
   private decoders = new Map<string, typeof DecoderBase>();
-  
+
   /** 注册的流式解码器映射 */
   private streamingDecoders = new Map<string, typeof StreamingDecoderBase>();
 
   /** 解码器实例缓存 */
   private decoderInstances = new Map<string, DecoderBase>();
-  
+
   /** 流式解码器实例缓存 */
   private streamingDecoderInstances = new Map<string, StreamingDecoderBase>();
 
@@ -94,12 +94,36 @@ export class DecoderManager {
 
   /** 当前输出数据 */
   private currentOutputs: Map<string, any[]> | null = null;
-  
+
   /** 性能监控器 */
   public readonly performanceMonitor = new PerformanceMonitor();
-  
+
   /** 活跃的流式处理任务 */
   private activeStreamingTasks = new Map<string, StreamingDecoderBase>();
+
+  constructor() {
+    this.registerBuiltinDecoders();
+  }
+
+  /**
+   * 注册内置解码器
+   */
+  private registerBuiltinDecoders(): void {
+    try {
+      // 导入内置解码器
+      const { I2CDecoder } = require('./protocols/I2CDecoder');
+      const { SPIDecoder } = require('./protocols/SPIDecoder');
+      const { UARTDecoder } = require('./protocols/UARTDecoder');
+
+      this.registerDecoder('i2c', I2CDecoder);
+      this.registerDecoder('spi', SPIDecoder);
+      this.registerDecoder('uart', UARTDecoder);
+
+      console.log('内置解码器注册完成: i2c, spi, uart');
+    } catch (error) {
+      console.warn('内置解码器注册失败:', error);
+    }
+  }
 
   /**
    * 注册解码器类
@@ -107,10 +131,15 @@ export class DecoderManager {
    * @param decoderClass 解码器类
    */
   public registerDecoder(id: string, decoderClass: typeof DecoderBase): void {
+    // 如果已存在，清除缓存
+    if (this.decoders.has(id)) {
+      this.decoderInstances.delete(id);
+    }
+
     this.decoders.set(id, decoderClass);
     console.log(`Decoder registered: ${id}`);
   }
-  
+
   /**
    * 注册流式解码器类
    * @param id 解码器标识符
@@ -128,7 +157,7 @@ export class DecoderManager {
   public getAvailableDecoders(): DecoderInfo[] {
     const decoderInfos: DecoderInfo[] = [];
 
-    for (const [id, DecoderClass] of this.decoders.entries()) {
+    for (const [id, _DecoderClass] of this.decoders.entries()) {
       try {
         const instance = this.createDecoderInstance(id);
         if (instance) {
@@ -150,7 +179,41 @@ export class DecoderManager {
   public getDecoder(decoderId: string): DecoderBase | null {
     return this.createDecoderInstance(decoderId);
   }
-  
+
+  /**
+   * 创建解码器实例（测试期望的公共方法）
+   * @param decoderId 解码器ID
+   * @returns 解码器实例
+   * @throws 如果解码器不存在则抛出异常
+   */
+  public createDecoder(decoderId: string): DecoderBase {
+    const instance = this.createDecoderInstance(decoderId);
+    if (!instance) {
+      throw new Error(`Unknown decoder: ${decoderId}`);
+    }
+    // 每次都创建新实例，不使用缓存
+    const DecoderClass = this.decoders.get(decoderId);
+    if (DecoderClass) {
+      return new DecoderClass();
+    }
+    throw new Error(`Unknown decoder: ${decoderId}`);
+  }
+
+  /**
+   * 获取特定解码器的详细信息
+   * @param decoderId 解码器ID
+   * @returns 解码器信息或undefined
+   */
+  public getDecoderInfo(decoderId: string): DecoderInfo | undefined {
+    try {
+      const instance = this.createDecoderInstance(decoderId);
+      return instance?.getInfo();
+    } catch (error) {
+      console.error(`Failed to get info for decoder ${decoderId}:`, error);
+      return undefined;
+    }
+  }
+
   /**
    * 根据ID获取流式解码器
    * @param decoderId 解码器ID
@@ -159,7 +222,7 @@ export class DecoderManager {
   public getStreamingDecoder(decoderId: string): StreamingDecoderBase | null {
     return this.createStreamingDecoderInstance(decoderId);
   }
-  
+
   /**
    * 检查解码器是否支持流式处理
    * @param decoderId 解码器ID
@@ -195,7 +258,7 @@ export class DecoderManager {
       return null;
     }
   }
-  
+
   /**
    * 创建流式解码器实例
    * @param decoderId 解码器ID
@@ -416,7 +479,7 @@ export class DecoderManager {
       // 执行解码
       const results = decoder.decode(sampleRate, channels, options);
       const endTime = performance.now();
-      
+
       const totalSamples = Math.max(...channels.map(ch => ch.samples?.length || 0));
       const processingTime = endTime - startTime;
       const processingSpeed = totalSamples / (processingTime / 1000);
@@ -446,7 +509,7 @@ export class DecoderManager {
       };
     }
   }
-  
+
   /**
    * 流式执行解码器
    * @param decoderId 解码器ID
@@ -465,23 +528,23 @@ export class DecoderManager {
     channels: ChannelData[],
     options: DecoderOptionValue[] = [],
     channelMapping: DecoderSelectedChannel[] = [],
-    streamingConfig: Partial<StreamingConfig> = {},
-    onProgress?: (progress: StreamingProgress) => void,
-    onPartialResult?: (results: DecoderResult[], chunk: number) => void
+    _streamingConfig: Partial<StreamingConfig> = {},
+    onProgress?: (_progress: StreamingProgress) => void,
+    onPartialResult?: (_results: DecoderResult[], _chunk: number) => void
   ): Promise<DecoderExecutionResult> {
     const taskId = `${decoderId}_${Date.now()}`;
     const startTime = performance.now();
-    
+
     try {
       const streamingDecoder = this.getStreamingDecoder(decoderId);
       if (!streamingDecoder) {
         // 如果没有流式版本，尝试使用常规解码器
         return await this.executeDecoder(decoderId, sampleRate, channels, options, channelMapping);
       }
-      
+
       // 记录活跃任务
       this.activeStreamingTasks.set(taskId, streamingDecoder);
-      
+
       // 设置回调
       if (onProgress) {
         streamingDecoder.onProgress = onProgress;
@@ -489,11 +552,11 @@ export class DecoderManager {
       if (onPartialResult) {
         streamingDecoder.onPartialResult = onPartialResult;
       }
-      
+
       // 开始性能监控
       this.performanceMonitor.start();
       this.performanceMonitor.addCheckpoint('streaming_start');
-      
+
       // 执行流式解码
       const streamingResult = await streamingDecoder.streamingDecode(
         sampleRate,
@@ -501,13 +564,13 @@ export class DecoderManager {
         options,
         channelMapping
       );
-      
+
       this.performanceMonitor.addCheckpoint('streaming_complete');
-      const performanceReport = this.performanceMonitor.getReport();
-      
+      const _performanceReport = this.performanceMonitor.getReport();
+
       const endTime = performance.now();
       const executionTime = endTime - startTime;
-      
+
       return {
         decoderName: decoderId,
         results: streamingResult.results,
@@ -522,11 +585,11 @@ export class DecoderManager {
           chunksProcessed: streamingResult.statistics.chunksProcessed
         }
       };
-      
+
     } catch (error) {
       const endTime = performance.now();
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+
       return {
         decoderName: decoderId,
         results: [],
@@ -540,13 +603,13 @@ export class DecoderManager {
       this.activeStreamingTasks.delete(taskId);
     }
   }
-  
+
   /**
    * 停止所有活跃的流式处理任务
    */
   public stopAllStreamingTasks(): void {
     console.log(`🛑 停止 ${this.activeStreamingTasks.size} 个活跃的流式处理任务`);
-    
+
     for (const [taskId, decoder] of this.activeStreamingTasks) {
       try {
         decoder.stop();
@@ -555,15 +618,49 @@ export class DecoderManager {
         console.error(`  停止任务失败 ${taskId}:`, error);
       }
     }
-    
+
     this.activeStreamingTasks.clear();
   }
-  
+
   /**
    * 获取活跃流式任务数量
    */
   public getActiveStreamingTaskCount(): number {
     return this.activeStreamingTasks.size;
+  }
+
+  /**
+   * 获取活跃的解码器列表
+   * @returns 活跃解码器ID数组
+   */
+  public getActiveDecoders(): string[] {
+    return Array.from(this.activeStreamingTasks.keys());
+  }
+
+  /**
+   * 停止特定的解码器
+   * @param decoderId 解码器ID
+   * @returns 是否成功停止
+   */
+  public stopDecoder(decoderId: string): boolean {
+    const taskIds = Array.from(this.activeStreamingTasks.keys()).filter(id => id.startsWith(decoderId));
+    let stopped = false;
+
+    for (const taskId of taskIds) {
+      const decoder = this.activeStreamingTasks.get(taskId);
+      if (decoder) {
+        try {
+          decoder.stop();
+          this.activeStreamingTasks.delete(taskId);
+          stopped = true;
+          console.log(`已停止解码器任务: ${taskId}`);
+        } catch (error) {
+          console.error(`停止解码器任务失败 ${taskId}:`, error);
+        }
+      }
+    }
+
+    return stopped;
   }
 
   /**
@@ -573,14 +670,21 @@ export class DecoderManager {
    */
   public searchDecoders(query: string): DecoderInfo[] {
     const allDecoders = this.getAvailableDecoders();
+
+    // 处理空查询
+    if (!query || query.trim() === '') {
+      return allDecoders;
+    }
+
     const lowerQuery = query.toLowerCase();
 
     return allDecoders.filter(
       decoder =>
+        decoder.id.toLowerCase().includes(lowerQuery) ||
         decoder.name.toLowerCase().includes(lowerQuery) ||
         decoder.longname.toLowerCase().includes(lowerQuery) ||
         decoder.description.toLowerCase().includes(lowerQuery) ||
-        decoder.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+        (decoder.tags && decoder.tags.some(tag => tag.toLowerCase().includes(lowerQuery)))
     );
   }
 
@@ -594,8 +698,52 @@ export class DecoderManager {
     const lowerTags = tags.map(tag => tag.toLowerCase());
 
     return allDecoders.filter(decoder =>
-      decoder.tags.some(tag => lowerTags.includes(tag.toLowerCase()))
+      decoder.tags && decoder.tags.some(tag => lowerTags.includes(tag.toLowerCase()))
     );
+  }
+
+  /**
+   * 按类别获取解码器
+   * @param category 类别名称
+   * @returns 匹配的解码器信息
+   */
+  public getDecodersByCategory(category: string): DecoderInfo[] {
+    const allDecoders = this.getAvailableDecoders();
+    const lowerCategory = category.toLowerCase();
+
+    return allDecoders.filter(decoder => {
+      // 根据解码器ID和类型判断类别
+      if (lowerCategory === 'serial') {
+        return ['uart', 'rs232', 'rs485'].some(id => decoder.id.includes(id));
+      } else if (lowerCategory === 'bus') {
+        return ['i2c', 'spi', 'can', 'lin'].some(id => decoder.id.includes(id));
+      } else if (lowerCategory === 'memory') {
+        return ['spi_flash', 'eeprom', 'sd'].some(id => decoder.id.includes(id));
+      } else if (lowerCategory === 'audio') {
+        return ['i2s', 'pcm', 'pdm'].some(id => decoder.id.includes(id));
+      }
+
+      // 检查标签中是否包含类别
+      return decoder.tags && decoder.tags.some(tag => tag.toLowerCase().includes(lowerCategory));
+    });
+  }
+
+  /**
+   * 获取所有支持的类别
+   * @returns 类别数组
+   */
+  public getSupportedCategories(): string[] {
+    return ['serial', 'bus', 'memory', 'audio', 'network', 'display', 'sensor'];
+  }
+
+  /**
+   * 获取解码器的标签
+   * @param decoderId 解码器ID
+   * @returns 标签数组
+   */
+  public getDecoderTags(decoderId: string): string[] {
+    const info = this.getDecoderInfo(decoderId);
+    return info?.tags || [];
   }
 
   /**
@@ -605,7 +753,7 @@ export class DecoderManager {
   public dispose(): void {
     // 停止所有流式处理任务
     this.stopAllStreamingTasks();
-    
+
     // 清理常规解码器实例
     for (const [id, instance] of this.decoderInstances) {
       try {
@@ -617,7 +765,7 @@ export class DecoderManager {
         console.error(`Error disposing decoder ${id}:`, error);
       }
     }
-    
+
     // 清理流式解码器实例
     for (const [id, instance] of this.streamingDecoderInstances) {
       try {

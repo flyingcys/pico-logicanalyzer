@@ -14,18 +14,21 @@ import {
 import { ProtocolHelper } from '../tools/ProtocolHelper';
 
 /**
+ * 协议类型枚举
+ */
+export enum ProtocolType {
+  TCP = 'tcp',
+  UDP = 'udp',
+  HTTP = 'http',
+  WEBSOCKET = 'websocket'
+}
+
+/**
  * 网络驱动模板
  * 专门用于网络连接的逻辑分析器设备
  * 支持TCP、UDP、HTTP等多种网络协议
  */
 export class NetworkDriverTemplate extends AnalyzerDriverBase {
-  // 协议类型枚举
-  enum ProtocolType {
-    TCP = 'tcp',
-    UDP = 'udp',
-    HTTP = 'http',
-    WEBSOCKET = 'websocket'
-  }
 
   // 设备属性
   get deviceVersion(): string | null {
@@ -97,7 +100,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
     this._port = port;
     this._protocol = protocol;
     this._authToken = authToken || '';
-    
+
     console.log(`初始化网络驱动: ${protocol}://${host}:${port}`);
   }
 
@@ -107,7 +110,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   async connect(params?: ConnectionParams): Promise<ConnectionResult> {
     try {
       console.log(`连接网络设备: ${this._protocol}://${this._host}:${this._port}`);
-      
+
       // 根据协议类型建立连接
       switch (this._protocol) {
         case ProtocolType.TCP:
@@ -133,7 +136,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
 
       // 查询设备信息
       await this.queryDeviceInfo();
-      
+
       this._isConnected = true;
 
       return {
@@ -161,7 +164,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   private async connectTCP(): Promise<void> {
     return new Promise((resolve, reject) => {
       this._tcpSocket = new Socket();
-      
+
       const timeout = setTimeout(() => {
         this._tcpSocket?.destroy();
         reject(new Error('TCP连接超时'));
@@ -189,7 +192,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   private async connectUDP(): Promise<void> {
     return new Promise((resolve, reject) => {
       this._udpSocket = createSocket('udp4');
-      
+
       this._udpSocket.bind(0, () => {
         console.log(`UDP连接已建立: ${this._host}:${this._port}`);
         resolve();
@@ -214,14 +217,14 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
         `http://${this._host}:${this._port}`,
         '/api/ping'
       );
-      
+
       // 使用fetch或axios测试连接
       console.log(`HTTP连接测试: ${testUrl}`);
       // const response = await fetch(testUrl);
       // if (!response.ok) {
       //   throw new Error(`HTTP服务器响应错误: ${response.status}`);
       // }
-      
+
       console.log('HTTP连接验证成功');
     } catch (error) {
       throw new Error(`HTTP连接失败: ${error}`);
@@ -236,11 +239,11 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
       try {
         // 这里需要WebSocket库支持
         console.log(`WebSocket连接: ws://${this._host}:${this._port}`);
-        
+
         // 示例实现（需要ws库）:
         // const WebSocket = require('ws');
         // this._wsSocket = new WebSocket(`ws://${this._host}:${this._port}`);
-        // 
+        //
         // this._wsSocket.on('open', () => {
         //   console.log('WebSocket连接已建立');
         //   resolve();
@@ -248,7 +251,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
         //
         // this._wsSocket.on('error', reject);
         // this._wsSocket.on('message', this.handleWebSocketMessage.bind(this));
-        
+
         // 临时实现
         setTimeout(resolve, 100);
       } catch (error) {
@@ -262,7 +265,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
    */
   private async authenticate(): Promise<void> {
     console.log('执行身份验证...');
-    
+
     const authRequest = {
       command: 'authenticate',
       token: this._authToken,
@@ -270,7 +273,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
     };
 
     const response = await this.sendNetworkCommand(authRequest);
-    
+
     if (!response.success) {
       throw new Error(`身份验证失败: ${response.error}`);
     }
@@ -291,7 +294,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
       };
 
       const response = await this.sendNetworkCommand(deviceInfoRequest);
-      
+
       if (response.success && response.data) {
         const info = response.data;
         this._version = info.name || info.model || 'Network Device';
@@ -315,8 +318,8 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   private handleTCPData(data: Buffer): void {
     try {
       // 假设数据是JSON格式，以换行符分隔
-      const messages = data.toString().split('\\n').filter(msg => msg.trim());
-      
+      const messages = data.toString().split('\n').filter(msg => msg.trim());
+
       for (const message of messages) {
         const response = JSON.parse(message);
         this.handleNetworkResponse(response);
@@ -343,13 +346,13 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
    */
   private handleNetworkResponse(response: any): void {
     const commandId = response.id || response.commandId;
-    
+
     if (commandId && this._pendingCommands.has(commandId)) {
       const pending = this._pendingCommands.get(commandId)!;
       this._pendingCommands.delete(commandId);
-      
+
       clearTimeout(pending.timeout);
-      
+
       if (response.success !== false) {
         pending.resolve(response);
       } else {
@@ -364,7 +367,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   private handleConnectionClose(): void {
     console.log('网络连接已关闭');
     this._isConnected = false;
-    
+
     // 拒绝所有待处理的命令
     this._pendingCommands.forEach(pending => {
       clearTimeout(pending.timeout);
@@ -378,7 +381,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
    */
   async disconnect(): Promise<void> {
     console.log('断开网络连接...');
-    
+
     if (this._capturing) {
       await this.stopCapture();
     }
@@ -430,20 +433,20 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
       };
 
       const response = await this.sendNetworkCommand(statusRequest);
-      
+
       return {
         isConnected: this._isConnected,
         isCapturing: this._capturing,
         batteryVoltage: response.data?.batteryVoltage || 'N/A',
         temperature: response.data?.temperature,
-        lastError: response.data?.lastError
+        errorStatus: response.data?.lastError
       };
     } catch (error) {
       return {
         isConnected: this._isConnected,
         isCapturing: this._capturing,
         batteryVoltage: 'N/A',
-        lastError: error instanceof Error ? error.message : '状态查询失败'
+        errorStatus: error instanceof Error ? error.message : '状态查询失败'
       };
     }
   }
@@ -493,7 +496,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
       };
 
       const response = await this.sendNetworkCommand(captureConfig);
-      
+
       if (!response.success) {
         throw new Error(response.error || '采集启动失败');
       }
@@ -523,12 +526,12 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
         const statusRequest = {
           command: 'get_capture_status',
           sessionId: this._sessionId,
-          captureId: captureId,
+          captureId,
           timestamp: Date.now()
         };
 
         const response = await this.sendNetworkCommand(statusRequest);
-        
+
         if (response.data?.status === 'completed') {
           clearInterval(checkInterval);
           await this.retrieveCaptureData(session, captureId);
@@ -561,13 +564,13 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
       const dataRequest = {
         command: 'get_capture_data',
         sessionId: this._sessionId,
-        captureId: captureId,
+        captureId,
         format: 'json', // 或 'binary'
         timestamp: Date.now()
       };
 
       const response = await this.sendNetworkCommand(dataRequest);
-      
+
       if (!response.success) {
         throw new Error(response.error || '获取采集数据失败');
       }
@@ -595,7 +598,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
     if (data.channels && Array.isArray(data.channels)) {
       for (const channel of session.captureChannels) {
         const channelData = data.channels.find((ch: any) => ch.number === channel.channelNumber);
-        
+
         if (channelData && channelData.samples) {
           if (Array.isArray(channelData.samples)) {
             channel.samples = new Uint8Array(channelData.samples);
@@ -634,7 +637,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
 
     try {
       console.log('停止网络采集...');
-      
+
       const stopRequest = {
         command: 'stop_capture',
         sessionId: this._sessionId,
@@ -656,7 +659,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   async enterBootloader(): Promise<boolean> {
     try {
       console.log('进入引导加载程序模式...');
-      
+
       const bootloaderRequest = {
         command: 'enter_bootloader',
         sessionId: this._sessionId,
@@ -682,15 +685,15 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   ): Promise<boolean> {
     try {
       console.log('发送网络配置...');
-      
+
       const configRequest = {
         command: 'set_network_config',
         sessionId: this._sessionId,
         config: {
           ssid: accessPointName,
-          password: password,
-          ipAddress: ipAddress,
-          port: port
+          password,
+          ipAddress,
+          port
         },
         timestamp: Date.now()
       };
@@ -747,7 +750,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
         switch (this._protocol) {
           case ProtocolType.TCP:
             if (this._tcpSocket) {
-              this._tcpSocket.write(commandData + '\\n');
+              this._tcpSocket.write(`${commandData}\n`);
             } else {
               throw new Error('TCP连接未建立');
             }
@@ -794,7 +797,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
     //   },
     //   body: commandData
     // });
-    // 
+    //
     // return await response.json();
 
     // 临时实现
@@ -844,11 +847,11 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
    */
   override dispose(): void {
     console.log('清理网络驱动资源...');
-    
+
     if (this._isConnected) {
       this.disconnect();
     }
-    
+
     super.dispose();
   }
 }

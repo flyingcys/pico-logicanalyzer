@@ -105,7 +105,7 @@ export class DataCompressor {
     channelData: Uint8Array,
     algorithm?: CompressionAlgorithm
   ): Promise<CompressionResult> {
-    
+
     const startTime = performance.now();
     const originalSize = channelData.length;
     const useAlgorithm = algorithm || this.config.algorithm;
@@ -157,8 +157,8 @@ export class DataCompressor {
           compressedData = channelData;
       }
 
-      const compressedSize = compressedData instanceof Uint8Array ? 
-        compressedData.length : 
+      const compressedSize = compressedData instanceof Uint8Array ?
+        compressedData.length :
         new TextEncoder().encode(compressedData).length;
 
       const compressionRatio = compressedSize / originalSize;
@@ -198,7 +198,7 @@ export class DataCompressor {
     originalSize: number,
     metadata?: any
   ): Promise<DecompressionResult> {
-    
+
     const startTime = performance.now();
 
     try {
@@ -223,8 +223,8 @@ export class DataCompressor {
 
         case CompressionAlgorithm.None:
         default:
-          decompressedData = compressedData instanceof Uint8Array ? 
-            compressedData : 
+          decompressedData = compressedData instanceof Uint8Array ?
+            compressedData :
             new TextEncoder().encode(compressedData);
       }
 
@@ -259,7 +259,7 @@ export class DataCompressor {
    */
   private compressRLE(data: Uint8Array): { data: Uint8Array; metadata: any } {
     const compressed: number[] = [];
-    let metadata = { runs: 0, maxRun: 0 };
+    const metadata = { runs: 0, maxRun: 0 };
 
     if (data.length === 0) {
       return { data: new Uint8Array(), metadata };
@@ -276,7 +276,7 @@ export class DataCompressor {
         compressed.push(currentValue, runLength);
         metadata.runs++;
         metadata.maxRun = Math.max(metadata.maxRun, runLength);
-        
+
         currentValue = data[i];
         runLength = 1;
       }
@@ -287,9 +287,9 @@ export class DataCompressor {
     metadata.runs++;
     metadata.maxRun = Math.max(metadata.maxRun, runLength);
 
-    return { 
-      data: new Uint8Array(compressed), 
-      metadata 
+    return {
+      data: new Uint8Array(compressed),
+      metadata
     };
   }
 
@@ -297,15 +297,15 @@ export class DataCompressor {
    * RLE解压
    */
   private decompressRLE(compressedData: Uint8Array | string, metadata?: any): Uint8Array {
-    const data = compressedData instanceof Uint8Array ? 
-      compressedData : 
+    const data = compressedData instanceof Uint8Array ?
+      compressedData :
       new TextEncoder().encode(compressedData);
 
     const decompressed: number[] = [];
 
     for (let i = 0; i < data.length; i += 2) {
       if (i + 1 >= data.length) break;
-      
+
       const value = data[i];
       const count = data[i + 1];
 
@@ -334,19 +334,21 @@ export class DataCompressor {
 
     for (let i = 1; i < data.length; i++) {
       const delta = data[i] - previousValue;
-      compressed.push(delta & 0xFF); // 确保在字节范围内
-      
+      // 正确处理负数转换为无符号字节
+      const deltaByte = delta < 0 ? (256 + delta) : delta;
+      compressed.push(deltaByte & 0xFF);
+
       if (delta !== 0) {
         metadata.changes++;
         metadata.maxDelta = Math.max(metadata.maxDelta, Math.abs(delta));
       }
-      
+
       previousValue = data[i];
     }
 
-    return { 
-      data: new Uint8Array(compressed), 
-      metadata 
+    return {
+      data: new Uint8Array(compressed),
+      metadata
     };
   }
 
@@ -354,8 +356,8 @@ export class DataCompressor {
    * 差分解压
    */
   private decompressDelta(compressedData: Uint8Array | string, metadata?: any): Uint8Array {
-    const data = compressedData instanceof Uint8Array ? 
-      compressedData : 
+    const data = compressedData instanceof Uint8Array ?
+      compressedData :
       new TextEncoder().encode(compressedData);
 
     if (data.length === 0) {
@@ -386,10 +388,10 @@ export class DataCompressor {
 
     // 构建字典 - 使用固定长度模式
     const patternLength = 4;
-    
+
     for (let i = 0; i <= data.length - patternLength; i++) {
       const pattern = Array.from(data.slice(i, i + patternLength)).join(',');
-      
+
       if (!patternMap.has(pattern) && patterns.length < 256) {
         patternMap.set(pattern, patterns.length);
         patterns.push(pattern);
@@ -402,12 +404,12 @@ export class DataCompressor {
     let i = 0;
     while (i < data.length) {
       let matched = false;
-      
+
       // 尝试匹配最长模式
       if (i <= data.length - patternLength) {
         const pattern = Array.from(data.slice(i, i + patternLength)).join(',');
         const patternIndex = patternMap.get(pattern);
-        
+
         if (patternIndex !== undefined) {
           compressed.push(255, patternIndex); // 255作为转义符
           i += patternLength;
@@ -415,7 +417,7 @@ export class DataCompressor {
           metadata.patterns++;
         }
       }
-      
+
       if (!matched) {
         compressed.push(data[i]);
         i++;
@@ -439,8 +441,8 @@ export class DataCompressor {
    * 字典解压
    */
   private decompressDictionary(compressedData: Uint8Array | string, metadata?: any): Uint8Array {
-    const data = compressedData instanceof Uint8Array ? 
-      compressedData : 
+    const data = compressedData instanceof Uint8Array ?
+      compressedData :
       new TextEncoder().encode(compressedData);
 
     if (data.length < 3) {
@@ -450,7 +452,7 @@ export class DataCompressor {
     let offset = 0;
     const dictSize = data[offset++];
     const patternLength = data[offset++];
-    
+
     // 重建字典
     const patterns: number[][] = [];
     for (let i = 0; i < dictSize; i++) {
@@ -496,19 +498,20 @@ export class DataCompressor {
       frequency.set(byte, (frequency.get(byte) || 0) + 1);
     }
 
-    // 构建霍夫曼树（简化版本）
+    // 构建霍夫曼编码表（简化版本）
     const codes = new Map<number, string>();
     const sortedFreq = Array.from(frequency.entries()).sort((a, b) => b[1] - a[1]);
-    
-    // 简单的霍夫曼编码分配
-    let codeLength = 1;
-    let code = 0;
-    for (const [value, freq] of sortedFreq) {
-      codes.set(value, code.toString(2).padStart(codeLength, '0'));
-      code++;
-      if (code >= (1 << codeLength)) {
-        codeLength++;
-        code = 0;
+
+    // 为最频繁的值分配最短编码
+    if (sortedFreq.length === 1) {
+      // 只有一个值的特殊情况
+      codes.set(sortedFreq[0][0], '0');
+    } else {
+      // 简单的编码分配：频率越高，编码越短
+      for (let i = 0; i < sortedFreq.length; i++) {
+        const [value] = sortedFreq[i];
+        const codeLength = Math.max(1, Math.ceil(Math.log2(sortedFreq.length)));
+        codes.set(value, i.toString(2).padStart(codeLength, '0'));
       }
     }
 
@@ -518,16 +521,19 @@ export class DataCompressor {
       encodedBits += codes.get(byte) || '0';
     }
 
+    // 计算需要的字节数（向上取整）
+    const byteCount = Math.ceil(encodedBits.length / 8);
+
     // 转换为字节数组
     const encodedBytes: number[] = [];
-    for (let i = 0; i < encodedBits.length; i += 8) {
-      const chunk = encodedBits.slice(i, i + 8).padEnd(8, '0');
+    for (let i = 0; i < byteCount; i++) {
+      const chunk = encodedBits.slice(i * 8, (i + 1) * 8).padEnd(8, '0');
       encodedBytes.push(parseInt(chunk, 2));
     }
 
     const metadata = {
       codes: Array.from(codes.entries()),
-      originalBits: data.length * 8,
+      originalLength: data.length,
       encodedBits: encodedBits.length
     };
 
@@ -538,8 +544,8 @@ export class DataCompressor {
    * 霍夫曼解压
    */
   private decompressHuffman(compressedData: Uint8Array | string, metadata: any): Uint8Array {
-    const data = compressedData instanceof Uint8Array ? 
-      compressedData : 
+    const data = compressedData instanceof Uint8Array ?
+      compressedData :
       new TextEncoder().encode(compressedData);
 
     // 重建编码表
@@ -554,19 +560,24 @@ export class DataCompressor {
       bits += byte.toString(2).padStart(8, '0');
     }
 
-    // 截取到原始长度
+    // 截取到编码的实际长度
     bits = bits.slice(0, metadata.encodedBits);
 
     // 解码
     const decoded: number[] = [];
     let currentCode = '';
-    
+
     for (const bit of bits) {
       currentCode += bit;
       const value = codes.get(currentCode);
       if (value !== undefined) {
         decoded.push(value);
         currentCode = '';
+
+        // 如果已经解码到预期长度，停止
+        if (decoded.length >= metadata.originalLength) {
+          break;
+        }
       }
     }
 
@@ -583,23 +594,30 @@ export class DataCompressor {
       CompressionAlgorithm.Dictionary
     ];
 
-    let bestResult: CompressionResult = {
-      success: false,
-      algorithm: CompressionAlgorithm.None,
-      originalSize: data.length,
-      compressedSize: data.length,
-      compressionRatio: 1.0,
-      compressionTime: 0,
-      data: data
-    };
+    let bestResult: CompressionResult | null = null;
 
     // 测试各种算法
     for (const algorithm of algorithms) {
       const result = await this.compressChannelData(data, algorithm);
-      
-      if (result.success && result.compressionRatio < bestResult.compressionRatio) {
-        bestResult = result;
+
+      if (result.success) {
+        if (!bestResult || result.compressionRatio < bestResult.compressionRatio) {
+          bestResult = result;
+        }
       }
+    }
+
+    // 如果没有找到合适的压缩算法，返回原始数据
+    if (!bestResult) {
+      bestResult = {
+        success: true,
+        algorithm: CompressionAlgorithm.None,
+        originalSize: data.length,
+        compressedSize: data.length,
+        compressionRatio: 1.0,
+        compressionTime: 0,
+        data
+      };
     }
 
     return bestResult;
@@ -618,7 +636,7 @@ export class DataCompressor {
     overallRatio: number;
     totalTime: number;
   }> {
-    
+
     const results: CompressionResult[] = [];
     let totalOriginalSize = 0;
     let totalCompressedSize = 0;
@@ -628,7 +646,7 @@ export class DataCompressor {
       if (channel.samples) {
         const result = await this.compressChannelData(channel.samples, algorithm);
         results.push(result);
-        
+
         totalOriginalSize += result.originalSize;
         totalCompressedSize += result.compressedSize;
         totalTime += result.compressionTime;
@@ -690,7 +708,7 @@ export class StorageOptimizer {
       deduplicationSavings: number;
     };
   }> {
-    
+
     const sizeBefore = this.calculateDataSize(data);
     let deduplicationSavings = 0;
 
@@ -727,7 +745,7 @@ export class StorageOptimizer {
     data: DigitalSampleData;
     savings: number;
   } {
-    
+
     const uniqueChannels = new Map<string, Uint8Array>();
     const channelHashes: string[] = [];
     let totalSavings = 0;
@@ -736,7 +754,7 @@ export class StorageOptimizer {
     for (let i = 0; i < digitalData.data.length; i++) {
       const channelData = digitalData.data[i];
       const hash = this.calculateDataHash(channelData);
-      
+
       if (uniqueChannels.has(hash)) {
         // 重复通道
         channelHashes.push(hash);
@@ -748,14 +766,8 @@ export class StorageOptimizer {
       }
     }
 
-    // 重建数据数组，引用唯一通道
-    const deduplicatedData: Uint8Array[] = [];
-    for (const hash of channelHashes) {
-      const uniqueData = uniqueChannels.get(hash);
-      if (uniqueData) {
-        deduplicatedData.push(uniqueData);
-      }
-    }
+    // 构建去重后的数据数组（只包含唯一通道）
+    const deduplicatedData = Array.from(uniqueChannels.values());
 
     return {
       data: {
@@ -771,23 +783,23 @@ export class StorageOptimizer {
    */
   private async applyTieredStorage(data: UnifiedCaptureData): Promise<void> {
     const currentTime = Date.now();
-    
+
     // 根据访问频率决定存储层级
     if (data.samples.digital) {
       for (let i = 0; i < data.samples.digital.data.length; i++) {
         const channelKey = `channel_${i}`;
         const accessCount = this.accessCounters.get(channelKey) || 0;
         const lastAccess = this.lastAccessTime.get(channelKey) || currentTime;
-        
+
         // 冷数据压缩
-        if (accessCount < this.config.hotDataThreshold && 
+        if (accessCount < this.config.hotDataThreshold &&
             currentTime - lastAccess > this.config.coldDataDelay) {
-          
+
           const compressor = new DataCompressor({
             algorithm: CompressionAlgorithm.RLE,
             quality: CompressionQuality.BestRatio
           });
-          
+
           const result = await compressor.compressChannelData(data.samples.digital.data[i]);
           if (result.success && result.compressionRatio < 0.8) {
             // 将压缩数据存储在扩展字段中
@@ -810,18 +822,18 @@ export class StorageOptimizer {
    */
   private calculateDataSize(data: UnifiedCaptureData): number {
     let totalSize = 0;
-    
+
     // 计算样本数据大小
     if (data.samples.digital) {
       for (const channelData of data.samples.digital.data) {
         totalSize += channelData.byteLength;
       }
     }
-    
+
     // 计算元数据大小（估算）
     totalSize += JSON.stringify(data.metadata).length;
     totalSize += JSON.stringify(data.channels).length;
-    
+
     return totalSize;
   }
 
@@ -855,18 +867,18 @@ export class StorageOptimizer {
     averageAccessCount: number;
     totalAccesses: number;
   } {
-    
+
     const totalChannels = this.accessCounters.size;
     let hotChannels = 0;
     let totalAccesses = 0;
-    
+
     for (const [key, count] of this.accessCounters) {
       totalAccesses += count;
       if (count >= this.config.hotDataThreshold) {
         hotChannels++;
       }
     }
-    
+
     return {
       totalChannels,
       hotChannels,

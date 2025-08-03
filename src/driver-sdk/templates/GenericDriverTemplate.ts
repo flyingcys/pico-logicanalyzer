@@ -65,7 +65,7 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
   constructor(connectionString: string) {
     super();
     this._connectionString = connectionString;
-    
+
     // TODO: 解析连接字符串，设置设备参数
     this.parseConnectionString(connectionString);
   }
@@ -77,7 +77,7 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
   private parseConnectionString(connectionString: string): void {
     // TODO: 根据实际设备实现连接字符串解析
     console.log(`解析连接字符串: ${connectionString}`);
-    
+
     // 示例实现：
     if (connectionString.includes(':')) {
       // 假设是网络设备
@@ -96,20 +96,20 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
   async connect(params?: ConnectionParams): Promise<ConnectionResult> {
     try {
       console.log(`连接设备: ${this._connectionString}`);
-      
+
       // TODO: 实现实际的设备连接逻辑
       // 1. 建立物理连接（串口、网络等）
       // 2. 发送初始化命令
       // 3. 查询设备信息
       // 4. 验证设备兼容性
-      
+
       // 示例实现：
       await this.establishConnection(params);
       await this.initializeDevice();
       await this.queryDeviceInfo();
-      
+
       this._isConnected = true;
-      
+
       return {
         success: true,
         deviceInfo: {
@@ -145,7 +145,7 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
       // const port = new SerialPort(this._connectionString);
       // await port.open();
     }
-    
+
     // 模拟连接延迟
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
@@ -155,13 +155,13 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
    */
   private async initializeDevice(): Promise<void> {
     console.log('初始化设备...');
-    
+
     // TODO: 发送初始化命令
     // 例如：
     // - 重置设备
     // - 设置默认参数
     // - 清除错误状态
-    
+
     // 示例命令发送
     // await this.sendCommand('*RST'); // SCPI reset
     // await this.sendCommand('*CLS'); // Clear status
@@ -172,17 +172,17 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
    */
   private async queryDeviceInfo(): Promise<void> {
     console.log('查询设备信息...');
-    
+
     // TODO: 查询设备信息
     // 例如：
     // - 设备型号和版本
     // - 硬件能力参数
     // - 固件版本
-    
+
     // 示例查询
     // const idn = await this.sendCommand('*IDN?');
     // this.parseDeviceInfo(idn);
-    
+
     // 临时设置默认值
     this._version = 'Generic Device v1.0';
   }
@@ -192,17 +192,17 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
    */
   async disconnect(): Promise<void> {
     console.log('断开设备连接...');
-    
+
     // TODO: 实现断开连接逻辑
     // 1. 停止当前操作
     // 2. 发送断开命令
     // 3. 关闭物理连接
     // 4. 清理资源
-    
+
     if (this._capturing) {
       await this.stopCapture();
     }
-    
+
     this._isConnected = false;
   }
 
@@ -213,11 +213,11 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
     try {
       // TODO: 查询实际设备状态
       // const statusResponse = await this.sendCommand('STATUS?');
-      
+
       return {
         isConnected: this._isConnected,
         isCapturing: this._capturing,
-        batteryVoltage: 'N/A', // 如果设备支持电池，在此查询
+        batteryVoltage: 'N/A' // 如果设备支持电池，在此查询
         // temperature: await this.getTemperature(),
         // lastError: await this.getLastError()
       };
@@ -312,7 +312,7 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
    */
   private async configureDevice(session: CaptureSession): Promise<void> {
     console.log('配置设备参数...');
-    
+
     // TODO: 实现设备配置
     // 例如：
     // - 设置采样率
@@ -333,7 +333,7 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
    */
   private async startDeviceCapture(): Promise<void> {
     console.log('启动设备采集...');
-    
+
     // TODO: 发送启动采集命令
     // await this.sendCommand('START');
   }
@@ -343,10 +343,10 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
    */
   private async monitorCaptureProgress(session: CaptureSession): Promise<void> {
     console.log('监控采集进度...');
-    
+
     // TODO: 实现采集监控
     // 定期检查采集状态，采集完成后读取数据
-    
+
     const checkInterval = setInterval(async () => {
       try {
         if (!this._capturing) {
@@ -382,7 +382,7 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
     // TODO: 查询设备采集状态
     // const status = await this.sendCommand('STATUS?');
     // return status.includes('COMPLETE');
-    
+
     // 模拟采集完成
     return new Promise(resolve => {
       setTimeout(() => resolve(true), 2000);
@@ -394,7 +394,7 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
    */
   private async readCaptureData(session: CaptureSession): Promise<void> {
     console.log('读取采集数据...');
-    
+
     try {
       // TODO: 实现数据读取
       // 1. 读取原始数据
@@ -406,7 +406,7 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
         // 示例：读取通道数据
         // const rawData = await this.sendCommand(`DATA? ${channel.channelNumber}`);
         // channel.samples = this.parseChannelData(rawData);
-        
+
         // 临时生成测试数据
         const sampleCount = session.preTriggerSamples + session.postTriggerSamples;
         channel.samples = new Uint8Array(sampleCount);
@@ -453,10 +453,10 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
 
     try {
       console.log('停止采集...');
-      
+
       // TODO: 发送停止命令
       // await this.sendCommand('STOP');
-      
+
       this._capturing = false;
       return true;
     } catch (error) {
@@ -471,11 +471,11 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
   async enterBootloader(): Promise<boolean> {
     try {
       console.log('进入引导加载程序模式...');
-      
+
       // TODO: 实现引导加载程序模式
       // 注意：不是所有设备都支持此功能
       // await this.sendCommand('BOOTLOADER');
-      
+
       return false; // 默认不支持
     } catch (error) {
       console.error('进入引导加载程序失败:', error);
@@ -498,11 +498,11 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
 
     try {
       console.log('发送网络配置...');
-      
+
       // TODO: 实现网络配置
       // await this.sendCommand(`WIFI_CONFIG ${accessPointName} ${password}`);
       // await this.sendCommand(`NET_CONFIG ${ipAddress} ${port}`);
-      
+
       return true;
     } catch (error) {
       console.error('网络配置失败:', error);
@@ -518,7 +518,7 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
       // TODO: 查询设备电压状态
       // const voltage = await this.sendCommand('VOLTAGE?');
       // return voltage;
-      
+
       return 'N/A'; // 默认不支持
     } catch (error) {
       console.error('电压状态查询失败:', error);
@@ -569,10 +569,10 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
   private async sendCommand(command: string): Promise<string> {
     // TODO: 实现实际的命令发送逻辑
     console.log(`发送命令: ${command}`);
-    
+
     // 模拟命令响应延迟
     await new Promise(resolve => setTimeout(resolve, 50));
-    
+
     // 返回模拟响应
     return 'OK';
   }
@@ -582,17 +582,17 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
    */
   override dispose(): void {
     console.log('清理驱动资源...');
-    
+
     // TODO: 清理资源
     // - 断开连接
     // - 关闭文件句柄
     // - 取消定时器
     // - 清理事件监听器
-    
+
     if (this._isConnected) {
       this.disconnect();
     }
-    
+
     super.dispose();
   }
 }

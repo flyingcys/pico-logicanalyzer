@@ -23,7 +23,7 @@ export { ExampleSerialDriver } from './examples/ExampleSerialDriver';
 export { ExampleNetworkDriver } from './examples/ExampleNetworkDriver';
 
 // 导出工具函数
-export { 
+export {
   createDriverPackage,
   validateDriverImplementation,
   testDriverFunctionality,
@@ -52,7 +52,7 @@ export const DRIVER_CONSTANTS = {
   RECOMMENDED_BUFFER_SIZE: 1024 * 1024, // 1MB
   // 采样率限制
   MIN_SAMPLE_RATE: 1000, // 1kHz
-  MAX_SAMPLE_RATE: 1000000000, // 1GHz
+  MAX_SAMPLE_RATE: 1000000000 // 1GHz
 };
 
 /**

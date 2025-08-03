@@ -4,4 +4,538 @@
  */
 
 export interface TimeAxisConfig {
-  height: number; // 时间轴高度\n  position: 'top' | 'bottom'; // 时间轴位置\n  showMajorTicks: boolean; // 显示主刻度\n  showMinorTicks: boolean; // 显示次刻度\n  showLabels: boolean; // 显示时间标签\n  showGrid: boolean; // 显示网格线\n  tickColor: string; // 刻度颜色\n  labelColor: string; // 标签颜色\n  gridColor: string; // 网格线颜色\n  backgroundColor: string; // 背景色\n  font: string; // 字体\n  fontSize: number; // 字体大小\n  labelFormat: 'auto' | 'samples' | 'time' | 'both'; // 标签格式\n  minTickSpacing: number; // 最小刻度间距（像素）\n  maxTickSpacing: number; // 最大刻度间距（像素）\n}\n\nexport interface TimeScale {\n  unit: 'ps' | 'ns' | 'µs' | 'ms' | 's';\n  factor: number; // 单位转换因子\n  baseInterval: number; // 基础间隔\n  displayName: string; // 显示名称\n}\n\nexport interface TickInfo {\n  position: number; // 像素位置\n  sample: number; // 样本位置\n  timestamp: number; // 时间戳（秒）\n  label: string; // 显示标签\n  type: 'major' | 'minor'; // 刻度类型\n  level: number; // 层级（用于嵌套刻度）\n}\n\nexport class TimeAxisRenderer {\n  private canvas: HTMLCanvasElement;\n  private ctx: CanvasRenderingContext2D;\n  private config: TimeAxisConfig;\n  \n  // 时间信息\n  private sampleRate = 1000000; // 默认1MHz\n  private firstSample = 0;\n  private visibleSamples = 1000;\n  private timePerPixel = 0.000001; // 每像素时间（秒）\n  \n  // 时间单位配置\n  private timeScales: TimeScale[] = [\n    {\n      unit: 'ps',\n      factor: 1e12,\n      baseInterval: 1e-12,\n      displayName: 'ps'\n    },\n    {\n      unit: 'ns',\n      factor: 1e9,\n      baseInterval: 1e-9,\n      displayName: 'ns'\n    },\n    {\n      unit: 'µs',\n      factor: 1e6,\n      baseInterval: 1e-6,\n      displayName: 'µs'\n    },\n    {\n      unit: 'ms',\n      factor: 1e3,\n      baseInterval: 1e-3,\n      displayName: 'ms'\n    },\n    {\n      unit: 's',\n      factor: 1,\n      baseInterval: 1,\n      displayName: 's'\n    }\n  ];\n  \n  // 标尺间隔配置\n  private intervalMultipliers = [1, 2, 2.5, 5]; // 1, 2, 5的倍数系列\n  \n  constructor(canvas: HTMLCanvasElement, config?: Partial<TimeAxisConfig>) {\n    this.canvas = canvas;\n    const ctx = canvas.getContext('2d');\n    if (!ctx) {\n      throw new Error('无法获取Canvas 2D上下文');\n    }\n    this.ctx = ctx;\n    \n    this.config = {\n      height: 40,\n      position: 'top',\n      showMajorTicks: true,\n      showMinorTicks: true,\n      showLabels: true,\n      showGrid: false,\n      tickColor: '#ffffff',\n      labelColor: '#ffffff',\n      gridColor: '#404040',\n      backgroundColor: '#1e1e1e',\n      font: 'monospace',\n      fontSize: 12,\n      labelFormat: 'auto',\n      minTickSpacing: 40,\n      maxTickSpacing: 150,\n      ...config\n    };\n  }\n  \n  /**\n   * 设置时间轴信息\n   */\n  public setTimeInfo(\n    sampleRate: number,\n    firstSample: number,\n    visibleSamples: number\n  ): void {\n    this.sampleRate = sampleRate;\n    this.firstSample = firstSample;\n    this.visibleSamples = visibleSamples;\n    \n    // 计算每像素时间\n    const canvasWidth = this.canvas.getBoundingClientRect().width;\n    const totalTime = visibleSamples / sampleRate;\n    this.timePerPixel = totalTime / canvasWidth;\n  }\n  \n  /**\n   * 渲染时间轴\n   */\n  public render(canvasWidth: number, canvasHeight: number): void {\n    this.ctx.save();\n    \n    // 设置渲染区域\n    const axisY = this.config.position === 'top' ? 0 : canvasHeight - this.config.height;\n    \n    // 绘制背景\n    if (this.config.backgroundColor) {\n      this.ctx.fillStyle = this.config.backgroundColor;\n      this.ctx.fillRect(0, axisY, canvasWidth, this.config.height);\n    }\n    \n    // 计算刻度\n    const ticks = this.calculateTicks(canvasWidth);\n    \n    // 绘制网格线（如果启用）\n    if (this.config.showGrid) {\n      this.renderGrid(ticks, canvasWidth, canvasHeight);\n    }\n    \n    // 绘制刻度\n    this.renderTicks(ticks, axisY);\n    \n    // 绘制标签\n    if (this.config.showLabels) {\n      this.renderLabels(ticks, axisY);\n    }\n    \n    // 绘制时间轴边框\n    this.renderAxisBorder(axisY, canvasWidth);\n    \n    this.ctx.restore();\n  }\n  \n  /**\n   * 计算时间刻度\n   */\n  private calculateTicks(canvasWidth: number): TickInfo[] {\n    const ticks: TickInfo[] = [];\n    \n    // 选择合适的时间单位和间隔\n    const timeScale = this.selectTimeScale();\n    const tickInterval = this.calculateTickInterval(timeScale, canvasWidth);\n    \n    // 计算起始时间（对齐到刻度间隔）\n    const startTime = this.firstSample / this.sampleRate;\n    const endTime = (this.firstSample + this.visibleSamples) / this.sampleRate;\n    \n    const alignedStartTime = Math.floor(startTime / tickInterval) * tickInterval;\n    \n    // 生成主刻度\n    for (let time = alignedStartTime; time <= endTime + tickInterval; time += tickInterval) {\n      const sample = time * this.sampleRate;\n      const position = this.sampleToPixel(sample, canvasWidth);\n      \n      if (position >= -50 && position <= canvasWidth + 50) {\n        ticks.push({\n          position,\n          sample,\n          timestamp: time,\n          label: this.formatTimeLabel(time, timeScale),\n          type: 'major',\n          level: 0\n        });\n      }\n    }\n    \n    // 生成次刻度\n    if (this.config.showMinorTicks) {\n      const minorInterval = tickInterval / 5; // 次刻度间隔是主刻度的1/5\n      \n      for (let time = alignedStartTime; time <= endTime + minorInterval; time += minorInterval) {\n        const sample = time * this.sampleRate;\n        const position = this.sampleToPixel(sample, canvasWidth);\n        \n        // 检查是否与主刻度重叠\n        const isMainTick = ticks.some(tick => \n          tick.type === 'major' && Math.abs(tick.position - position) < 2\n        );\n        \n        if (!isMainTick && position >= -50 && position <= canvasWidth + 50) {\n          ticks.push({\n            position,\n            sample,\n            timestamp: time,\n            label: '',\n            type: 'minor',\n            level: 1\n          });\n        }\n      }\n    }\n    \n    return ticks.sort((a, b) => a.position - b.position);\n  }\n  \n  /**\n   * 选择合适的时间单位\n   */\n  private selectTimeScale(): TimeScale {\n    const totalTime = this.visibleSamples / this.sampleRate;\n    \n    // 根据总时间选择合适的单位\n    for (let i = 0; i < this.timeScales.length; i++) {\n      const scale = this.timeScales[i];\n      if (totalTime * scale.factor >= 1) {\n        return scale;\n      }\n    }\n    \n    // 默认返回最小单位\n    return this.timeScales[0];\n  }\n  \n  /**\n   * 计算刻度间隔\n   */\n  private calculateTickInterval(timeScale: TimeScale, canvasWidth: number): number {\n    const totalTime = this.visibleSamples / this.sampleRate;\n    const pixelsPerSecond = canvasWidth / totalTime;\n    \n    // 目标刻度间距（像素）\n    const targetSpacing = (this.config.minTickSpacing + this.config.maxTickSpacing) / 2;\n    \n    // 基础时间间隔\n    let baseInterval = targetSpacing / pixelsPerSecond;\n    \n    // 根据时间单位调整\n    let magnitude = Math.pow(10, Math.floor(Math.log10(baseInterval)));\n    \n    // 选择合适的倍数\n    let bestInterval = magnitude;\n    let bestSpacing = Math.abs(pixelsPerSecond * magnitude - targetSpacing);\n    \n    for (const multiplier of this.intervalMultipliers) {\n      const interval = magnitude * multiplier;\n      const spacing = pixelsPerSecond * interval;\n      const error = Math.abs(spacing - targetSpacing);\n      \n      if (error < bestSpacing && \n          spacing >= this.config.minTickSpacing && \n          spacing <= this.config.maxTickSpacing) {\n        bestInterval = interval;\n        bestSpacing = error;\n      }\n    }\n    \n    return bestInterval;\n  }\n  \n  /**\n   * 样本转像素坐标\n   */\n  private sampleToPixel(sample: number, canvasWidth: number): number {\n    const samplesPerPixel = this.visibleSamples / canvasWidth;\n    return (sample - this.firstSample) / samplesPerPixel;\n  }\n  \n  /**\n   * 格式化时间标签\n   */\n  private formatTimeLabel(time: number, timeScale: TimeScale): string {\n    switch (this.config.labelFormat) {\n      case 'samples':\n        return Math.round(time * this.sampleRate).toString();\n        \n      case 'time':\n        return this.formatTime(time, timeScale);\n        \n      case 'both':\n        const sampleText = Math.round(time * this.sampleRate).toString();\n        const timeText = this.formatTime(time, timeScale);\n        return `${timeText}\\n(${sampleText})`;\n        \n      case 'auto':\n      default:\n        // 自动选择：根据缩放级别决定显示格式\n        if (this.timePerPixel < 1e-6) {\n          return this.formatTime(time, timeScale);\n        } else {\n          return this.formatTime(time, timeScale);\n        }\n    }\n  }\n  \n  /**\n   * 格式化时间显示\n   */\n  private formatTime(time: number, timeScale: TimeScale): string {\n    const value = time * timeScale.factor;\n    \n    // 根据值的大小选择合适的精度\n    let precision = 0;\n    if (Math.abs(value) < 1) {\n      precision = 3;\n    } else if (Math.abs(value) < 10) {\n      precision = 2;\n    } else if (Math.abs(value) < 100) {\n      precision = 1;\n    }\n    \n    return `${value.toFixed(precision)} ${timeScale.displayName}`;\n  }\n  \n  /**\n   * 渲染网格线\n   */\n  private renderGrid(ticks: TickInfo[], canvasWidth: number, canvasHeight: number): void {\n    this.ctx.strokeStyle = this.config.gridColor;\n    this.ctx.lineWidth = 0.5;\n    this.ctx.setLineDash([1, 3]);\n    \n    this.ctx.beginPath();\n    \n    for (const tick of ticks) {\n      if (tick.type === 'major' && tick.position >= 0 && tick.position <= canvasWidth) {\n        this.ctx.moveTo(tick.position, 0);\n        this.ctx.lineTo(tick.position, canvasHeight);\n      }\n    }\n    \n    this.ctx.stroke();\n    this.ctx.setLineDash([]); // 重置线型\n  }\n  \n  /**\n   * 渲染刻度\n   */\n  private renderTicks(ticks: TickInfo[], axisY: number): void {\n    this.ctx.strokeStyle = this.config.tickColor;\n    this.ctx.lineWidth = 1;\n    \n    this.ctx.beginPath();\n    \n    for (const tick of ticks) {\n      if (tick.position >= 0 && tick.position <= this.canvas.width) {\n        const tickHeight = tick.type === 'major' ? 12 : 6;\n        const tickY = this.config.position === 'top' ? \n          axisY + this.config.height - tickHeight :\n          axisY;\n        \n        this.ctx.moveTo(tick.position, tickY);\n        this.ctx.lineTo(tick.position, tickY + tickHeight);\n      }\n    }\n    \n    this.ctx.stroke();\n  }\n  \n  /**\n   * 渲染标签\n   */\n  private renderLabels(ticks: TickInfo[], axisY: number): void {\n    this.ctx.fillStyle = this.config.labelColor;\n    this.ctx.font = `${this.config.fontSize}px ${this.config.font}`;\n    this.ctx.textAlign = 'center';\n    this.ctx.textBaseline = this.config.position === 'top' ? 'bottom' : 'top';\n    \n    // 标签防重叠检测\n    const renderedLabels: { x: number, width: number }[] = [];\n    \n    for (const tick of ticks) {\n      if (tick.type === 'major' && tick.label && \n          tick.position >= 0 && tick.position <= this.canvas.width) {\n        \n        const labelWidth = this.ctx.measureText(tick.label).width;\n        const labelX = tick.position;\n        \n        // 检查是否与已渲染的标签重叠\n        const hasOverlap = renderedLabels.some(rendered => \n          Math.abs(rendered.x - labelX) < (rendered.width + labelWidth) / 2 + 10\n        );\n        \n        if (!hasOverlap) {\n          const labelY = this.config.position === 'top' ? \n            axisY + this.config.height - 15 :\n            axisY + 15;\n          \n          // 处理多行标签\n          const lines = tick.label.split('\\n');\n          lines.forEach((line, index) => {\n            const lineY = labelY + index * (this.config.fontSize + 2) * \n              (this.config.position === 'top' ? -1 : 1);\n            this.ctx.fillText(line, labelX, lineY);\n          });\n          \n          renderedLabels.push({ x: labelX, width: labelWidth });\n        }\n      }\n    }\n  }\n  \n  /**\n   * 渲染时间轴边框\n   */\n  private renderAxisBorder(axisY: number, canvasWidth: number): void {\n    this.ctx.strokeStyle = this.config.tickColor;\n    this.ctx.lineWidth = 1;\n    \n    this.ctx.beginPath();\n    \n    if (this.config.position === 'top') {\n      // 底边框\n      this.ctx.moveTo(0, axisY + this.config.height);\n      this.ctx.lineTo(canvasWidth, axisY + this.config.height);\n    } else {\n      // 顶边框\n      this.ctx.moveTo(0, axisY);\n      this.ctx.lineTo(canvasWidth, axisY);\n    }\n    \n    this.ctx.stroke();\n  }\n  \n  /**\n   * 获取指定位置的时间信息\n   */\n  public getTimeAtPosition(x: number, canvasWidth: number): { sample: number, timestamp: number, timeText: string } {\n    const samplesPerPixel = this.visibleSamples / canvasWidth;\n    const sample = this.firstSample + x * samplesPerPixel;\n    const timestamp = sample / this.sampleRate;\n    \n    const timeScale = this.selectTimeScale();\n    const timeText = this.formatTime(timestamp, timeScale);\n    \n    return {\n      sample: Math.round(sample),\n      timestamp,\n      timeText\n    };\n  }\n  \n  /**\n   * 获取时间轴高度\n   */\n  public getHeight(): number {\n    return this.config.height;\n  }\n  \n  /**\n   * 更新配置\n   */\n  public updateConfig(config: Partial<TimeAxisConfig>): void {\n    this.config = { ...this.config, ...config };\n  }\n  \n  /**\n   * 获取配置\n   */\n  public getConfig(): TimeAxisConfig {\n    return { ...this.config };\n  }\n  \n  /**\n   * 自动调整刻度\n   */\n  public autoScale(canvasWidth: number): void {\n    // 根据当前视图自动调整刻度间距\n    const totalTime = this.visibleSamples / this.sampleRate;\n    const pixelsPerSecond = canvasWidth / totalTime;\n    \n    // 调整最小和最大刻度间距\n    if (pixelsPerSecond > 1000) {\n      // 缩放很大时，增加刻度密度\n      this.config.minTickSpacing = 20;\n      this.config.maxTickSpacing = 80;\n    } else if (pixelsPerSecond < 10) {\n      // 缩放很小时，减少刻度密度\n      this.config.minTickSpacing = 80;\n      this.config.maxTickSpacing = 200;\n    } else {\n      // 默认设置\n      this.config.minTickSpacing = 40;\n      this.config.maxTickSpacing = 150;\n    }\n  }\n  \n  /**\n   * 导出时间轴配置\n   */\n  public exportConfig(): any {\n    return {\n      config: this.config,\n      timeScales: this.timeScales,\n      intervalMultipliers: this.intervalMultipliers\n    };\n  }\n  \n  /**\n   * 导入时间轴配置\n   */\n  public importConfig(data: any): void {\n    if (data.config) {\n      this.config = { ...this.config, ...data.config };\n    }\n    \n    if (data.timeScales) {\n      this.timeScales = data.timeScales;\n    }\n    \n    if (data.intervalMultipliers) {\n      this.intervalMultipliers = data.intervalMultipliers;\n    }\n  }\n}"
+  height: number; // 时间轴高度
+  position: 'top' | 'bottom'; // 时间轴位置
+  showMajorTicks: boolean; // 显示主刻度
+  showMinorTicks: boolean; // 显示次刻度
+  showLabels: boolean; // 显示时间标签
+  showGrid: boolean; // 显示网格线
+  tickColor: string; // 刻度颜色
+  labelColor: string; // 标签颜色
+  gridColor: string; // 网格线颜色
+  backgroundColor: string; // 背景色
+  font: string; // 字体
+  fontSize: number; // 字体大小
+  labelFormat: 'auto' | 'samples' | 'time' | 'both'; // 标签格式
+  minTickSpacing: number; // 最小刻度间距（像素）
+  maxTickSpacing: number; // 最大刻度间距（像素）
+}
+
+export interface TimeScale {
+  unit: 'ps' | 'ns' | 'µs' | 'ms' | 's';
+  factor: number; // 单位转换因子
+  baseInterval: number; // 基础间隔
+  displayName: string; // 显示名称
+}
+
+export interface TickInfo {
+  position: number; // 像素位置
+  sample: number; // 样本位置
+  timestamp: number; // 时间戳（秒）
+  label: string; // 显示标签
+  type: 'major' | 'minor'; // 刻度类型
+  level: number; // 层级（用于嵌套刻度）
+}
+
+export class TimeAxisRenderer {
+  private canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
+  private config: TimeAxisConfig;
+
+  // 时间信息
+  private sampleRate = 1000000; // 默认1MHz
+  private firstSample = 0;
+  private visibleSamples = 1000;
+  private timePerPixel = 0.000001; // 每像素时间（秒）
+
+  // 时间单位配置
+  private timeScales: TimeScale[] = [
+    {
+      unit: 'ps',
+      factor: 1e12,
+      baseInterval: 1e-12,
+      displayName: 'ps'
+    },
+    {
+      unit: 'ns',
+      factor: 1e9,
+      baseInterval: 1e-9,
+      displayName: 'ns'
+    },
+    {
+      unit: 'µs',
+      factor: 1e6,
+      baseInterval: 1e-6,
+      displayName: 'µs'
+    },
+    {
+      unit: 'ms',
+      factor: 1e3,
+      baseInterval: 1e-3,
+      displayName: 'ms'
+    },
+    {
+      unit: 's',
+      factor: 1,
+      baseInterval: 1,
+      displayName: 's'
+    }
+  ];
+
+  // 标尺间隔配置
+  private intervalMultipliers = [1, 2, 2.5, 5]; // 1, 2, 5的倍数系列
+
+  constructor(canvas: HTMLCanvasElement, config?: Partial<TimeAxisConfig>) {
+    this.canvas = canvas;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('无法获取Canvas 2D上下文');
+    }
+    this.ctx = ctx;
+
+    this.config = {
+      height: 40,
+      position: 'top',
+      showMajorTicks: true,
+      showMinorTicks: true,
+      showLabels: true,
+      showGrid: false,
+      tickColor: '#ffffff',
+      labelColor: '#ffffff',
+      gridColor: '#404040',
+      backgroundColor: '#1e1e1e',
+      font: 'monospace',
+      fontSize: 12,
+      labelFormat: 'auto',
+      minTickSpacing: 40,
+      maxTickSpacing: 150,
+      ...config
+    };
+  }
+
+  /**
+   * 设置时间轴信息
+   */
+  public setTimeInfo(
+    sampleRate: number,
+    firstSample: number,
+    visibleSamples: number
+  ): void {
+    this.sampleRate = sampleRate;
+    this.firstSample = firstSample;
+    this.visibleSamples = visibleSamples;
+
+    // 计算每像素时间
+    const canvasWidth = this.canvas.getBoundingClientRect().width;
+    const totalTime = visibleSamples / sampleRate;
+    this.timePerPixel = totalTime / canvasWidth;
+  }
+
+  /**
+   * 渲染时间轴
+   */
+  public render(canvasWidth: number, canvasHeight: number): void {
+    this.ctx.save();
+
+    // 设置渲染区域
+    const axisY = this.config.position === 'top' ? 0 : canvasHeight - this.config.height;
+
+    // 绘制背景
+    if (this.config.backgroundColor) {
+      this.ctx.fillStyle = this.config.backgroundColor;
+      this.ctx.fillRect(0, axisY, canvasWidth, this.config.height);
+    }
+
+    // 计算刻度
+    const ticks = this.calculateTicks(canvasWidth);
+
+    // 绘制网格线（如果启用）
+    if (this.config.showGrid) {
+      this.renderGrid(ticks, canvasWidth, canvasHeight);
+    }
+
+    // 绘制刻度
+    this.renderTicks(ticks, axisY);
+
+    // 绘制标签
+    if (this.config.showLabels) {
+      this.renderLabels(ticks, axisY);
+    }
+
+    // 绘制时间轴边框
+    this.renderAxisBorder(axisY, canvasWidth);
+
+    this.ctx.restore();
+  }
+
+  /**
+   * 计算时间刻度
+   */
+  private calculateTicks(canvasWidth: number): TickInfo[] {
+    const ticks: TickInfo[] = [];
+
+    // 选择合适的时间单位和间隔
+    const timeScale = this.selectTimeScale();
+    const tickInterval = this.calculateTickInterval(timeScale, canvasWidth);
+
+    // 计算起始时间（对齐到刻度间隔）
+    const startTime = this.firstSample / this.sampleRate;
+    const endTime = (this.firstSample + this.visibleSamples) / this.sampleRate;
+
+    const alignedStartTime = Math.floor(startTime / tickInterval) * tickInterval;
+
+    // 生成主刻度
+    for (let time = alignedStartTime; time <= endTime + tickInterval; time += tickInterval) {
+      const sample = time * this.sampleRate;
+      const position = this.sampleToPixel(sample, canvasWidth);
+
+      if (position >= -50 && position <= canvasWidth + 50) {
+        ticks.push({
+          position,
+          sample,
+          timestamp: time,
+          label: this.formatTimeLabel(time, timeScale),
+          type: 'major',
+          level: 0
+        });
+      }
+    }
+
+    // 生成次刻度
+    if (this.config.showMinorTicks) {
+      const minorInterval = tickInterval / 5; // 次刻度间隔是主刻度的1/5
+
+      for (let time = alignedStartTime; time <= endTime + minorInterval; time += minorInterval) {
+        const sample = time * this.sampleRate;
+        const position = this.sampleToPixel(sample, canvasWidth);
+
+        // 检查是否与主刻度重叠
+        const isMainTick = ticks.some(tick =>
+          tick.type === 'major' && Math.abs(tick.position - position) < 2
+        );
+
+        if (!isMainTick && position >= -50 && position <= canvasWidth + 50) {
+          ticks.push({
+            position,
+            sample,
+            timestamp: time,
+            label: '',
+            type: 'minor',
+            level: 1
+          });
+        }
+      }
+    }
+
+    return ticks.sort((a, b) => a.position - b.position);
+  }
+
+  /**
+   * 选择合适的时间单位
+   */
+  private selectTimeScale(): TimeScale {
+    const totalTime = this.visibleSamples / this.sampleRate;
+
+    // 根据总时间选择合适的单位
+    for (let i = 0; i < this.timeScales.length; i++) {
+      const scale = this.timeScales[i];
+      if (totalTime * scale.factor >= 1) {
+        return scale;
+      }
+    }
+
+    // 默认返回最小单位
+    return this.timeScales[0];
+  }
+
+  /**
+   * 计算刻度间隔
+   */
+  private calculateTickInterval(timeScale: TimeScale, canvasWidth: number): number {
+    const totalTime = this.visibleSamples / this.sampleRate;
+    const pixelsPerSecond = canvasWidth / totalTime;
+
+    // 目标刻度间距（像素）
+    const targetSpacing = (this.config.minTickSpacing + this.config.maxTickSpacing) / 2;
+
+    // 基础时间间隔
+    const baseInterval = targetSpacing / pixelsPerSecond;
+
+    // 根据时间单位调整
+    const magnitude = Math.pow(10, Math.floor(Math.log10(baseInterval)));
+
+    // 选择合适的倍数
+    let bestInterval = magnitude;
+    let bestSpacing = Math.abs(pixelsPerSecond * magnitude - targetSpacing);
+
+    for (const multiplier of this.intervalMultipliers) {
+      const interval = magnitude * multiplier;
+      const spacing = pixelsPerSecond * interval;
+      const error = Math.abs(spacing - targetSpacing);
+
+      if (error < bestSpacing &&
+          spacing >= this.config.minTickSpacing &&
+          spacing <= this.config.maxTickSpacing) {
+        bestInterval = interval;
+        bestSpacing = error;
+      }
+    }
+
+    return bestInterval;
+  }
+
+  /**
+   * 样本转像素坐标
+   */
+  private sampleToPixel(sample: number, canvasWidth: number): number {
+    const samplesPerPixel = this.visibleSamples / canvasWidth;
+    return (sample - this.firstSample) / samplesPerPixel;
+  }
+
+  /**
+   * 格式化时间标签
+   */
+  private formatTimeLabel(time: number, timeScale: TimeScale): string {
+    switch (this.config.labelFormat) {
+      case 'samples':
+        return Math.round(time * this.sampleRate).toString();
+
+      case 'time':
+        return this.formatTime(time, timeScale);
+
+      case 'both':
+        const sampleText = Math.round(time * this.sampleRate).toString();
+        const timeText = this.formatTime(time, timeScale);
+        return `${timeText}\n(${sampleText})`;
+
+      case 'auto':
+      default:
+        // 自动选择：根据缩放级别决定显示格式
+        if (this.timePerPixel < 1e-6) {
+          return this.formatTime(time, timeScale);
+        } else {
+          return this.formatTime(time, timeScale);
+        }
+    }
+  }
+
+  /**
+   * 格式化时间显示
+   */
+  private formatTime(time: number, timeScale: TimeScale): string {
+    const value = time * timeScale.factor;
+
+    // 根据值的大小选择合适的精度
+    let precision = 0;
+    if (Math.abs(value) < 1) {
+      precision = 3;
+    } else if (Math.abs(value) < 10) {
+      precision = 2;
+    } else if (Math.abs(value) < 100) {
+      precision = 1;
+    }
+
+    return `${value.toFixed(precision)} ${timeScale.displayName}`;
+  }
+
+  /**
+   * 渲染网格线
+   */
+  private renderGrid(ticks: TickInfo[], canvasWidth: number, canvasHeight: number): void {
+    this.ctx.strokeStyle = this.config.gridColor;
+    this.ctx.lineWidth = 0.5;
+    this.ctx.setLineDash([1, 3]);
+
+    this.ctx.beginPath();
+
+    for (const tick of ticks) {
+      if (tick.type === 'major' && tick.position >= 0 && tick.position <= canvasWidth) {
+        this.ctx.moveTo(tick.position, 0);
+        this.ctx.lineTo(tick.position, canvasHeight);
+      }
+    }
+
+    this.ctx.stroke();
+    this.ctx.setLineDash([]); // 重置线型
+  }
+
+  /**
+   * 渲染刻度
+   */
+  private renderTicks(ticks: TickInfo[], axisY: number): void {
+    this.ctx.strokeStyle = this.config.tickColor;
+    this.ctx.lineWidth = 1;
+
+    this.ctx.beginPath();
+
+    for (const tick of ticks) {
+      if (tick.position >= 0 && tick.position <= this.canvas.width) {
+        const tickHeight = tick.type === 'major' ? 12 : 6;
+        const tickY = this.config.position === 'top' ?
+          axisY + this.config.height - tickHeight :
+          axisY;
+
+        this.ctx.moveTo(tick.position, tickY);
+        this.ctx.lineTo(tick.position, tickY + tickHeight);
+      }
+    }
+
+    this.ctx.stroke();
+  }
+
+  /**
+   * 渲染标签
+   */
+  private renderLabels(ticks: TickInfo[], axisY: number): void {
+    this.ctx.fillStyle = this.config.labelColor;
+    this.ctx.font = `${this.config.fontSize}px ${this.config.font}`;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = this.config.position === 'top' ? 'bottom' : 'top';
+
+    // 标签防重叠检测
+    const renderedLabels: { x: number, width: number }[] = [];
+
+    for (const tick of ticks) {
+      if (tick.type === 'major' && tick.label &&
+          tick.position >= 0 && tick.position <= this.canvas.width) {
+
+        const labelWidth = this.ctx.measureText(tick.label).width;
+        const labelX = tick.position;
+
+        // 检查是否与已渲染的标签重叠
+        const hasOverlap = renderedLabels.some(rendered =>
+          Math.abs(rendered.x - labelX) < (rendered.width + labelWidth) / 2 + 10
+        );
+
+        if (!hasOverlap) {
+          const labelY = this.config.position === 'top' ?
+            axisY + this.config.height - 15 :
+            axisY + 15;
+
+          // 处理多行标签
+          const lines = tick.label.split('\n');
+          lines.forEach((line, index) => {
+            const lineY = labelY + index * (this.config.fontSize + 2) *
+              (this.config.position === 'top' ? -1 : 1);
+            this.ctx.fillText(line, labelX, lineY);
+          });
+
+          renderedLabels.push({ x: labelX, width: labelWidth });
+        }
+      }
+    }
+  }
+
+  /**
+   * 渲染时间轴边框
+   */
+  private renderAxisBorder(axisY: number, canvasWidth: number): void {
+    this.ctx.strokeStyle = this.config.tickColor;
+    this.ctx.lineWidth = 1;
+
+    this.ctx.beginPath();
+
+    if (this.config.position === 'top') {
+      // 底边框
+      this.ctx.moveTo(0, axisY + this.config.height);
+      this.ctx.lineTo(canvasWidth, axisY + this.config.height);
+    } else {
+      // 顶边框
+      this.ctx.moveTo(0, axisY);
+      this.ctx.lineTo(canvasWidth, axisY);
+    }
+
+    this.ctx.stroke();
+  }
+
+  /**
+   * 获取指定位置的时间信息
+   */
+  public getTimeAtPosition(x: number, canvasWidth: number): { sample: number, timestamp: number, timeText: string } {
+    const samplesPerPixel = this.visibleSamples / canvasWidth;
+    const sample = this.firstSample + x * samplesPerPixel;
+    const timestamp = sample / this.sampleRate;
+
+    const timeScale = this.selectTimeScale();
+    const timeText = this.formatTime(timestamp, timeScale);
+
+    return {
+      sample: Math.round(sample),
+      timestamp,
+      timeText
+    };
+  }
+
+  /**
+   * 获取时间轴高度
+   */
+  public getHeight(): number {
+    return this.config.height;
+  }
+
+  /**
+   * 更新配置
+   */
+  public updateConfig(config: Partial<TimeAxisConfig>): void {
+    this.config = { ...this.config, ...config };
+  }
+
+  /**
+   * 获取配置
+   */
+  public getConfig(): TimeAxisConfig {
+    return { ...this.config };
+  }
+
+  /**
+   * 自动调整刻度
+   */
+  public autoScale(canvasWidth: number): void {
+    // 根据当前视图自动调整刻度间距
+    const totalTime = this.visibleSamples / this.sampleRate;
+    const pixelsPerSecond = canvasWidth / totalTime;
+
+    // 调整最小和最大刻度间距
+    if (pixelsPerSecond > 1000) {
+      // 缩放很大时，增加刻度密度
+      this.config.minTickSpacing = 20;
+      this.config.maxTickSpacing = 80;
+    } else if (pixelsPerSecond < 10) {
+      // 缩放很小时，减少刻度密度
+      this.config.minTickSpacing = 80;
+      this.config.maxTickSpacing = 200;
+    } else {
+      // 默认设置
+      this.config.minTickSpacing = 40;
+      this.config.maxTickSpacing = 150;
+    }
+  }
+
+  /**
+   * 导出时间轴配置
+   */
+  public exportConfig(): any {
+    return {
+      config: this.config,
+      timeScales: this.timeScales,
+      intervalMultipliers: this.intervalMultipliers
+    };
+  }
+
+  /**
+   * 导入时间轴配置
+   */
+  public importConfig(data: any): void {
+    if (data.config) {
+      this.config = { ...this.config, ...data.config };
+    }
+
+    if (data.timeScales) {
+      this.timeScales = data.timeScales;
+    }
+
+    if (data.intervalMultipliers) {
+      this.intervalMultipliers = data.intervalMultipliers;
+    }
+  }
+}

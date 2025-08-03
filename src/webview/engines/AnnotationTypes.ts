@@ -68,7 +68,7 @@ export interface AnnotationTooltip {
 
 export class AnnotationColorManager {
   private static instance: AnnotationColorManager;
-  
+
   // 基于原版的64色调色板
   private readonly colorPalette = [
     '#ff7333', '#33ff57', '#3357ff', '#ff33a1', '#ffbd33', '#33fff6',
@@ -84,23 +84,23 @@ export class AnnotationColorManager {
     '#ff0066', '#66ff00', '#0066ff', '#ff6600', '#66ff66', '#6600ff',
     '#ff3300', '#33ff00', '#0033ff', '#ff0033', '#33ff33', '#3300ff'
   ];
-  
+
   private constructor() {}
-  
+
   static getInstance(): AnnotationColorManager {
     if (!AnnotationColorManager.instance) {
       AnnotationColorManager.instance = new AnnotationColorManager();
     }
     return AnnotationColorManager.instance;
   }
-  
+
   /**
    * 根据类型ID获取颜色
    */
   getColor(typeId: number): string {
     return this.colorPalette[typeId % this.colorPalette.length];
   }
-  
+
   /**
    * 根据背景颜色计算最佳对比文本颜色
    */
@@ -108,11 +108,11 @@ export class AnnotationColorManager {
     // 简单的对比度计算
     const rgb = this.hexToRgb(backgroundColor);
     if (!rgb) return '#ffffff';
-    
+
     const brightness = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
     return brightness > 128 ? '#000000' : '#ffffff';
   }
-  
+
   /**
    * 十六进制颜色转RGB
    */

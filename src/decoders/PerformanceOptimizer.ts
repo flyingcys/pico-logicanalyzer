@@ -74,7 +74,7 @@ export class PerformanceOptimizer {
   private gcTriggerThreshold = 0.9; // 90% 触发垃圾回收
   private compressionOptions: CompressionOptions;
   private batchConfig: BatchConfig;
-  
+
   constructor(
     compressionOptions: Partial<CompressionOptions> = {},
     batchConfig: Partial<BatchConfig> = {}
@@ -85,7 +85,7 @@ export class PerformanceOptimizer {
       enabled: true,
       ...compressionOptions
     };
-    
+
     this.batchConfig = {
       batchSize: 1000,
       batchInterval: 10,
@@ -99,7 +99,7 @@ export class PerformanceOptimizer {
    */
   public getMemoryStats(): MemoryStats {
     if (performance.memory) {
-      const memory = performance.memory;
+      const { memory } = performance;
       return {
         usedHeapSize: memory.usedJSHeapSize,
         totalHeapSize: memory.totalJSHeapSize,
@@ -108,7 +108,7 @@ export class PerformanceOptimizer {
         externalMemory: (memory as any).externalMemory
       };
     }
-    
+
     // 浏览器不支持 performance.memory 时的模拟值
     return {
       usedHeapSize: 0,
@@ -171,7 +171,7 @@ export class PerformanceOptimizer {
   public decompressChannelData(data: ChannelData[]): ChannelData[] {
     return data.map(channel => {
       const compressedChannel = channel as ChannelData & { compressed?: boolean; compressionAlgorithm?: string };
-      
+
       if (!compressedChannel.compressed || !channel.samples) {
         return channel;
       }
@@ -216,11 +216,11 @@ export class PerformanceOptimizer {
    */
   private decompressRLE(data: Uint8Array): Uint8Array {
     const decompressed: number[] = [];
-    
+
     for (let i = 0; i < data.length; i += 2) {
       const count = data[i];
       const value = data[i + 1];
-      
+
       for (let j = 0; j < count; j++) {
         decompressed.push(value);
       }
@@ -236,7 +236,7 @@ export class PerformanceOptimizer {
     if (data.length === 0) return data;
 
     const compressed: number[] = [data[0]]; // 第一个值不压缩
-    
+
     for (let i = 1; i < data.length; i++) {
       const delta = data[i] - data[i - 1];
       compressed.push(delta + 128); // 偏移到 0-255 范围
@@ -252,7 +252,7 @@ export class PerformanceOptimizer {
     if (data.length === 0) return data;
 
     const decompressed: number[] = [data[0]];
-    
+
     for (let i = 1; i < data.length; i++) {
       const delta = data[i] - 128;
       const value = decompressed[i - 1] + delta;
@@ -302,12 +302,12 @@ export class PerformanceOptimizer {
    */
   public async processBatch<T>(
     items: T[],
-    processor: (item: T) => Promise<DecoderResult[]>,
-    onBatchComplete?: (results: DecoderResult[], batchIndex: number) => void
+    processor: (_item: T) => Promise<DecoderResult[]>,
+    onBatchComplete?: (_results: DecoderResult[], _batchIndex: number) => void
   ): Promise<DecoderResult[]> {
     const allResults: DecoderResult[] = [];
     const batches = this.createBatches(items, this.batchConfig.batchSize);
-    
+
     console.log(`🔄 开始批处理: ${batches.length}个批次, 每批${this.batchConfig.batchSize}项`);
 
     for (let i = 0; i < batches.length && i < this.batchConfig.maxBatches; i++) {
@@ -327,7 +327,7 @@ export class PerformanceOptimizer {
 
       // 检查内存使用并在需要时暂停
       if (this.shouldOptimizeMemory()) {
-        console.log(`⚠️ 内存使用过高，暂停批处理进行优化...`);
+        console.log('⚠️ 内存使用过高，暂停批处理进行优化...');
         await this.performMemoryOptimization();
       }
 
@@ -346,7 +346,7 @@ export class PerformanceOptimizer {
    */
   private createBatches<T>(items: T[], batchSize: number): T[][] {
     const batches: T[][] = [];
-    
+
     for (let i = 0; i < items.length; i += batchSize) {
       batches.push(items.slice(i, i + batchSize));
     }
@@ -359,13 +359,13 @@ export class PerformanceOptimizer {
    */
   public async performMemoryOptimization(): Promise<void> {
     const beforeStats = this.getMemoryStats();
-    
+
     console.log(`🧹 开始内存优化: 当前使用 ${(beforeStats.usedHeapSize / 1024 / 1024).toFixed(1)}MB`);
 
     // 建议垃圾回收
     if (this.suggestGarbageCollection() && (global as any).gc) {
       (global as any).gc();
-      console.log(`♻️ 手动触发垃圾回收`);
+      console.log('♻️ 手动触发垃圾回收');
     }
 
     // 等待一段时间让垃圾回收完成
@@ -373,7 +373,7 @@ export class PerformanceOptimizer {
 
     const afterStats = this.getMemoryStats();
     const memorySaved = beforeStats.usedHeapSize - afterStats.usedHeapSize;
-    
+
     console.log(
       `✅ 内存优化完成: 释放 ${(memorySaved / 1024 / 1024).toFixed(1)}MB, 当前使用 ${(afterStats.usedHeapSize / 1024 / 1024).toFixed(1)}MB`
     );
@@ -405,7 +405,7 @@ export class PerformanceOptimizer {
     }
 
     const optimizationRatio = ((results.length - optimized.length) / results.length) * 100;
-    
+
     if (optimizationRatio > 5) { // 只有优化超过5%时才记录
       console.log(
         `🎯 解码结果优化: ${results.length} -> ${optimized.length} (${optimizationRatio.toFixed(1)}% 优化)`

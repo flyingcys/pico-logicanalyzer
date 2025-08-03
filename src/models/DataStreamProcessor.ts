@@ -5,14 +5,14 @@
  */
 
 import { CaptureMode } from './AnalyzerTypes';
-import { CaptureSession, AnalyzerChannel, BurstInfo, CaptureEventArgs } from './CaptureModels';
+import { CaptureSession, AnalyzerChannel, BurstInfo } from './CaptureModels';
 
 /**
  * 数据流读取状态
  */
 export enum DataStreamState {
   Idle = 'Idle',
-  WaitingForHeader = 'WaitingForHeader', 
+  WaitingForHeader = 'WaitingForHeader',
   ReadingSamples = 'ReadingSamples',
   ReadingTimestamps = 'ReadingTimestamps',
   ProcessingData = 'ProcessingData',
@@ -58,10 +58,10 @@ export interface RawDataPacket {
  * 数据流处理器事件
  */
 export interface DataStreamEvents {
-  onProgress: (progress: DataStreamProgress) => void;
-  onDataReceived: (packet: RawDataPacket) => void;
-  onCompleted: (session: CaptureSession) => void;
-  onError: (error: Error) => void;
+  onProgress: (_progress: DataStreamProgress) => void;
+  onDataReceived: (_packet: RawDataPacket) => void;
+  onCompleted: (_session: CaptureSession) => void;
+  onError: (_error: Error) => void;
 }
 
 /**
@@ -97,11 +97,11 @@ export class DataStreamProcessor {
     expectedSamples: number,
     mode: CaptureMode
   ): Promise<CaptureSession> {
-    
+
     try {
       this.state = DataStreamState.WaitingForHeader;
       this.startTime = Date.now();
-      
+
       // 初始化数据缓冲区
       const bufferLength = this.calculateBufferLength(expectedSamples, mode, session);
       this.buffer = new Uint8Array(bufferLength);
@@ -112,7 +112,7 @@ export class DataStreamProcessor {
 
       // 解析数据
       const rawPacket = await this.parseRawData(session, expectedSamples, mode);
-      
+
       // 处理样本数据
       await this.processSampleData(session, rawPacket);
 
@@ -123,7 +123,7 @@ export class DataStreamProcessor {
 
       this.state = DataStreamState.Completed;
       this.events.onCompleted?.(session);
-      
+
       return session;
 
     } catch (error) {
@@ -139,7 +139,7 @@ export class DataStreamProcessor {
    */
   private calculateBufferLength(samples: number, mode: CaptureMode, session: CaptureSession): number {
     // 样本数据长度计算
-    let bufLen = samples * (mode === CaptureMode.Channels_8 ? 1 : 
+    let bufLen = samples * (mode === CaptureMode.Channels_8 ? 1 :
                           (mode === CaptureMode.Channels_16 ? 2 : 4));
 
     // 添加长度字段 (4字节)
@@ -162,18 +162,23 @@ export class DataStreamProcessor {
     dataStream: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
     expectedLength: number
   ): Promise<void> {
-    
+
     this.state = DataStreamState.ReadingSamples;
     let totalRead = 0;
 
+    // 确保缓冲区已正确初始化
+    if (this.buffer.length < expectedLength) {
+      this.buffer = new Uint8Array(expectedLength);
+    }
+
     const reader = 'getReader' in dataStream ? dataStream.getReader() : null;
-    
+
     try {
       if (reader) {
         // ReadableStream 处理
         while (totalRead < expectedLength) {
           const { done, value } = await reader.read();
-          
+
           if (done) {
             if (totalRead < expectedLength) {
               throw new Error(`Premature end of stream. Expected ${expectedLength}, got ${totalRead}`);
@@ -226,7 +231,7 @@ export class DataStreamProcessor {
     expectedSamples: number,
     mode: CaptureMode
   ): Promise<RawDataPacket> {
-    
+
     this.state = DataStreamState.ProcessingData;
     const view = new DataView(this.buffer.buffer);
     let offset = 0;
@@ -241,7 +246,7 @@ export class DataStreamProcessor {
 
     // 创建样本数组
     const samples = new Uint32Array(length);
-    
+
     // 根据采集模式读取样本数据
     switch (mode) {
       case CaptureMode.Channels_8:
@@ -250,14 +255,14 @@ export class DataStreamProcessor {
           offset += 1;
         }
         break;
-      
+
       case CaptureMode.Channels_16:
         for (let i = 0; i < length; i++) {
           samples[i] = view.getUint16(offset, true); // little endian
           offset += 2;
         }
         break;
-      
+
       case CaptureMode.Channels_24:
         for (let i = 0; i < length; i++) {
           samples[i] = view.getUint32(offset, true); // little endian
@@ -276,7 +281,7 @@ export class DataStreamProcessor {
 
     if (stampLength > 0 && timestampCount > 0) {
       this.state = DataStreamState.ReadingTimestamps;
-      
+
       for (let i = 0; i < timestampCount; i++) {
         // 读取32位时间戳并转换为64位
         const timestamp32 = view.getUint32(offset, true);
@@ -313,11 +318,11 @@ export class DataStreamProcessor {
   private extractChannelSamples(channel: AnalyzerChannel, channelIndex: number, samples: Uint32Array): void {
     const mask = 1 << channelIndex;
     const channelSamples = new Uint8Array(samples.length);
-    
+
     for (let i = 0; i < samples.length; i++) {
       channelSamples[i] = (samples[i] & mask) !== 0 ? 1 : 0;
     }
-    
+
     channel.samples = channelSamples;
   }
 
@@ -341,10 +346,10 @@ export class DataStreamProcessor {
 
     // 创建突发信息
     const bursts: BurstInfo[] = [];
-    
+
     for (let i = 0; i < session.loopCount + 1; i++) {
       const burst = new BurstInfo();
-      
+
       if (i === 0) {
         // 第一个突发
         burst.burstSampleStart = 0;
@@ -355,7 +360,7 @@ export class DataStreamProcessor {
         // 后续突发
         burst.burstSampleStart = session.preTriggerSamples + (session.postTriggerSamples * (i - 1));
         burst.burstSampleEnd = session.preTriggerSamples + (session.postTriggerSamples * i);
-        
+
         // 计算样本间隔和时间间隔
         if (i < adjustedTimestamps.length - 1) {
           const timeDiff = adjustedTimestamps[i + 1] - adjustedTimestamps[i];
@@ -363,7 +368,7 @@ export class DataStreamProcessor {
           burst.burstSampleGap = Math.round(burst.burstTimeGap / (1000000000 / session.frequency));
         }
       }
-      
+
       bursts.push(burst);
     }
 
@@ -450,11 +455,11 @@ export class DataStreamFactory {
         socket.on('data', (data: Buffer) => {
           controller.enqueue(new Uint8Array(data));
         });
-        
+
         socket.on('end', () => {
           controller.close();
         });
-        
+
         socket.on('error', (error: Error) => {
           controller.error(error);
         });
@@ -500,9 +505,9 @@ export class DataStreamMonitor {
     samplesPerSecond: number;
     efficiency: number;
   } {
-    const elapsed = Date.now() - this.startTime;
+    const elapsed = this.startTime > 0 ? Date.now() - this.startTime : 0;
     const elapsedSeconds = elapsed / 1000;
-    
+
     return {
       elapsedTime: elapsed,
       bytesPerSecond: elapsedSeconds > 0 ? this.bytesProcessed / elapsedSeconds : 0,

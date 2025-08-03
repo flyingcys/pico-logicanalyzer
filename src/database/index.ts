@@ -4,7 +4,7 @@
  */
 
 // 核心数据库类
-export { 
+export {
   HardwareCompatibilityDatabase,
   DeviceCompatibilityEntry,
   CompatibilityQuery

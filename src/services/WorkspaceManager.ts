@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { EventEmitter } from 'events';
+import { ServiceLifecycleBase, ServiceInitOptions, ServiceDisposeOptions } from '../common/ServiceLifecycle';
 import { SessionData, sessionManager } from './SessionManager';
 import { configurationManager } from './ConfigurationManager';
 
@@ -18,7 +19,7 @@ export interface ProjectConfiguration {
   author?: string;
   createdAt: string;
   updatedAt: string;
-  
+
   // 项目结构
   structure: {
     sessionsDir: string;    // 会话文件目录
@@ -28,7 +29,7 @@ export interface ProjectConfiguration {
     configDir: string;      // 配置目录
     tempDir: string;        // 临时文件目录
   };
-  
+
   // 项目设置
   settings: {
     defaultSampleRate: number;
@@ -37,7 +38,7 @@ export interface ProjectConfiguration {
     compressionEnabled: boolean;
     collaborationEnabled: boolean;
   };
-  
+
   // 协作配置
   collaboration?: {
     repositoryUrl?: string;
@@ -45,7 +46,7 @@ export interface ProjectConfiguration {
     contributors: Contributor[];
     permissions: ProjectPermissions;
   };
-  
+
   // 元数据
   metadata: {
     totalSessions: number;
@@ -121,41 +122,293 @@ export interface BackupConfiguration {
   remoteLocation?: string;
 }
 
-export class WorkspaceManager extends EventEmitter {
+// 项目创建选项
+export interface ProjectCreationOptions {
+  name: string;
+  location: string;
+  template?: string;
+  initializeGit?: boolean;
+  createSampleData?: boolean;
+  description?: string;
+  author?: string;
+}
+
+export class WorkspaceManager extends ServiceLifecycleBase {
+  private eventEmitter = new EventEmitter();
   private readonly PROJECT_CONFIG_FILE = 'logicanalyzer-project.json';
   private readonly PROJECT_LOCK_FILE = '.logicanalyzer.lock';
   private readonly BACKUP_DIR = '.backups';
-  
+
   private currentProject?: ProjectConfiguration;
   private projectRoot?: string;
   private fileWatchers: Map<string, vscode.FileSystemWatcher> = new Map();
   private backupTimer?: NodeJS.Timeout;
 
   constructor() {
-    super();
+    super('WorkspaceManager');
     this.setupWorkspaceWatchers();
     this.initializeCurrentProject();
   }
 
   /**
-   * 创建新项目
+   * 实现父类的初始化方法
    */
+  protected async onInitialize(options: ServiceInitOptions): Promise<void> {
+    // WorkspaceManager 在构造时已经完成初始化
+    // 这里可以添加额外的初始化逻辑
+    this.updateMetadata({
+      hasCurrentProject: !!this.currentProject,
+      projectRoot: this.projectRoot,
+      fileWatchersCount: this.fileWatchers.size
+    });
+  }
+
+  /**
+   * 实现父类的销毁方法
+   */
+  protected async onDispose(options: ServiceDisposeOptions): Promise<void> {
+    // 清理文件监听器
+    for (const watcher of this.fileWatchers.values()) {
+      watcher.dispose();
+    }
+    this.fileWatchers.clear();
+
+    // 清理备份定时器
+    if (this.backupTimer) {
+      clearTimeout(this.backupTimer);
+      this.backupTimer = undefined;
+    }
+
+    // 清理事件监听器
+    this.eventEmitter.removeAllListeners();
+
+    // 清理项目状态
+    this.currentProject = undefined;
+    this.projectRoot = undefined;
+  }
+
+  // EventEmitter 代理方法
+  on(event: string | symbol, listener: (...args: any[]) => void): this {
+    this.eventEmitter.on(event, listener);
+    return this;
+  }
+
+  emit(event: string | symbol, ...args: any[]): boolean {
+    return this.eventEmitter.emit(event, ...args);
+  }
+
+  off(event: string | symbol, listener: (...args: any[]) => void): this {
+    this.eventEmitter.off(event, listener);
+    return this;
+  }
+
+  removeAllListeners(event?: string | symbol): this {
+    this.eventEmitter.removeAllListeners(event);
+    return this;
+  }
+
+  /**
+   * 创建新工作区
+   */
+  async createWorkspace(workspaceDir: string, config: {
+    name: string;
+    description?: string;
+    settings?: any;
+  }): Promise<string> {
+    const workspaceId = `workspace-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // 创建工作区目录结构
+    await fs.mkdir(workspaceDir, { recursive: true });
+    await fs.mkdir(path.join(workspaceDir, 'sessions'), { recursive: true });
+    await fs.mkdir(path.join(workspaceDir, 'data'), { recursive: true });
+    await fs.mkdir(path.join(workspaceDir, 'exports'), { recursive: true });
+    
+    // 创建项目配置
+    const projectConfig: ProjectConfiguration = {
+      name: config.name,
+      version: '1.0.0',
+      description: config.description,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      structure: {
+        sessionsDir: 'sessions',
+        dataDir: 'data',
+        analysisDir: 'analysis',
+        reportsDir: 'reports',
+        configDir: 'config',
+        tempDir: 'temp'
+      },
+      settings: {
+        defaultSampleRate: 24000000,
+        defaultChannelCount: 16,
+        autoBackup: true,
+        compressionEnabled: true,
+        collaborationEnabled: false,
+        ...config.settings
+      },
+      metadata: {
+        totalSessions: 0,
+        totalDataSize: 0,
+        tags: []
+      }
+    };
+
+    // 保存项目配置
+    const configPath = path.join(workspaceDir, this.PROJECT_CONFIG_FILE);
+    await fs.writeFile(configPath, JSON.stringify(projectConfig, null, 2));
+
+    this.currentProject = projectConfig;
+    this.projectRoot = workspaceDir;
+
+    return workspaceId;
+  }
+
+  /**
+   * 获取工作区信息
+   */
+  async getWorkspaceInfo(workspaceId: string): Promise<ProjectConfiguration | undefined> {
+    return this.currentProject;
+  }
+
+  /**
+   * 获取工作区会话列表
+   */
+  async getSessions(workspaceId: string): Promise<SessionData[]> {
+    // 在实际实现中，这里应该从工作区的会话目录中加载
+    // 目前返回模拟数据
+    return [];
+  }
+
+  /**
+   * 添加会话到工作区
+   */
+  async addSession(workspaceId: string, sessionId: string): Promise<void> {
+    // 在实际实现中，这里应该更新工作区配置
+    if (this.currentProject) {
+      this.currentProject.metadata.totalSessions += 1;
+      this.currentProject.updatedAt = new Date().toISOString();
+    }
+  }
+
+  /**
+   * 保存工作区
+   */
+  async saveWorkspace(workspaceId: string): Promise<void> {
+    if (this.currentProject && this.projectRoot) {
+      const configPath = path.join(this.projectRoot, this.PROJECT_CONFIG_FILE);
+      await fs.writeFile(configPath, JSON.stringify(this.currentProject, null, 2));
+    }
+  }
+
+  /**
+   * 加载工作区
+   */
+  async loadWorkspace(workspaceId: string): Promise<{ sessions: SessionData[] }> {
+    // 模拟加载工作区数据
+    return {
+      sessions: []
+    };
+  }
+
+  /**
+   * 迁移工作区
+   */
+  async migrateWorkspace(legacyConfigPath: string): Promise<string> {
+    // 读取旧配置
+    const legacyData = JSON.parse(await fs.readFile(legacyConfigPath, 'utf-8'));
+    
+    // 生成新的工作区ID
+    const workspaceId = `migrated-workspace-${Date.now()}`;
+    
+    // 创建新的配置格式
+    const migratedConfig: ProjectConfiguration = {
+      name: legacyData.name || 'Migrated Workspace',
+      version: '2.0.0', // 升级版本
+      description: 'Migrated from legacy format',
+      createdAt: legacyData.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      structure: {
+        sessionsDir: 'sessions',
+        dataDir: 'data',
+        analysisDir: 'analysis',
+        reportsDir: 'reports',
+        configDir: 'config',
+        tempDir: 'temp'
+      },
+      settings: {
+        defaultSampleRate: 24000000,
+        defaultChannelCount: 16,
+        autoBackup: true,
+        compressionEnabled: true,
+        collaborationEnabled: false
+      },
+      metadata: {
+        totalSessions: legacyData.sessions?.length || 0,
+        totalDataSize: 0,
+        tags: []
+      }
+    };
+
+    this.currentProject = migratedConfig;
+
+    return workspaceId;
+  }
+
+  /**
+   * 创建新项目（支持两种调用方式）
+   */
+  async createProject(options: ProjectCreationOptions): Promise<void>;
   async createProject(
+    projectPath: string,
+    config: Partial<ProjectConfiguration>,
+    template?: string
+  ): Promise<void>;
+  async createProject(
+    optionsOrPath: ProjectCreationOptions | string,
+    config?: Partial<ProjectConfiguration>,
+    template?: string
+  ): Promise<void> {
+    // 如果第一个参数是对象，使用新的接口
+    if (typeof optionsOrPath === 'object') {
+      const options = optionsOrPath as ProjectCreationOptions;
+      return this.createProjectFromOptions(options);
+    }
+
+    // 否则使用原来的接口
+    return this.createProjectFromParameters(optionsOrPath, config!, template);
+  }
+
+  /**
+   * 从选项创建项目
+   */
+  private async createProjectFromOptions(options: ProjectCreationOptions): Promise<void> {
+    const config: Partial<ProjectConfiguration> = {
+      name: options.name,
+      description: options.description,
+      author: options.author
+    };
+    return this.createProjectFromParameters(options.location, config, options.template);
+  }
+
+  /**
+   * 从参数创建项目（原始实现）
+   */
+  private async createProjectFromParameters(
     projectPath: string,
     config: Partial<ProjectConfiguration>,
     template?: string
   ): Promise<void> {
     try {
       const projectName = config.name || path.basename(projectPath);
-      
+
       // 创建项目根目录
       await fs.mkdir(projectPath, { recursive: true });
-      
+
       // 应用项目模板
       if (template) {
         await this.applyProjectTemplate(projectPath, template);
       }
-      
+
       // 创建项目配置
       const projectConfig: ProjectConfiguration = {
         name: projectName,
@@ -164,7 +417,7 @@ export class WorkspaceManager extends EventEmitter {
         author: config.author || process.env.USERNAME || process.env.USER || 'Unknown',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        
+
         structure: {
           sessionsDir: 'sessions',
           dataDir: 'data',
@@ -173,7 +426,7 @@ export class WorkspaceManager extends EventEmitter {
           configDir: 'config',
           tempDir: 'temp'
         },
-        
+
         settings: {
           defaultSampleRate: 1000000,
           defaultChannelCount: 8,
@@ -182,31 +435,31 @@ export class WorkspaceManager extends EventEmitter {
           collaborationEnabled: false,
           ...config.settings
         },
-        
+
         metadata: {
           totalSessions: 0,
           totalDataSize: 0,
           tags: config.metadata?.tags || []
         }
       };
-      
+
       // 创建目录结构
       await this.createProjectStructure(projectPath, projectConfig);
-      
+
       // 保存项目配置
       await this.saveProjectConfiguration(projectPath, projectConfig);
-      
+
       // 创建项目锁文件
       await this.createProjectLock(projectPath);
-      
+
       // 在VSCode中打开项目
       const uri = vscode.Uri.file(projectPath);
       await vscode.commands.executeCommand('vscode.openFolder', uri);
-      
+
       this.emit('projectCreated', projectConfig);
-      
+
       vscode.window.showInformationMessage(`项目 "${projectName}" 创建成功`);
-      
+
     } catch (error) {
       throw new Error(`创建项目失败: ${error}`);
     }
@@ -222,27 +475,27 @@ export class WorkspaceManager extends EventEmitter {
       if (!await this.fileExists(configPath)) {
         throw new Error('不是有效的Logic Analyzer项目目录');
       }
-      
+
       // 加载项目配置
       const projectConfig = await this.loadProjectConfiguration(projectPath);
-      
+
       // 验证项目结构
       await this.validateProjectStructure(projectPath, projectConfig);
-      
+
       // 设置当前项目
       this.currentProject = projectConfig;
       this.projectRoot = projectPath;
-      
+
       // 启动文件监听
       this.setupFileWatchers(projectPath);
-      
+
       // 启动自动备份
       if (projectConfig.settings.autoBackup) {
         this.startAutoBackup();
       }
-      
+
       this.emit('projectOpened', projectConfig);
-      
+
     } catch (error) {
       throw new Error(`打开项目失败: ${error}`);
     }
@@ -253,29 +506,29 @@ export class WorkspaceManager extends EventEmitter {
    */
   async closeProject(): Promise<void> {
     if (!this.currentProject) return;
-    
+
     try {
       // 停止文件监听
       this.stopFileWatchers();
-      
+
       // 停止自动备份
       this.stopAutoBackup();
-      
+
       // 清理临时文件
       if (this.projectRoot) {
         await this.cleanupTempFiles();
       }
-      
+
       // 移除项目锁文件
       if (this.projectRoot) {
         await this.removeProjectLock(this.projectRoot);
       }
-      
+
       this.emit('projectClosed', this.currentProject);
-      
+
       this.currentProject = undefined;
       this.projectRoot = undefined;
-      
+
     } catch (error) {
       console.error('关闭项目时出错:', error);
     }
@@ -284,8 +537,22 @@ export class WorkspaceManager extends EventEmitter {
   /**
    * 获取当前项目
    */
-  getCurrentProject(): ProjectConfiguration | undefined {
-    return this.currentProject;
+  getCurrentProject(): ProjectConfiguration | null {
+    return this.currentProject || null;
+  }
+
+  /**
+   * 检查是否有活动项目
+   */
+  hasActiveProject(): boolean {
+    return !!this.currentProject;
+  }
+
+  /**
+   * 获取项目信息
+   */
+  getProjectInfo(): ProjectConfiguration | null {
+    return this.getCurrentProject();
   }
 
   /**
@@ -295,15 +562,15 @@ export class WorkspaceManager extends EventEmitter {
     if (!this.currentProject || !this.projectRoot) {
       throw new Error('没有打开的项目');
     }
-    
+
     this.currentProject = {
       ...this.currentProject,
       ...updates,
       updatedAt: new Date().toISOString()
     };
-    
+
     await this.saveProjectConfiguration(this.projectRoot, this.currentProject);
-    
+
     this.emit('projectUpdated', this.currentProject);
   }
 
@@ -314,11 +581,11 @@ export class WorkspaceManager extends EventEmitter {
     if (!this.projectRoot) {
       throw new Error('没有打开的项目');
     }
-    
+
     const files: ProjectFile[] = [];
-    const directories = type ? [this.getDirectoryForFileType(type)] : 
+    const directories = type ? [this.getDirectoryForFileType(type)] :
       Object.values(this.currentProject!.structure);
-    
+
     for (const dir of directories) {
       const dirPath = path.join(this.projectRoot, dir);
       if (await this.fileExists(dirPath)) {
@@ -326,7 +593,7 @@ export class WorkspaceManager extends EventEmitter {
         files.push(...dirFiles);
       }
     }
-    
+
     return files.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   }
 
@@ -334,29 +601,40 @@ export class WorkspaceManager extends EventEmitter {
    * 添加文件到项目
    */
   async addFileToProject(
-    filePath: string, 
-    type: FileType, 
+    filePath: string,
+    type: FileType,
+    targetPath?: string,
     metadata?: any
-  ): Promise<ProjectFile> {
+  ): Promise<string> {
     if (!this.projectRoot) {
       throw new Error('没有打开的项目');
     }
-    
-    const targetDir = path.join(this.projectRoot, this.getDirectoryForFileType(type));
-    await fs.mkdir(targetDir, { recursive: true });
-    
-    const fileName = path.basename(filePath);
-    const targetPath = path.join(targetDir, fileName);
-    
+
+    let finalTargetPath: string;
+    if (targetPath) {
+      // 如果指定了目标路径，使用它
+      finalTargetPath = path.join(this.projectRoot, targetPath);
+    } else {
+      // 否则，使用默认目录
+      const targetDir = path.join(this.projectRoot, this.getDirectoryForFileType(type));
+      await fs.mkdir(targetDir, { recursive: true });
+      const fileName = path.basename(filePath);
+      finalTargetPath = path.join(targetDir, fileName);
+    }
+
+    // 确保目标目录存在
+    await fs.mkdir(path.dirname(finalTargetPath), { recursive: true });
+
     // 复制文件
-    await fs.copyFile(filePath, targetPath);
-    
+    await fs.copyFile(filePath, finalTargetPath);
+
     // 创建文件信息
-    const stats = await fs.stat(targetPath);
+    const stats = await fs.stat(finalTargetPath);
+    const fileId = this.generateFileId();
     const projectFile: ProjectFile = {
-      id: this.generateFileId(),
-      name: fileName,
-      path: path.relative(this.projectRoot, targetPath),
+      id: fileId,
+      name: path.basename(finalTargetPath),
+      path: path.relative(this.projectRoot, finalTargetPath),
       type,
       size: stats.size,
       createdAt: stats.birthtime.toISOString(),
@@ -364,10 +642,10 @@ export class WorkspaceManager extends EventEmitter {
       tags: [],
       metadata
     };
-    
+
     this.emit('fileAdded', projectFile);
-    
-    return projectFile;
+
+    return fileId;
   }
 
   /**
@@ -377,17 +655,17 @@ export class WorkspaceManager extends EventEmitter {
     if (!this.projectRoot) {
       throw new Error('没有打开的项目');
     }
-    
+
     const files = await this.getProjectFiles();
     const file = files.find(f => f.id === fileId);
-    
+
     if (!file) {
       throw new Error('文件不存在');
     }
-    
+
     const fullPath = path.join(this.projectRoot, file.path);
-    await fs.unlink(fullPath);
-    
+    await fs.rm(fullPath, { force: true });
+
     this.emit('fileRemoved', file);
   }
 
@@ -398,13 +676,13 @@ export class WorkspaceManager extends EventEmitter {
     if (!this.projectRoot || !this.currentProject) {
       throw new Error('没有打开的项目');
     }
-    
+
     const backupName = `backup_${this.currentProject.name}_${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}`;
     const backupDir = path.join(this.projectRoot, this.BACKUP_DIR);
     const backupPath = path.join(backupDir, `${backupName}.zip`);
-    
+
     await fs.mkdir(backupDir, { recursive: true });
-    
+
     // 简化的备份实现 - 实际应使用压缩库
     const backupData = {
       project: this.currentProject,
@@ -412,12 +690,12 @@ export class WorkspaceManager extends EventEmitter {
       includeData,
       files: await this.getProjectFiles()
     };
-    
+
     await fs.writeFile(
-      path.join(backupDir, `${backupName}.json`), 
+      path.join(backupDir, `${backupName}.json`),
       JSON.stringify(backupData, null, 2)
     );
-    
+
     // 更新项目元数据
     await this.updateProject({
       metadata: {
@@ -425,9 +703,9 @@ export class WorkspaceManager extends EventEmitter {
         lastBackup: new Date().toISOString()
       }
     });
-    
+
     this.emit('backupCreated', backupPath);
-    
+
     return backupPath;
   }
 
@@ -438,20 +716,26 @@ export class WorkspaceManager extends EventEmitter {
     if (!this.projectRoot) {
       throw new Error('没有打开的项目');
     }
-    
+
     try {
+      // 检查备份文件是否存在
+      await fs.access(backupPath);
+
       // 简化的恢复实现
       const backupData = JSON.parse(await fs.readFile(backupPath, 'utf8'));
-      
+
       if (backupData.project) {
         await this.updateProject(backupData.project);
       }
-      
+
       this.emit('backupRestored', backupPath);
-      
+
       vscode.window.showInformationMessage('项目备份恢复成功');
-      
-    } catch (error) {
+
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        throw new Error('备份文件不存在');
+      }
       throw new Error(`恢复备份失败: ${error}`);
     }
   }
@@ -547,22 +831,22 @@ export class WorkspaceManager extends EventEmitter {
     if (!this.projectRoot) {
       throw new Error('没有打开的项目');
     }
-    
+
     const files = await this.getProjectFiles();
     const sessionFiles = files.filter(f => f.type === FileType.Session);
-    
+
     const storageUsage: { [type: string]: number } = {};
     let totalSize = 0;
-    
+
     for (const file of files) {
       totalSize += file.size;
       storageUsage[file.type] = (storageUsage[file.type] || 0) + file.size;
     }
-    
-    const lastActivity = files.length > 0 ? 
-      Math.max(...files.map(f => new Date(f.updatedAt).getTime())) : 
+
+    const lastActivity = files.length > 0 ?
+      Math.max(...files.map(f => new Date(f.updatedAt).getTime())) :
       new Date().getTime();
-    
+
     return {
       fileCount: files.length,
       totalSize,
@@ -595,7 +879,7 @@ export class WorkspaceManager extends EventEmitter {
   private async initializeCurrentProject(): Promise<void> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (!workspaceFolder) return;
-    
+
     const configPath = path.join(workspaceFolder.uri.fsPath, this.PROJECT_CONFIG_FILE);
     if (await this.fileExists(configPath)) {
       try {
@@ -612,12 +896,12 @@ export class WorkspaceManager extends EventEmitter {
   private async applyProjectTemplate(projectPath: string, templateName: string): Promise<void> {
     const template = this.getProjectTemplates().find(t => t.name === templateName);
     if (!template) return;
-    
+
     // 创建目录结构
     for (const dir of template.structure) {
       await fs.mkdir(path.join(projectPath, dir), { recursive: true });
     }
-    
+
     // 创建模板文件
     for (const file of template.files) {
       const filePath = path.join(projectPath, file.path);
@@ -631,7 +915,7 @@ export class WorkspaceManager extends EventEmitter {
    * 创建项目结构
    */
   private async createProjectStructure(
-    projectPath: string, 
+    projectPath: string,
     config: ProjectConfiguration
   ): Promise<void> {
     for (const dir of Object.values(config.structure)) {
@@ -643,7 +927,7 @@ export class WorkspaceManager extends EventEmitter {
    * 保存项目配置
    */
   private async saveProjectConfiguration(
-    projectPath: string, 
+    projectPath: string,
     config: ProjectConfiguration
   ): Promise<void> {
     const configPath = path.join(projectPath, this.PROJECT_CONFIG_FILE);
@@ -663,7 +947,7 @@ export class WorkspaceManager extends EventEmitter {
    * 验证项目结构
    */
   private async validateProjectStructure(
-    projectPath: string, 
+    projectPath: string,
     config: ProjectConfiguration
   ): Promise<void> {
     for (const [key, dir] of Object.entries(config.structure)) {
@@ -680,20 +964,20 @@ export class WorkspaceManager extends EventEmitter {
    */
   private setupFileWatchers(projectPath: string): void {
     this.stopFileWatchers(); // 清理旧的监听器
-    
+
     const patterns = [
       path.join(projectPath, '**/*.lacsession'),
       path.join(projectPath, '**/*.lac'),
       path.join(projectPath, this.PROJECT_CONFIG_FILE)
     ];
-    
+
     for (const pattern of patterns) {
       const watcher = vscode.workspace.createFileSystemWatcher(pattern);
-      
+
       watcher.onDidCreate(uri => this.emit('fileCreated', uri.fsPath));
       watcher.onDidChange(uri => this.emit('fileChanged', uri.fsPath));
       watcher.onDidDelete(uri => this.emit('fileDeleted', uri.fsPath));
-      
+
       this.fileWatchers.set(pattern, watcher);
     }
   }
@@ -713,7 +997,7 @@ export class WorkspaceManager extends EventEmitter {
    */
   private startAutoBackup(): void {
     this.stopAutoBackup();
-    
+
     // 每24小时自动备份一次
     this.backupTimer = setInterval(async () => {
       try {
@@ -739,12 +1023,17 @@ export class WorkspaceManager extends EventEmitter {
    */
   private async cleanupTempFiles(): Promise<void> {
     if (!this.projectRoot || !this.currentProject) return;
-    
+
     const tempDir = path.join(this.projectRoot, this.currentProject.structure.tempDir);
     if (await this.fileExists(tempDir)) {
       const files = await fs.readdir(tempDir);
       for (const file of files) {
-        await fs.unlink(path.join(tempDir, file));
+        try {
+          await fs.unlink(path.join(tempDir, file));
+        } catch (error) {
+          // 忽略删除失败，继续清理其他文件
+          console.warn(`删除临时文件失败: ${file}`, error);
+        }
       }
     }
   }
@@ -754,16 +1043,16 @@ export class WorkspaceManager extends EventEmitter {
    */
   private async scanDirectory(dirPath: string, type?: FileType): Promise<ProjectFile[]> {
     const files: ProjectFile[] = [];
-    
+
     try {
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         if (entry.isFile()) {
           const filePath = path.join(dirPath, entry.name);
           const stats = await fs.stat(filePath);
           const fileType = this.detectFileType(entry.name);
-          
+
           if (!type || fileType === type) {
             files.push({
               id: this.generateFileId(),
@@ -781,7 +1070,7 @@ export class WorkspaceManager extends EventEmitter {
     } catch (error) {
       console.error(`扫描目录失败: ${dirPath}`, error);
     }
-    
+
     return files;
   }
 
@@ -790,20 +1079,19 @@ export class WorkspaceManager extends EventEmitter {
    */
   private detectFileType(fileName: string): FileType {
     const ext = path.extname(fileName).toLowerCase();
-    
+
     switch (ext) {
       case '.lacsession':
         return FileType.Session;
       case '.lac':
       case '.csv':
+        return FileType.Data;
       case '.json':
+        if (fileName.includes('config')) return FileType.Config;
         return FileType.Data;
       case '.html':
       case '.pdf':
         return FileType.Report;
-      case '.json':
-        if (fileName.includes('config')) return FileType.Config;
-        return FileType.Data;
       case '.js':
       case '.ts':
       case '.py':
@@ -818,7 +1106,7 @@ export class WorkspaceManager extends EventEmitter {
    */
   private getDirectoryForFileType(type: FileType): string {
     if (!this.currentProject) return '';
-    
+
     switch (type) {
       case FileType.Session:
         return this.currentProject.structure.sessionsDir;
@@ -852,7 +1140,7 @@ export class WorkspaceManager extends EventEmitter {
       user: process.env.USERNAME || process.env.USER || 'unknown',
       timestamp: new Date().toISOString()
     };
-    
+
     await fs.writeFile(lockPath, JSON.stringify(lockData), 'utf8');
   }
 

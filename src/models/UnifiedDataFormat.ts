@@ -4,7 +4,7 @@
  * 必须与原 @logicanalyzer/Software 的 .lac 格式 100% 兼容
  */
 
-import { DeviceInfo, AnalyzerChannel } from './AnalyzerTypes';
+import { DeviceInfo } from './AnalyzerTypes';
 
 // 时基信息
 export interface TimebaseInfo {
@@ -160,6 +160,8 @@ export interface RenderParams {
 
 // 工具函数
 export class UnifiedDataFormat {
+  private static idCounter = 0;
+
   /**
    * 验证数据格式
    */
@@ -208,7 +210,7 @@ export class UnifiedDataFormat {
       formatType: 'unified-v1',
       metadata: {
         deviceInfo,
-        captureId: `capture-${Date.now()}`,
+        captureId: `capture-${Date.now()}-${++UnifiedDataFormat.idCounter}`,
         timestamp: Date.now(),
         duration: 0,
         sampleRate: 1000000, // 1MHz 默认
@@ -272,12 +274,12 @@ export class UnifiedDataFormat {
         captureId: `imported-${Date.now()}`,
         timestamp: Date.now(),
         duration: 0,
-        sampleRate: session.frequency || 1000000,
+        sampleRate: session.frequency !== undefined ? session.frequency : 1000000,
         totalSamples: session.totalSamples || 0,
         triggerPosition: session.preTriggerSamples || 0,
         timebase: {
-          sampleRate: session.frequency || 1000000,
-          sampleInterval: 1000000000 / (session.frequency || 1000000),
+          sampleRate: session.frequency !== undefined ? session.frequency : 1000000,
+          sampleInterval: session.frequency !== undefined && session.frequency > 0 ? 1000000000 / session.frequency : 0,
           timeOffset: 0,
           precision: 1
         },
