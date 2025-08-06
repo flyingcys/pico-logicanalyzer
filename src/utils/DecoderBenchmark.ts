@@ -187,19 +187,28 @@ export class DecoderBenchmark {
 
       // 计算统计信息
       result.executionTime = totalTime;
-      result.processingSpeed = (configuration.sampleCount * configuration.iterations) / (totalTime / 1000);
+      result.processingSpeed = totalTime > 0 ? (configuration.sampleCount * configuration.iterations) / (totalTime / 1000) : 0;
       result.peakMemoryUsage = totalMemoryUsage;
-      result.resultCount = Math.floor(totalResultCount / configuration.iterations);
+      result.resultCount = configuration.iterations > 0 ? Math.floor(totalResultCount / configuration.iterations) : 0;
       result.success = result.errors.length === 0;
 
       // 计算详细统计
-      const avgTime = iterationTimes.reduce((sum, time) => sum + time, 0) / iterationTimes.length;
-      const variance = iterationTimes.reduce((sum, time) => sum + Math.pow(time - avgTime, 2), 0) / iterationTimes.length;
+      let avgTime = 0;
+      let variance = 0;
+      let minTime = 0;
+      let maxTime = 0;
+
+      if (iterationTimes.length > 0) {
+        avgTime = iterationTimes.reduce((sum, time) => sum + time, 0) / iterationTimes.length;
+        variance = iterationTimes.reduce((sum, time) => sum + Math.pow(time - avgTime, 2), 0) / iterationTimes.length;
+        minTime = Math.min(...iterationTimes);
+        maxTime = Math.max(...iterationTimes);
+      }
 
       result.statistics = {
         averageIterationTime: avgTime,
-        minIterationTime: Math.min(...iterationTimes),
-        maxIterationTime: Math.max(...iterationTimes),
+        minIterationTime: minTime,
+        maxIterationTime: maxTime,
         standardDeviation: Math.sqrt(variance),
         throughput: this.calculateThroughput(configuration, totalTime)
       };
@@ -374,6 +383,9 @@ export class DecoderBenchmark {
    * 计算吞吐量
    */
   private calculateThroughput(config: BenchmarkConfiguration, totalTime: number): number {
+    if (totalTime <= 0 || config.iterations <= 0) {
+      return 0;
+    }
     const totalBytes = config.sampleCount * config.channelCount * config.iterations;
     const totalSeconds = totalTime / 1000;
     return totalBytes / totalSeconds / (1024 * 1024); // MB/s
@@ -418,7 +430,7 @@ export class DecoderBenchmark {
 
         baselines[decoderId] = {
           expectedSpeed: avgSpeed,
-          acceptableMemory: avgMemory * 1.2, // 20%容错
+          acceptableMemory: avgMemory > 0 ? avgMemory * 1.2 : 1024, // 20%容错，最小1KB
           reliabilityScore: successRate * 100
         };
       }

@@ -3,9 +3,9 @@
  * 测试CaptureSession、AnalyzerChannel和相关数据模型的完整功能
  */
 
-import '../../../src/tests/setup';
-import '../../../src/tests/matchers';
-import { TestUtils } from '../../../src/tests/mocks';
+import '../../setup';
+import '../../matchers';
+import { TestUtils } from '../../mocks';
 import {
   CaptureSession,
   AnalyzerChannel,

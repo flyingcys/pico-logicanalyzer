@@ -118,7 +118,7 @@ export class SessionManager extends ServiceLifecycleBase {
 
   constructor(options: SessionManagerOptions = {}) {
     super('SessionManager');
-    
+
     this.options = {
       autoSave: false,
       autoSaveInterval: 300, // 5分钟
@@ -181,7 +181,7 @@ export class SessionManager extends ServiceLifecycleBase {
     captureSettings?: any;
   }): Promise<string> {
     const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
+
     const sessionData: SessionData = {
       version: this.CURRENT_VERSION,
       timestamp: new Date().toISOString(),
@@ -272,10 +272,10 @@ export class SessionManager extends ServiceLifecycleBase {
   }> {
     // 模拟同步操作
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     // 重置未保存状态
     this.unsavedChanges = false;
-    
+
     return {
       success: true,
       conflictsResolved: 0

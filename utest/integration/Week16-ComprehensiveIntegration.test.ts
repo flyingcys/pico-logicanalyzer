@@ -834,7 +834,7 @@ describe('Week 16: 全面集成测试套件', () => {
           ];
           
           // 生成测试样本数据
-          const testData = hardwareSimulator.generatePatterned Data({
+          const testData = hardwareSimulator.generatePatternedData({
             pattern: [1, 0, 1, 0, 1, 1, 0, 0],
             repeat: 625, // 5000 samples total
             channelCount: 2

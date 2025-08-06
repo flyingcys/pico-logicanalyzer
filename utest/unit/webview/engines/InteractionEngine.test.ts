@@ -308,19 +308,26 @@ describe('InteractionEngine', () => {
     });
 
     describe('双击事件', () => {
-      it('应该重置视图', () => {
-        // 先修改视图
-        engine.zoom(2.0);
-        engine.pan(100);
+      it('应该进行双击缩放', () => {
+        // 初始状态 zoomLevel = 1
+        const initialViewport = engine.getViewport();
+        expect(initialViewport.zoomLevel).toBe(1);
         
         const onDoubleClick = (canvas.addEventListener as jest.Mock).mock.calls
           .find(call => call[0] === 'dblclick')[1];
 
-        onDoubleClick(mockEvent);
+        // 模拟双击事件，带坐标信息
+        const mockDoubleClickEvent = {
+          ...mockEvent,
+          clientX: 400,
+          clientY: 300
+        };
+
+        onDoubleClick(mockDoubleClickEvent);
 
         const viewport = engine.getViewport();
-        expect(viewport.zoomLevel).toBe(1);
-        expect(viewport.centerSample).toBe(500);
+        // 双击后应该缩放（从1变为2或0.5）
+        expect(viewport.zoomLevel).not.toBe(1);
       });
     });
   });

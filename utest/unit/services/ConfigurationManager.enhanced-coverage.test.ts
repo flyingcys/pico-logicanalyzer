@@ -559,12 +559,17 @@ describe('ConfigurationManager 增强覆盖率测试', () => {
         .mockResolvedValueOnce(JSON.stringify(invalidDeviceData))
         .mockRejectedValueOnce(new Error('Theme file not found'));
 
+      // 创建新的配置管理器实例以避免状态干扰
+      const freshConfigManager = new ConfigurationManager();
+
       // Act
-      await configManager.initialize();
+      await freshConfigManager.initialize();
 
       // Assert - 应该处理有效的设备，忽略无效的
-      const devices = configManager.getAllDeviceConfigurations();
+      const devices = freshConfigManager.getAllDeviceConfigurations();
       expect(devices.some(d => d.deviceId === 'valid-device')).toBe(true);
+
+      await freshConfigManager.dispose();
     });
   });
 });

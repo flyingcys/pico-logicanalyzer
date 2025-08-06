@@ -719,6 +719,13 @@ export { basicUsageExample };
     issues: string[];
     recommendations: string[];
   }> {
+    // 首先检查包路径是否存在
+    try {
+      await fs.access(packagePath);
+    } catch {
+      throw new Error(`包路径不存在: ${packagePath}`);
+    }
+
     const result = {
       score: 100,
       issues: [] as string[],

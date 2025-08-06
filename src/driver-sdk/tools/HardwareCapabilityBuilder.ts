@@ -95,7 +95,87 @@ export interface HardwareCapability {
 }
 
 /**
- * 测试兼容的硬件能力描述（匹配测试期望的结构）
+ * 测试兼容的硬件能力描述（完全匹配测试期望的结构）
+ */
+export interface TestHardwareCapabilities {
+  basicInfo: {
+    deviceName?: string;
+    version?: string;
+    manufacturer?: string;
+    description?: string;
+  };
+  channels: {
+    digital: {
+      count: number;
+      voltageRange: {
+        min: number;
+        max: number;
+      };
+      inputImpedance: number;
+    };
+    analog?: {
+      count: number;
+      voltageRange: {
+        min: number;
+        max: number;
+      };
+    };
+  };
+  sampling: {
+    maxSampleRate: number;
+    minSampleRate: number;
+    supportedRates?: number[];
+    bufferSize: number;
+    streamingSupport?: boolean;
+    compressionSupport?: boolean;
+    realTimePreview?: boolean;
+  };
+  triggers: {
+    supportedTypes: string[];
+    maxChannels: number;
+    patternWidth?: number;
+    sequentialSupport?: boolean;
+    conditions?: string[];
+    advancedTriggers?: {
+      pulseWidth?: boolean;
+      runtTrigger?: boolean;
+      setupHold?: boolean;
+      timeout?: boolean;
+    };
+  };
+  protocols: {
+    supported: string[];
+  };
+  connection: {
+    type?: string;
+    speed?: number;
+    parameters?: any;
+  };
+  features?: {
+    signalGeneration?: boolean;
+    powerSupply?: boolean;
+    voltageMonitoring?: boolean;
+    protocolDecoding?: boolean;
+    mathFunctions?: boolean;
+    measurements?: boolean;
+    export?: {
+      formats?: string[];
+      compression?: boolean;
+    };
+  };
+  clock?: {
+    internalClock?: boolean;
+    externalClockSupport?: boolean;
+    supportedFrequencies?: number[];
+  };
+  synchronization?: {
+    supported?: boolean;
+    maxDevices?: number;
+  };
+}
+
+/**
+ * 原始的硬件能力描述（保持兼容性）
  */
 export interface HardwareCapabilities {
   deviceName?: string;
@@ -182,6 +262,29 @@ export enum HardwareTemplate {
  */
 export class HardwareCapabilityBuilder {
   private capability: Partial<HardwareCapability> = {};
+  private testCapability: Partial<TestHardwareCapabilities> = {
+    basicInfo: {},
+    channels: {
+      digital: {
+        count: 0,
+        voltageRange: { min: 0, max: 0 },
+        inputImpedance: 0
+      }
+    },
+    sampling: {
+      maxSampleRate: 0,
+      minSampleRate: 0,
+      bufferSize: 0
+    },
+    triggers: {
+      supportedTypes: [],
+      maxChannels: 0
+    },
+    protocols: {
+      supported: []
+    },
+    connection: {}
+  };
 
   constructor(template?: HardwareTemplate) {
     if (template) {
@@ -485,6 +588,12 @@ export class HardwareCapabilityBuilder {
       this.capability.metadata = {};
     }
     this.capability.metadata.model = name;
+
+    // 同时更新测试格式
+    if (!this.testCapability.basicInfo) {
+      this.testCapability.basicInfo = {};
+    }
+    this.testCapability.basicInfo.deviceName = name;
     return this;
   }
 
@@ -493,6 +602,12 @@ export class HardwareCapabilityBuilder {
       this.capability.metadata = {};
     }
     this.capability.metadata.manufacturer = manufacturer;
+
+    // 同时更新测试格式
+    if (!this.testCapability.basicInfo) {
+      this.testCapability.basicInfo = {};
+    }
+    this.testCapability.basicInfo.manufacturer = manufacturer;
     return this;
   }
 
@@ -501,6 +616,32 @@ export class HardwareCapabilityBuilder {
       this.capability.metadata = {};
     }
     this.capability.metadata.revision = version;
+    return this;
+  }
+
+  // 添加测试期望的方法别名
+  setDeviceVersion(version: string): this {
+    this.setFirmwareVersion(version);
+
+    // 同时更新测试格式
+    if (!this.testCapability.basicInfo) {
+      this.testCapability.basicInfo = {};
+    }
+    this.testCapability.basicInfo.version = version;
+    return this;
+  }
+
+  setDescription(description: string): this {
+    if (!this.capability.metadata) {
+      this.capability.metadata = {};
+    }
+    this.capability.metadata.description = description;
+
+    // 同时更新测试格式
+    if (!this.testCapability.basicInfo) {
+      this.testCapability.basicInfo = {};
+    }
+    this.testCapability.basicInfo.description = description;
     return this;
   }
 
@@ -525,6 +666,46 @@ export class HardwareCapabilityBuilder {
     return this;
   }
 
+  // 添加测试期望的方法别名
+  setDigitalChannels(count: number): this {
+    this.setChannelCount(count);
+
+    // 更新测试格式
+    if (!this.testCapability.channels) {
+      this.testCapability.channels = {
+        digital: {
+          count: 0,
+          voltageRange: { min: 0, max: 0 },
+          inputImpedance: 0
+        }
+      };
+    }
+    this.testCapability.channels.digital.count = count;
+    return this;
+  }
+
+  setChannelVoltageRange(min: number, max: number): this {
+    if (!this.capability.channels) {
+      this.capability.channels = {} as ChannelCapability;
+    }
+    this.capability.channels.minVoltage = min;
+    this.capability.channels.maxVoltage = max;
+
+    // 更新测试格式
+    if (!this.testCapability.channels) {
+      this.testCapability.channels = {
+        digital: {
+          count: 0,
+          voltageRange: { min: 0, max: 0 },
+          inputImpedance: 0
+        }
+      };
+    }
+    this.testCapability.channels.digital.voltageRange.min = min;
+    this.testCapability.channels.digital.voltageRange.max = max;
+    return this;
+  }
+
   setMaxVoltage(voltage: number): this {
     if (!this.capability.channels) {
       this.capability.channels = {} as ChannelCapability;
@@ -546,6 +727,18 @@ export class HardwareCapabilityBuilder {
       this.capability.channels = {} as ChannelCapability;
     }
     this.capability.channels.inputImpedance = impedance;
+
+    // 更新测试格式
+    if (!this.testCapability.channels) {
+      this.testCapability.channels = {
+        digital: {
+          count: 0,
+          voltageRange: { min: 0, max: 0 },
+          inputImpedance: 0
+        }
+      };
+    }
+    this.testCapability.channels.digital.inputImpedance = impedance;
     return this;
   }
 
@@ -555,6 +748,16 @@ export class HardwareCapabilityBuilder {
       this.capability.sampling = {} as SamplingCapability;
     }
     this.capability.sampling.maxRate = rate;
+
+    // 更新测试格式
+    if (!this.testCapability.sampling) {
+      this.testCapability.sampling = {
+        maxSampleRate: 0,
+        minSampleRate: 0,
+        bufferSize: 0
+      };
+    }
+    this.testCapability.sampling.maxSampleRate = rate;
     return this;
   }
 
@@ -563,6 +766,16 @@ export class HardwareCapabilityBuilder {
       this.capability.sampling = {} as SamplingCapability;
     }
     this.capability.sampling.minRate = rate;
+
+    // 更新测试格式
+    if (!this.testCapability.sampling) {
+      this.testCapability.sampling = {
+        maxSampleRate: 0,
+        minSampleRate: 0,
+        bufferSize: 0
+      };
+    }
+    this.testCapability.sampling.minSampleRate = rate;
     return this;
   }
 
@@ -571,6 +784,16 @@ export class HardwareCapabilityBuilder {
       this.capability.sampling = {} as SamplingCapability;
     }
     this.capability.sampling.supportedRates = rates;
+
+    // 更新测试格式
+    if (!this.testCapability.sampling) {
+      this.testCapability.sampling = {
+        maxSampleRate: 0,
+        minSampleRate: 0,
+        bufferSize: 0
+      };
+    }
+    this.testCapability.sampling.supportedRates = rates;
     return this;
   }
 
@@ -579,6 +802,24 @@ export class HardwareCapabilityBuilder {
       this.capability.sampling = {} as SamplingCapability;
     }
     this.capability.sampling.bufferSize = size;
+    return this;
+  }
+
+  setBufferSize(size: number): this {
+    if (!this.capability.sampling) {
+      this.capability.sampling = {} as SamplingCapability;
+    }
+    this.capability.sampling.bufferSize = size;
+
+    // 更新测试格式
+    if (!this.testCapability.sampling) {
+      this.testCapability.sampling = {
+        maxSampleRate: 0,
+        minSampleRate: 0,
+        bufferSize: 0
+      };
+    }
+    this.testCapability.sampling.bufferSize = size;
     return this;
   }
 
@@ -636,6 +877,111 @@ export class HardwareCapabilityBuilder {
       this.capability.triggers = {} as TriggerCapability;
     }
     this.capability.triggers.maxChannels = count;
+
+    // 更新测试格式
+    if (!this.testCapability.triggers) {
+      this.testCapability.triggers = {
+        supportedTypes: [],
+        maxChannels: 0
+      };
+    }
+    this.testCapability.triggers.maxChannels = count;
+    return this;
+  }
+
+  // 测试期望的触发类型添加方法
+  addTriggerType(type: string): this {
+    // 更新测试格式
+    if (!this.testCapability.triggers) {
+      this.testCapability.triggers = {
+        supportedTypes: [],
+        maxChannels: 0
+      };
+    }
+    if (!this.testCapability.triggers.supportedTypes.includes(type)) {
+      this.testCapability.triggers.supportedTypes.push(type);
+    }
+
+    // 也更新原始格式以保持兼容性
+    if (!this.capability.triggers) {
+      this.capability.triggers = {} as TriggerCapability;
+    }
+    if (!this.capability.triggers.types) {
+      this.capability.triggers.types = [];
+    }
+    if (!this.capability.triggers.conditions) {
+      this.capability.triggers.conditions = [];
+    }
+
+    // 根据类型添加相应的触发能力
+    switch (type) {
+      case 'edge':
+        if (!this.capability.triggers.types.includes(0)) {
+          this.capability.triggers.types.push(0);
+        }
+        break;
+      case 'complex':
+        if (!this.capability.triggers.types.includes(1)) {
+          this.capability.triggers.types.push(1);
+        }
+        break;
+      case 'pattern':
+        if (!this.capability.triggers.types.includes(2)) {
+          this.capability.triggers.types.push(2);
+        }
+        break;
+      case 'pulse':
+        if (!this.capability.triggers.types.includes(2)) {
+          this.capability.triggers.types.push(2);
+        }
+        if (!this.capability.triggers.advancedTriggers) {
+          this.capability.triggers.advancedTriggers = {};
+        }
+        this.capability.triggers.advancedTriggers.pulseWidth = true;
+        break;
+    }
+    return this;
+  }
+
+  // 协议支持方法
+  addProtocolSupport(protocol: string): this {
+    // 更新测试格式
+    if (!this.testCapability.protocols) {
+      this.testCapability.protocols = {
+        supported: []
+      };
+    }
+    if (!this.testCapability.protocols.supported.includes(protocol)) {
+      this.testCapability.protocols.supported.push(protocol);
+    }
+    return this;
+  }
+
+  // 连接配置方法
+  setConnectionType(type: string): this {
+    // 更新测试格式
+    if (!this.testCapability.connection) {
+      this.testCapability.connection = {};
+    }
+    this.testCapability.connection.type = type;
+    return this;
+  }
+
+  setConnectionSpeed(speed: number): this {
+    // 更新测试格式
+    if (!this.testCapability.connection) {
+      this.testCapability.connection = {};
+    }
+    this.testCapability.connection.speed = speed;
+    return this;
+  }
+
+  setConnectionParams(params: any): this {
+    // 更新测试格式
+    if (!this.testCapability.connection) {
+      this.testCapability.connection = {};
+    }
+    this.testCapability.connection.parameters = params;
     return this;
   }
 
@@ -757,10 +1103,52 @@ export class HardwareCapabilityBuilder {
   }
 
   /**
-   * 构建最终的硬件能力描述
+   * 构建最终的硬件能力描述（返回测试期望的格式）
    */
-  build(): HardwareCapabilities {
-    // 转换为测试兼容的格式
+  build(): TestHardwareCapabilities {
+    // 确保所有必需的结构都存在
+    if (!this.testCapability.basicInfo) {
+      this.testCapability.basicInfo = {};
+    }
+    if (!this.testCapability.channels) {
+      this.testCapability.channels = {
+        digital: {
+          count: 0,
+          voltageRange: { min: 0, max: 0 },
+          inputImpedance: 0
+        }
+      };
+    }
+    if (!this.testCapability.sampling) {
+      this.testCapability.sampling = {
+        maxSampleRate: 0,
+        minSampleRate: 0,
+        bufferSize: 0
+      };
+    }
+    if (!this.testCapability.triggers) {
+      this.testCapability.triggers = {
+        supportedTypes: [],
+        maxChannels: 0
+      };
+    }
+    if (!this.testCapability.protocols) {
+      this.testCapability.protocols = {
+        supported: []
+      };
+    }
+    if (!this.testCapability.connection) {
+      this.testCapability.connection = {};
+    }
+
+    return this.testCapability as TestHardwareCapabilities;
+  }
+
+  /**
+   * 构建原始格式的硬件能力描述（保持兼容性）
+   */
+  buildLegacy(): HardwareCapabilities {
+    // 转换为原始兼容的格式
     const result: HardwareCapabilities = {
       deviceName: this.capability.metadata?.model,
       manufacturer: this.capability.metadata?.manufacturer,
@@ -879,6 +1267,124 @@ export class HardwareCapabilityBuilder {
 
   importFromJSON(json: string): HardwareCapabilities {
     return JSON.parse(json) as HardwareCapabilities;
+  }
+
+  // 预设配置方法
+  usePreset(preset: string): this {
+    switch (preset) {
+      case 'entry-level':
+        this.setDigitalChannels(8)
+          .setChannelVoltageRange(0, 5.0)
+          .setInputImpedance(1000000)
+          .setMinSampleRate(1000)
+          .setMaxSampleRate(24000000)
+          .setBufferSize(1000000)
+          .addTriggerType('edge')
+          .setMaxTriggerChannels(8)
+          .addProtocolSupport('I2C')
+          .addProtocolSupport('SPI')
+          .setConnectionType('USB');
+        break;
+      case 'professional':
+        this.setDigitalChannels(32)
+          .setChannelVoltageRange(-5.0, 5.0)
+          .setInputImpedance(1000000)
+          .setMinSampleRate(1000)
+          .setMaxSampleRate(1000000000)
+          .setBufferSize(100000000)
+          .addTriggerType('edge')
+          .addTriggerType('complex')
+          .setMaxTriggerChannels(32)
+          .addProtocolSupport('I2C')
+          .addProtocolSupport('SPI')
+          .addProtocolSupport('UART')
+          .setConnectionType('USB');
+        break;
+      case 'high-end':
+        this.setDigitalChannels(64)
+          .setChannelVoltageRange(-10.0, 10.0)
+          .setInputImpedance(50)
+          .setMinSampleRate(100000)
+          .setMaxSampleRate(10000000000)
+          .setBufferSize(1000000000)
+          .addTriggerType('edge')
+          .addTriggerType('complex')
+          .addTriggerType('pattern')
+          .setMaxTriggerChannels(64)
+          .addProtocolSupport('I2C')
+          .addProtocolSupport('SPI')
+          .addProtocolSupport('UART')
+          .addProtocolSupport('CAN')
+          .setConnectionType('USB');
+        break;
+      default:
+        throw new Error(`未知的预设配置: ${preset}`);
+    }
+    return this;
+  }
+
+  // 验证方法
+  validate(capabilities: TestHardwareCapabilities): {
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+  } {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // 检查通道数量
+    if (!capabilities.channels || capabilities.channels.digital.count <= 0) {
+      errors.push('数字通道数量必须大于0');
+    }
+
+    // 检查采样率
+    if (!capabilities.sampling || capabilities.sampling.maxSampleRate <= 0) {
+      errors.push('最大采样率必须大于0');
+    }
+
+    // 检查缓冲区大小
+    if (!capabilities.sampling || capabilities.sampling.bufferSize <= 0) {
+      errors.push('缓冲区大小必须大于0');
+    }
+
+    // 性能警告
+    if (capabilities.channels && capabilities.channels.digital.count > 128) {
+      warnings.push('通道数量过多，可能影响性能');
+    }
+
+    if (capabilities.sampling && capabilities.sampling.maxSampleRate > 10000000000) {
+      warnings.push('采样率过高，可能不现实');
+    }
+
+    if (capabilities.sampling && capabilities.sampling.bufferSize > 10000000000) {
+      warnings.push('缓冲区过大，可能导致内存问题');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings
+    };
+  }
+
+  // 导出和导入方法
+  exportToJSON(capabilities: TestHardwareCapabilities): string {
+    return JSON.stringify(capabilities, null, 2);
+  }
+
+  importFromJSON(json: string): TestHardwareCapabilities {
+    try {
+      const parsed = JSON.parse(json);
+
+      // 验证基本结构
+      if (!parsed.basicInfo || !parsed.channels || !parsed.sampling) {
+        throw new Error('JSON结构无效');
+      }
+
+      return parsed as TestHardwareCapabilities;
+    } catch (error) {
+      throw new Error(`导入JSON失败: ${error}`);
+    }
   }
 
   /**

@@ -280,16 +280,18 @@ export abstract class StreamingDecoderBase {
   protected calculateProgress(totalChunks: number): StreamingProgress {
     const currentTime = performance.now();
     const elapsedTime = currentTime - this.startTime;
-    const progressPercent = (this.processedSamples / this.totalSamples) * 100;
-    const processingSpeed = this.processedSamples / (elapsedTime / 1000);
+
+    // 处理零除错误
+    const progressPercent = this.totalSamples > 0 ? (this.processedSamples / this.totalSamples) * 100 : 0;
+    const processingSpeed = elapsedTime > 0 ? this.processedSamples / (elapsedTime / 1000) : 0;
     const remainingSamples = this.totalSamples - this.processedSamples;
-    const estimatedTimeRemaining = remainingSamples / processingSpeed * 1000;
+    const estimatedTimeRemaining = processingSpeed > 0 ? remainingSamples / processingSpeed * 1000 : 0;
 
     return {
       totalSamples: this.totalSamples,
       processedSamples: this.processedSamples,
       progressPercent,
-      currentChunk: Math.floor((this.processedSamples / this.totalSamples) * totalChunks),
+      currentChunk: this.totalSamples > 0 ? Math.floor((this.processedSamples / this.totalSamples) * totalChunks) : 0,
       totalChunks,
       resultCount: 0, // 将在具体实现中更新
       processingSpeed,
@@ -432,7 +434,7 @@ export class PerformanceMonitor {
     const reportCheckpoints = this.checkpoints.map((checkpoint, index) => ({
       name: checkpoint.name,
       time: checkpoint.time,
-      deltaTime: index > 0 ? checkpoint.time - this.checkpoints[index - 1].time : 0,
+      deltaTime: index > 0 ? Math.max(0, checkpoint.time - this.checkpoints[index - 1].time) : 0,
       memory: checkpoint.memory
     }));
 

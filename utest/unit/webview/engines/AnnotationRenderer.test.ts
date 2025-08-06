@@ -1,6 +1,7 @@
 /**
  * AnnotationRenderer 单元测试
  * 完整测试注释渲染器的所有功能
+ * @jest-environment jsdom
  */
 
 import '../../../setup';

@@ -49,6 +49,29 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
           await this.saveLACFile(document, message.data);
           break;
 
+        case 'load':
+          // 加载.lac文件内容
+          try {
+            const lacData = this.parseLACFile(document.getText());
+            await this.sendDocumentToWebview(webviewPanel.webview, document);
+            await webviewPanel.webview.postMessage({
+              type: 'documentLoaded',
+              data: lacData
+            });
+          } catch (error) {
+            console.error('加载文档失败:', error);
+            vscode.window.showErrorMessage(`加载文件失败: ${error}`);
+            try {
+              await webviewPanel.webview.postMessage({
+                type: 'error',
+                message: `加载文件失败: ${error}`
+              });
+            } catch (postError) {
+              console.error('发送错误消息失败:', postError);
+            }
+          }
+          break;
+
         case 'export':
           // 导出数据
           await this.exportData(message.data);

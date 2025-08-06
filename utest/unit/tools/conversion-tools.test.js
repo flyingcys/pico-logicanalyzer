@@ -930,23 +930,64 @@ async function runConversionToolsTest() {
   }
 }
 
-// 运行测试
-runConversionToolsTest().then(result => {
-  if (result.success) {
-    console.log('\n🎉 所有转换工具测试通过！');
-    console.log('📈 测试结果汇总:');
-    console.log(`  分析解码器数: ${result.totalDecodersAnalyzed}`);
-    console.log(`  生成代码行数: ${result.totalCodeGenerated}`);
-    console.log(`  自动化程度: ${result.automationRate}%`);
-    console.log(`  简单解码器: ${result.complexityDistribution.simple}个`);
-    console.log(`  中等解码器: ${result.complexityDistribution.medium}个`);
-    console.log(`  复杂解码器: ${result.complexityDistribution.complex}个`);
-    console.log('');
-    console.log('🚀 转换工具系统已准备就绪，可为后续80+协议自动转换提供支持！');
-  } else {
-    console.log('\n❌ 转换工具测试失败');
-    console.log(`错误信息: ${result.error}`);
-  }
-}).catch(error => {
-  console.error('\n💥 测试执行异常:', error);
+// Jest 测试套件
+describe('转换工具集成测试', () => {
+  
+  test('应该成功运行转换工具功能测试', async () => {
+    const result = await runConversionToolsTest();
+    
+    expect(result.success).toBe(true);
+    expect(result.totalDecodersAnalyzed).toBe(3);
+    expect(result.totalCodeGenerated).toBeGreaterThan(0);
+    expect(result.automationRate).toBeGreaterThan(0);
+    expect(result.complexityDistribution).toBeDefined();
+    expect(result.analysisPlans).toHaveLength(3);
+    expect(result.generatedCode).toHaveLength(3);
+  });
+
+  test('应该正确分析Python解码器', () => {
+    const analyzer = new MockPythonDecoderAnalyzer();
+    const testCode = `
+class TestDecoder(Decoder):
+    def __init__(self, channel=0):
+        self.channel = channel
+    
+    def decode(self, data):
+        self.wait({data: 'r'})
+        self.put(0, 1, 0, ['Test', 'T'])
+`;
+    
+    const result = analyzer.analyzePythonDecoder(testCode, 'test.py');
+    
+    expect(result.metadata.id).toBe('test');
+    expect(result.classInfo.className).toBe('TestDecoder');
+    expect(result.complexity.level).toBeDefined();
+    expect(result.steps).toBeDefined();
+  });
+
+  test('应该正确生成TypeScript代码', () => {
+    const generator = new MockTypeScriptCodeGenerator();
+    const plan = {
+      metadata: {
+        id: 'test',
+        name: 'Test Decoder',
+        description: 'Test protocol decoder',
+        channels: [{ name: 'DATA', required: true, description: 'Data signal' }],
+        options: [],
+        annotations: ['Test']
+      },
+      classInfo: {
+        className: 'TestDecoder',
+        attributes: ['channel'],
+        methods: [{ name: 'decode', apiCalls: { wait: 1, put: 1 } }]
+      },
+      complexity: { level: 'simple', score: 2 }
+    };
+    
+    const result = generator.generateFromPlan(plan);
+    
+    expect(result.decoderCode).toContain('TestDecoder extends DecoderBase');
+    expect(result.stats.linesGenerated).toBeGreaterThan(0);
+    expect(result.stats.methodsConverted).toBe(1);
+  });
 });

@@ -250,7 +250,15 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     tooltip.style.whiteSpace = 'pre-line';
     tooltip.textContent = text;
 
-    document.body.appendChild(tooltip);
+    // 安全添加到 DOM，支持测试环境
+    if (document.body && typeof document.body.appendChild === 'function') {
+      try {
+        document.body.appendChild(tooltip);
+      } catch (error) {
+        // 在测试环境中可能无法添加元素，忽略错误
+        console.debug('Cannot append tooltip in test environment:', error);
+      }
+    }
   }
 
   /**
@@ -281,12 +289,45 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
   /**
    * 设置通道数据和采样频率 - 基于原版的 SetChannels 方法
    */
-  public setChannels(channels: AnalyzerChannel[] | null, sampleFrequency: number): void {
+  public setChannels(channels: AnalyzerChannel[] | null, sampleFrequency?: number): void {
     this.channels = channels;
-    this.sampleFrequency = sampleFrequency;
+    if (sampleFrequency !== undefined) {
+      this.sampleFrequency = sampleFrequency;
+    }
 
     this.computeIntervals();
     this.invalidateVisual();
+  }
+
+  /**
+   * 设置时间间隔数据 - 测试兼容方法
+   */
+  public setIntervals(intervals: Interval[][]): void {
+    this.intervals = intervals;
+    this.invalidateVisual();
+  }
+
+  /**
+   * 设置采样频率 - 测试兼容方法
+   */
+  public setSampleFrequency(frequency: number): void {
+    this.sampleFrequency = frequency;
+    this.computeIntervals();
+    this.invalidateVisual();
+  }
+
+  /**
+   * 获取通道数量 - 测试兼容方法
+   */
+  public getChannelCount(): number {
+    return this.channels ? this.channels.length : 0;
+  }
+
+  /**
+   * 获取采样频率 - 测试兼容方法
+   */
+  public getSampleFrequency(): number {
+    return this.sampleFrequency;
   }
 
   /**
@@ -352,8 +393,12 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
 
     this.canvas.width = rect.width * dpr;
     this.canvas.height = rect.height * dpr;
-    this.canvas.style.width = `${rect.width}px`;
-    this.canvas.style.height = `${rect.height}px`;
+
+    // 安全设置style属性，支持测试环境
+    if (this.canvas.style) {
+      this.canvas.style.width = `${rect.width}px`;
+      this.canvas.style.height = `${rect.height}px`;
+    }
 
     this.ctx.scale(dpr, dpr);
 
@@ -456,6 +501,9 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     } else {
       this.renderNormal(visibleChannels, channelHeight, margin, sampleWidth, canvasWidth, canvasHeight);
     }
+
+    // 渲染边框和分隔线
+    this.renderBorders(channelCount, canvasHeight);
 
     // 更新统计信息
     const endTime = performance.now();
@@ -899,6 +947,30 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     }
   }
 
+
+  /**
+   * 渲染边框和分隔线
+   */
+  private renderBorders(channelCount: number, canvasHeight: number): void {
+    if (!this.ctx) return;
+
+    // 渲染外边框
+    this.ctx.strokeStyle = this.colors.textColor;
+    this.ctx.lineWidth = 1;
+    this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // 渲染通道分隔线
+    if (channelCount > 1) {
+      const channelHeight = canvasHeight / channelCount;
+      this.ctx.strokeStyle = this.colors.gridLineColor;
+      this.ctx.lineWidth = 0.5;
+
+      for (let i = 1; i < channelCount; i++) {
+        const y = i * channelHeight;
+        this.ctx.strokeRect(0, y - 0.5, this.canvas.width, 1);
+      }
+    }
+  }
 
   /**
    * 更新FPS统计

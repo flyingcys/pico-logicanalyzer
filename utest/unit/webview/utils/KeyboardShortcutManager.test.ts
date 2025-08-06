@@ -155,6 +155,40 @@ describe('KeyboardShortcutManager', () => {
       expect(mockPostMessage).toHaveBeenCalledWith({ type: 'connectDevice' });
     });
 
+    it('应该处理Ctrl+R快捷键（开始采集）', () => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'R',
+        code: 'KeyR',
+        ctrlKey: true
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      keydownHandler(event);
+
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(event.stopPropagation).toHaveBeenCalled();
+      expect(mockPostMessage).toHaveBeenCalledWith({ type: 'startCapture' });
+    });
+
+    it('应该处理Ctrl+T快捷键（停止采集）', () => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'T',
+        code: 'KeyT',
+        ctrlKey: true
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      keydownHandler(event);
+
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(event.stopPropagation).toHaveBeenCalled();
+      expect(mockPostMessage).toHaveBeenCalledWith({ type: 'stopCapture' });
+    });
+
     it('应该处理Ctrl+S快捷键（保存文件）', () => {
       const event = new KeyboardEvent('keydown', {
         key: 'S',
@@ -170,23 +204,43 @@ describe('KeyboardShortcutManager', () => {
       expect(mockPostMessage).toHaveBeenCalledWith({ type: 'saveFile' });
     });
 
-    it('应该处理Ctrl++快捷键（放大波形）', () => {
-      // 默认快捷键定义是 ['Ctrl', '+']，所以我们需要匹配这个组合
+    it('应该处理Ctrl+E快捷键（导出数据）', () => {
       const event = new KeyboardEvent('keydown', {
-        key: '+',
-        code: 'Equal',
-        ctrlKey: true,
-        shiftKey: true  // shiftKey需要为true来产生'+'字符
+        key: 'E',
+        code: 'KeyE',
+        ctrlKey: true
       });
       
       Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
       Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
 
-      // 但是我们的匹配逻辑会包含Shift键，所以我们需要添加一个匹配['Ctrl', 'Shift', '+']的快捷键
+      keydownHandler(event);
+
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(event.stopPropagation).toHaveBeenCalled();
+      expect(mockPostMessage).toHaveBeenCalledWith({ type: 'exportData' });
+    });
+
+    it('应该处理Ctrl++快捷键（放大波形）', () => {
+      // 根据默认快捷键定义，zoom-in 快捷键是 ['Ctrl', '+']
+      // 我们需要创建一个匹配 ['Ctrl', '+'] 而不包含 Shift 的按键组合
+      const event = new KeyboardEvent('keydown', {
+        key: '+',
+        code: 'Equal',
+        ctrlKey: true,
+        shiftKey: true  // 保留 shiftKey 因为要产生 '+' 字符需要 Shift
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      // 但是我们的 getMainKey 逻辑会处理这个，并且按键匹配会包含 Shift
+      // 我们需要添加一个包含 Shift 的快捷键，或者修改默认快捷键
+      // 让我们添加一个专门的快捷键来匹配 Ctrl+Shift++
       manager.addShortcut({
-        id: 'zoom-in-with-shift',
+        id: 'zoom-in-shift',
         keys: ['Ctrl', 'Shift', '+'],
-        description: '放大波形（带Shift）',
+        description: '放大波形（Shift+）',
         category: '波形操作',
         handler: () => manager['triggerWaveformAction']('zoomIn'),
         enabled: true
@@ -202,7 +256,47 @@ describe('KeyboardShortcutManager', () => {
       );
     });
 
-    it('应该处理箭头键（波形平移）', () => {
+    it('应该处理Ctrl+-快捷键（缩小波形）', () => {
+      const event = new KeyboardEvent('keydown', {
+        key: '-',
+        code: 'Minus',
+        ctrlKey: true
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      keydownHandler(event);
+
+      expect(mockDispatchEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'waveform-action',
+          detail: 'zoomOut'
+        })
+      );
+    });
+
+    it('应该处理Ctrl+0快捷键（适应窗口）', () => {
+      const event = new KeyboardEvent('keydown', {
+        key: '0',
+        code: 'Digit0',
+        ctrlKey: true
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      keydownHandler(event);
+
+      expect(mockDispatchEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'waveform-action',
+          detail: 'fitToWindow'
+        })
+      );
+    });
+
+    it('应该处理ArrowLeft键（向左平移）', () => {
       const event = new KeyboardEvent('keydown', {
         key: 'ArrowLeft',
         code: 'ArrowLeft'
@@ -221,7 +315,64 @@ describe('KeyboardShortcutManager', () => {
       );
     });
 
-    it('应该处理数字键（通道切换）', () => {
+    it('应该处理ArrowRight键（向右平移）', () => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        code: 'ArrowRight'
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      keydownHandler(event);
+
+      expect(mockDispatchEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'waveform-action',
+          detail: 'panRight'
+        })
+      );
+    });
+
+    it('应该处理ArrowUp键（向上滚动）', () => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'ArrowUp',
+        code: 'ArrowUp'
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      keydownHandler(event);
+
+      expect(mockDispatchEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'waveform-action',
+          detail: 'panUp'
+        })
+      );
+    });
+
+    it('应该处理ArrowDown键（向下滚动）', () => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'ArrowDown',
+        code: 'ArrowDown'
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      keydownHandler(event);
+
+      expect(mockDispatchEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'waveform-action',
+          detail: 'panDown'
+        })
+      );
+    });
+
+    it('应该处理数字1键（切换通道1）', () => {
       const event = new KeyboardEvent('keydown', {
         key: '1',
         code: 'Digit1'
@@ -236,6 +387,123 @@ describe('KeyboardShortcutManager', () => {
         expect.objectContaining({
           type: 'channel-toggle',
           detail: 0
+        })
+      );
+    });
+
+    it('应该处理数字2键（切换通道2）', () => {
+      const event = new KeyboardEvent('keydown', {
+        key: '2',
+        code: 'Digit2'
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      keydownHandler(event);
+
+      expect(mockDispatchEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'channel-toggle',
+          detail: 1
+        })
+      );
+    });
+
+    it('应该处理数字3键（切换通道3）', () => {
+      const event = new KeyboardEvent('keydown', {
+        key: '3',
+        code: 'Digit3'
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      keydownHandler(event);
+
+      expect(mockDispatchEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'channel-toggle',
+          detail: 2
+        })
+      );
+    });
+
+    it('应该处理数字4键（切换通道4）', () => {
+      const event = new KeyboardEvent('keydown', {
+        key: '4',
+        code: 'Digit4'
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      keydownHandler(event);
+
+      expect(mockDispatchEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'channel-toggle',
+          detail: 3
+        })
+      );
+    });
+
+    it('应该处理F1键（显示帮助）', () => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'F1',
+        code: 'F1'
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      keydownHandler(event);
+
+      expect(mockDispatchEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'show-shortcut-help'
+        })
+      );
+    });
+
+    it('应该处理Ctrl+Shift+D快捷键（切换解码器面板）', () => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'D',
+        code: 'KeyD',
+        ctrlKey: true,
+        shiftKey: true
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      keydownHandler(event);
+
+      expect(mockDispatchEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'panel-toggle',
+          detail: 'decoder'
+        })
+      );
+    });
+
+    it('应该处理Ctrl+Shift+M快捷键（切换测量面板）', () => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'M',
+        code: 'KeyM',
+        ctrlKey: true,
+        shiftKey: true
+      });
+      
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      keydownHandler(event);
+
+      expect(mockDispatchEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'panel-toggle',
+          detail: 'measurement'
         })
       );
     });
@@ -314,10 +582,16 @@ describe('KeyboardShortcutManager', () => {
   });
 
   describe('主键名称获取', () => {
-    it('应该正确处理箭头键', () => {
-      const event = { key: 'ArrowLeft', code: 'ArrowLeft', shiftKey: false } as KeyboardEvent;
-      const result = manager['getMainKey'](event);
-      expect(result).toBe('ArrowLeft');
+    it('應該正確處理所有箭頭鍵', () => {
+      const leftEvent = { key: 'ArrowLeft', code: 'ArrowLeft', shiftKey: false } as KeyboardEvent;
+      const rightEvent = { key: 'ArrowRight', code: 'ArrowRight', shiftKey: false } as KeyboardEvent;
+      const upEvent = { key: 'ArrowUp', code: 'ArrowUp', shiftKey: false } as KeyboardEvent;
+      const downEvent = { key: 'ArrowDown', code: 'ArrowDown', shiftKey: false } as KeyboardEvent;
+      
+      expect(manager['getMainKey'](leftEvent)).toBe('ArrowLeft');
+      expect(manager['getMainKey'](rightEvent)).toBe('ArrowRight');
+      expect(manager['getMainKey'](upEvent)).toBe('ArrowUp');
+      expect(manager['getMainKey'](downEvent)).toBe('ArrowDown');
     });
 
     it('应该正确处理等号和加号', () => {
@@ -328,10 +602,23 @@ describe('KeyboardShortcutManager', () => {
       expect(manager['getMainKey'](plusEvent)).toBe('+');
     });
 
-    it('应该正确处理数字键', () => {
-      const event = { key: '1', code: 'Digit1', shiftKey: false } as KeyboardEvent;
-      const result = manager['getMainKey'](event);
-      expect(result).toBe('1');
+    it('应该正确处理减号', () => {
+      const minusEvent = { key: '-', code: 'Minus', shiftKey: false } as KeyboardEvent;
+      expect(manager['getMainKey'](minusEvent)).toBe('-');
+    });
+
+    it('應該正確處理所有數字鍵', () => {
+      const digit0Event = { key: '0', code: 'Digit0', shiftKey: false } as KeyboardEvent;
+      const digit1Event = { key: '1', code: 'Digit1', shiftKey: false } as KeyboardEvent;
+      const digit2Event = { key: '2', code: 'Digit2', shiftKey: false } as KeyboardEvent;
+      const digit3Event = { key: '3', code: 'Digit3', shiftKey: false } as KeyboardEvent;
+      const digit4Event = { key: '4', code: 'Digit4', shiftKey: false } as KeyboardEvent;
+      
+      expect(manager['getMainKey'](digit0Event)).toBe('0');
+      expect(manager['getMainKey'](digit1Event)).toBe('1');
+      expect(manager['getMainKey'](digit2Event)).toBe('2');
+      expect(manager['getMainKey'](digit3Event)).toBe('3');
+      expect(manager['getMainKey'](digit4Event)).toBe('4');
     });
 
     it('应该正确处理字母键', () => {
@@ -344,6 +631,18 @@ describe('KeyboardShortcutManager', () => {
       const event = { key: 'F1', code: 'F1', shiftKey: false } as KeyboardEvent;
       const result = manager['getMainKey'](event);
       expect(result).toBe('F1');
+    });
+
+    it('应该正确处理未知按键', () => {
+      const unknownEvent = { key: 'Unknown', code: 'Unknown', shiftKey: false } as KeyboardEvent;
+      const result = manager['getMainKey'](unknownEvent);
+      expect(result).toBe('Unknown');
+    });
+
+    it('应该正确处理特殊字符', () => {
+      const spaceEvent = { key: ' ', code: 'Space', shiftKey: false } as KeyboardEvent;
+      const result = manager['getMainKey'](spaceEvent);
+      expect(result).toBe(' ');
     });
   });
 
@@ -498,6 +797,11 @@ describe('KeyboardShortcutManager', () => {
     it('应该捕获处理器执行错误', () => {
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
       
+      // 获取绑定的处理函数
+      const calls = mockAddEventListener.mock.calls;
+      const keydownCall = calls.find(call => call[0] === 'keydown');
+      const keydownHandler = keydownCall[1];
+      
       const errorShortcut: KeyboardShortcut = {
         id: 'error-shortcut',
         keys: ['Ctrl', 'X'],
@@ -509,15 +813,20 @@ describe('KeyboardShortcutManager', () => {
       
       manager.addShortcut(errorShortcut);
       
-      // 模拟按键事件
-      const keys = ['Ctrl', 'X'];
-      const matchedShortcut = manager['findMatchingShortcut'](keys);
+      // 模拟键盘事件来触发错误处理
+      const event = new KeyboardEvent('keydown', {
+        key: 'X',
+        code: 'KeyX',
+        ctrlKey: true
+      });
       
-      expect(() => {
-        if (matchedShortcut && matchedShortcut.enabled) {
-          matchedShortcut.handler();
-        }
-      }).toThrow('测试错误');
+      Object.defineProperty(event, 'preventDefault', { value: jest.fn() });
+      Object.defineProperty(event, 'stopPropagation', { value: jest.fn() });
+
+      // 调用处理函数，应该捕获错误并记录到console.error
+      keydownHandler(event);
+      
+      expect(consoleSpy).toHaveBeenCalledWith('快捷键处理器执行错误:', expect.any(Error));
       
       consoleSpy.mockRestore();
     });

@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1754355297565" clover="3.2.0">
+  <project timestamp="1754355297565" name="All files">
+    <metrics statements="108" coveredstatements="101" conditionals="29" coveredconditionals="22" methods="22" coveredmethods="20" elements="159" coveredelements="143" complexity="0" loc="108" ncloc="108" packages="1" files="1" classes="1"/>
+    <file name="StreamingDecoder.ts" path="/home/share/samba/vscode-extension/pico-logicanalyzer/src/decoders/StreamingDecoder.ts">
+      <metrics statements="108" coveredstatements="101" conditionals="29" coveredconditionals="22" methods="22" coveredmethods="20"/>
+      <line num="90" count="1" type="stmt"/>
+      <line num="92" count="37" type="stmt"/>
+      <line num="93" count="37" type="stmt"/>
+      <line num="94" count="37" type="stmt"/>
+      <line num="95" count="37" type="stmt"/>
+      <line num="96" count="37" type="stmt"/>
+      <line num="105" count="37" type="stmt"/>
+      <line num="123" count="14" type="cond" truecount="1" falsecount="0"/>
+      <line num="124" count="1" type="stmt"/>
+      <line num="127" count="13" type="stmt"/>
+      <line num="128" count="13" type="stmt"/>
+      <line num="129" count="13" type="stmt"/>
+      <line num="130" count="13" type="stmt"/>
+      <line num="133" count="13" type="cond" truecount="2" falsecount="0"/>
+      <line num="135" count="13" type="stmt"/>
+      <line num="136" count="13" type="stmt"/>
+      <line num="145" count="13" type="stmt"/>
+      <line num="147" count="13" type="stmt"/>
+      <line num="150" count="12" type="stmt"/>
+      <line num="152" count="12" type="stmt"/>
+      <line num="155" count="12" type="stmt"/>
+      <line num="160" count="12" type="stmt"/>
+      <line num="163" count="29" type="cond" truecount="1" falsecount="0"/>
+      <line num="164" count="10" type="stmt"/>
+      <line num="168" count="19" type="stmt"/>
+      <line num="176" count="18" type="cond" truecount="3" falsecount="0"/>
+      <line num="177" count="2" type="stmt"/>
+      <line num="180" count="18" type="stmt"/>
+      <line num="181" count="18" type="stmt"/>
+      <line num="182" count="18" type="stmt"/>
+      <line num="185" count="18" type="cond" truecount="3" falsecount="0"/>
+      <line num="186" count="2" type="stmt"/>
+      <line num="187" count="2" type="stmt"/>
+      <line num="191" count="18" type="cond" truecount="0" falsecount="1"/>
+      <line num="192" count="0" type="stmt"/>
+      <line num="198" count="18" type="stmt"/>
+      <line num="203" count="9" type="stmt"/>
+      <line num="204" count="9" type="stmt"/>
+      <line num="205" count="9" type="stmt"/>
+      <line num="206" count="9" type="stmt"/>
+      <line num="208" count="9" type="stmt"/>
+      <line num="210" count="9" type="stmt"/>
+      <line num="217" count="3" type="stmt"/>
+      <line num="218" count="3" type="stmt"/>
+      <line num="225" count="12" type="stmt"/>
+      <line num="226" count="12" type="stmt"/>
+      <line num="234" count="1" type="stmt"/>
+      <line num="235" count="1" type="stmt"/>
+      <line num="242" count="4" type="stmt"/>
+      <line num="249" count="12" type="stmt"/>
+      <line num="250" count="12" type="cond" truecount="2" falsecount="0"/>
+      <line num="253" count="12" type="stmt"/>
+      <line num="255" count="12" type="stmt"/>
+      <line num="256" count="29" type="stmt"/>
+      <line num="257" count="29" type="stmt"/>
+      <line num="260" count="29" type="stmt"/>
+      <line num="265" count="29" type="stmt"/>
+      <line num="274" count="12" type="stmt"/>
+      <line num="281" count="2" type="stmt"/>
+      <line num="282" count="2" type="stmt"/>
+      <line num="283" count="2" type="stmt"/>
+      <line num="284" count="2" type="stmt"/>
+      <line num="285" count="2" type="stmt"/>
+      <line num="286" count="2" type="stmt"/>
+      <line num="288" count="2" type="stmt"/>
+      <line num="333" count="12" type="stmt"/>
+      <line num="336" count="12" type="stmt"/>
+      <line num="337" count="12" type="stmt"/>
+      <line num="347" count="12" type="stmt"/>
+      <line num="348" count="12" type="stmt"/>
+      <line num="350" count="12" type="stmt"/>
+      <line num="351" count="12" type="stmt"/>
+      <line num="352" count="49" type="cond" truecount="1" falsecount="0"/>
+      <line num="353" count="20" type="cond" truecount="1" falsecount="0"/>
+      <line num="354" count="15" type="stmt"/>
+      <line num="356" count="20" type="stmt"/>
+      <line num="359" count="29" type="cond" truecount="0" falsecount="1"/>
+      <line num="360" count="0" type="stmt"/>
+      <line num="363" count="29" type="stmt"/>
+      <line num="364" count="29" type="stmt"/>
+      <line num="366" count="29" type="stmt"/>
+      <line num="368" count="29" type="stmt"/>
+      <line num="370" count="29" type="stmt"/>
+      <line num="371" count="18" type="stmt"/>
+      <line num="374" count="11" type="stmt"/>
+      <line num="375" count="11" type="stmt"/>
+      <line num="377" count="29" type="stmt"/>
+      <line num="380" count="29" type="stmt"/>
+      <line num="385" count="12" type="stmt"/>
+      <line num="386" count="20" type="stmt"/>
+      <line num="395" count="1" type="stmt"/>
+      <line num="396" count="8" type="stmt"/>
+      <line num="397" count="8" type="stmt"/>
+      <line num="403" count="8" type="stmt"/>
+      <line num="404" count="8" type="stmt"/>
+      <line num="405" count="8" type="stmt"/>
+      <line num="412" count="22" type="stmt"/>
+      <line num="413" count="22" type="stmt"/>
+      <line num="415" count="22" type="stmt"/>
+      <line num="430" count="8" type="stmt"/>
+      <line num="432" count="20" type="stmt"/>
+      <line num="440" count="8" type="cond" truecount="0" falsecount="1"/>
+      <line num="441" count="0" type="stmt"/>
+      <line num="442" count="0" type="stmt"/>
+      <line num="443" count="0" type="stmt"/>
+      <line num="445" count="0" type="cond" truecount="0" falsecount="1"/>
+      <line num="446" count="0" type="stmt"/>
+      <line num="454" count="8" type="stmt"/>
+    </file>
+  </project>
+</coverage>

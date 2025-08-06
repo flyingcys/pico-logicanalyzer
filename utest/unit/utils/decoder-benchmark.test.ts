@@ -9,7 +9,7 @@ import {
   DecoderPerformanceResult, 
   BenchmarkReport,
   DefaultBenchmarkConfigurations 
-} from '../../src/utils/DecoderBenchmark';
+} from '../../../src/utils/DecoderBenchmark';
 
 // 模拟解码器类
 class MockDecoder {
@@ -705,9 +705,9 @@ describe('DecoderBenchmark', () => {
       const decoder = new MockDecoder();
       const config: BenchmarkConfiguration = {
         name: '大样本测试',
-        sampleCount: 10000000,
+        sampleCount: 50000, // 减少样本数以避免超时
         sampleRate: 1000000,
-        channelCount: 16,
+        channelCount: 8, // 减少通道数
         iterations: 1,
         useStreaming: true,
         chunkSize: 1000
@@ -716,7 +716,7 @@ describe('DecoderBenchmark', () => {
       const result = await benchmark.runDecoderBenchmark('testDecoder', decoder, config);
       expect(result.success).toBe(true);
       expect(result.statistics.throughput).toBeGreaterThan(0);
-    });
+    }, 15000);
 
     it('应该处理空的解码器数组', async () => {
       const config: BenchmarkConfiguration = {

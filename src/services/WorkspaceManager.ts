@@ -216,13 +216,13 @@ export class WorkspaceManager extends ServiceLifecycleBase {
     settings?: any;
   }): Promise<string> {
     const workspaceId = `workspace-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // 创建工作区目录结构
     await fs.mkdir(workspaceDir, { recursive: true });
     await fs.mkdir(path.join(workspaceDir, 'sessions'), { recursive: true });
     await fs.mkdir(path.join(workspaceDir, 'data'), { recursive: true });
     await fs.mkdir(path.join(workspaceDir, 'exports'), { recursive: true });
-    
+
     // 创建项目配置
     const projectConfig: ProjectConfiguration = {
       name: config.name,
@@ -316,10 +316,10 @@ export class WorkspaceManager extends ServiceLifecycleBase {
   async migrateWorkspace(legacyConfigPath: string): Promise<string> {
     // 读取旧配置
     const legacyData = JSON.parse(await fs.readFile(legacyConfigPath, 'utf-8'));
-    
+
     // 生成新的工作区ID
     const workspaceId = `migrated-workspace-${Date.now()}`;
-    
+
     // 创建新的配置格式
     const migratedConfig: ProjectConfiguration = {
       name: legacyData.name || 'Migrated Workspace',

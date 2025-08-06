@@ -112,6 +112,21 @@ export class I2CDecoder extends DecoderBase {
     channels: ChannelData[],
     options: DecoderOptionValue[]
   ): DecoderResult[] {
+    // 验证通道数据
+    if (channels.length < 2) {
+      throw new Error('I2C decoder requires both SCL and SDA channels');
+    }
+    
+    const sclChannel = channels.find(ch => ch.channelName?.toLowerCase().includes('scl') || ch.channelNumber === 0);
+    const sdaChannel = channels.find(ch => ch.channelName?.toLowerCase().includes('sda') || ch.channelNumber === 1);
+    
+    if (!sclChannel) {
+      throw new Error('I2C decoder requires SCL channel');
+    }
+    if (!sdaChannel) {
+      throw new Error('I2C decoder requires SDA channel');
+    }
+
     // 初始化
     this.sampleRate = sampleRate;
     this.prepareChannelData(channels, [

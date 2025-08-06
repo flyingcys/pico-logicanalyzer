@@ -59,12 +59,9 @@ class MockInvalidDriver extends AnalyzerDriverBase {
   get isCapturing(): boolean { return false; }
   get driverType(): AnalyzerDriverType { return AnalyzerDriverType.Serial; }
 
-  // 缺少connect方法实现
+  // connect方法有问题 - 抛出异常
   async connect(params?: ConnectionParams): Promise<ConnectionResult> {
-    return {
-      success: false,
-      error: '连接方法未正确实现'
-    };
+    throw new Error('connect方法未正确实现');
   }
 
   async disconnect(): Promise<void> {}

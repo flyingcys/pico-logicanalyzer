@@ -272,7 +272,8 @@ describe('VSCode Extension 主入口测试', () => {
 
       // Assert - 验证所有组件都已注册
       expect(context.subscriptions.length).toBeGreaterThan(0);
-      expect(mockVSCode.commands.registerCommand).toHaveBeenCalledTimes(3);
+      // 源代码中实际注册了6个命令：openAnalyzer, connectDevice, startCapture, scanNetworkDevices, networkDiagnostics, configureWiFi
+      expect(mockVSCode.commands.registerCommand).toHaveBeenCalledTimes(6);
 
       // Act - 去激活
       deactivate();

@@ -4,16 +4,22 @@ import { hardwareDriverManager } from './drivers/HardwareDriverManager';
 import { WiFiDeviceDiscovery } from './services/WiFiDeviceDiscovery';
 import { NetworkStabilityService } from './services/NetworkStabilityService';
 
+// 服务依赖接口
+export interface ExtensionServices {
+  wifiDiscoveryService?: WiFiDeviceDiscovery;
+  networkStabilityService?: NetworkStabilityService;
+}
+
 // 全局服务实例
 let wifiDiscoveryService: WiFiDeviceDiscovery;
 let networkStabilityService: NetworkStabilityService;
 
-export function activate(context: vscode.ExtensionContext) {
+export function activate(context: vscode.ExtensionContext, services?: ExtensionServices) {
   console.log('VSCode Logic Analyzer插件正在激活...');
 
-  // 初始化网络服务
-  wifiDiscoveryService = new WiFiDeviceDiscovery();
-  networkStabilityService = new NetworkStabilityService();
+  // 初始化网络服务 - 支持依赖注入
+  wifiDiscoveryService = services?.wifiDiscoveryService || new WiFiDeviceDiscovery();
+  networkStabilityService = services?.networkStabilityService || new NetworkStabilityService();
 
   // 注册.lac文件的自定义编辑器
   context.subscriptions.push(LACEditorProvider.register(context));

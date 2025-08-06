@@ -9,7 +9,7 @@ import {
   DecoderMetadata, 
   PythonClassInfo,
   PythonMethodInfo 
-} from '../../src/tools/PythonDecoderAnalyzer';
+} from '../../../src/tools/PythonDecoderAnalyzer';
 
 describe('PythonDecoderAnalyzer', () => {
   let analyzer: PythonDecoderAnalyzer;

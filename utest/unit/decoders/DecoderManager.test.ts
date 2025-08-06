@@ -75,11 +75,16 @@ class MockDecoder extends DecoderBase {
       {
         startSample: 0,
         endSample: 10,
+        type: 0,
         annotationType: 0,
-        values: ['mock-data'],
-        shape: 'hexagon'
+        values: ['mock-data']
       }
     ];
+  }
+
+  // 重写validateOptions以确保测试通过
+  validateOptions(): boolean {
+    return true;
   }
 }
 
@@ -649,6 +654,253 @@ describe('DecoderManager', () => {
       
       expect(result.success).toBe(true);
       expect(result.isStreaming).toBe(false); // 回退到普通解码器
+    });
+  });
+
+  describe('错误处理和边界条件', () => {
+    it('应该处理创建流式解码器实例失败', () => {
+      class FailingStreamingDecoder extends StreamingDecoderBase {
+        constructor() {
+          super();
+          throw new Error('Failed to create instance');
+        }
+        protected async initializeDecoding(): Promise<void> {}
+        protected async processChunk(): Promise<DecoderResult[]> { return []; }
+        protected async finalizeDecoding(): Promise<void> {}
+      }
+      
+      manager.registerStreamingDecoder('failing-decoder', FailingStreamingDecoder);
+      const instance = manager.getStreamingDecoder('failing-decoder');
+      expect(instance).toBe(null);
+    });
+
+    it('应该处理无效的解码器配置', () => {
+      class InvalidDecoder extends MockDecoder {
+        validateOptions(): boolean {
+          return false;
+        }
+      }
+      
+      manager.registerDecoder('invalid-decoder', InvalidDecoder);
+      const invalidDecoder = manager.getDecoder('invalid-decoder')!
+      
+      const tree: DecodingTree = {
+        branches: [{
+          name: 'invalid-test',
+          decoder: invalidDecoder,
+          options: [],
+          channels: [],
+          children: []
+        }]
+      };
+      
+      const result = manager.execute(100000, mockChannelData, tree);
+      expect(result).toBeDefined();
+      expect(result!.size).toBe(0);
+    });
+
+    it('应该处理空的通道数据', () => {
+      const tree: DecodingTree = {
+        branches: [{
+          name: 'empty-test',
+          decoder: new MockDecoder(),
+          options: [],
+          channels: [],
+          children: []
+        }]
+      };
+      
+      const result = manager.execute(100000, [], tree);
+      expect(result).toBe(null);
+    });
+
+    it('应该处理空的解码树', () => {
+      const tree: DecodingTree = { branches: [] };
+      const result = manager.execute(100000, mockChannelData, tree);
+      expect(result).toBe(null);
+    });
+
+    it('应该处理解码器执行失败', () => {
+      const failingDecoder = new MockDecoder();
+      failingDecoder.decode = jest.fn().mockImplementation(() => {
+        throw new Error('Decoding failed');
+      });
+      failingDecoder.validateOptions = jest.fn().mockReturnValue(true);
+      
+      manager.registerDecoder('failing-decoder', failingDecoder);
+      
+      const tree: DecodingTree = {
+        branches: [{
+          name: 'failing-test',
+          decoder: failingDecoder,
+          options: [],
+          channels: [],
+          children: []
+        }]
+      };
+      
+      const result = manager.execute(100000, mockChannelData, tree);
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('输出合并功能', () => {
+    it('应该正确合并解码器输出', () => {
+      class OutputDecoder extends DecoderBase {
+        readonly id = 'output-decoder';
+        readonly name = 'Output Decoder';
+        readonly longname = 'Output Test Decoder';
+        readonly desc = 'A decoder that produces outputs';
+        readonly license = 'MIT';
+        readonly inputs = ['logic'];
+        readonly outputs = ['test-output'];
+        readonly tags = ['test'];
+        
+        readonly channels = [{
+          id: 'data',
+          name: 'DATA',
+          desc: 'Data line',
+          required: true,
+          index: 0
+        }];
+
+        readonly options = [];
+        readonly annotations = [];
+        readonly annotationRows = [];
+
+        decode(): DecoderResult[] {
+          // 设置输出数据
+          (manager as any).currentOutputs = new Map([
+            ['test-output', [{ data: 'test' }]]
+          ]);
+          
+          return [{
+            startSample: 0,
+            endSample: 10,
+            type: 0,
+            annotationType: 0,
+            values: ['test']
+          }];
+        }
+
+        validateOptions(): boolean {
+          return true;
+        }
+      }
+
+      const outputDecoder = new OutputDecoder();
+      manager.registerDecoder('output-decoder', outputDecoder);
+      
+      const tree: DecodingTree = {
+        branches: [{
+          name: 'output-test',
+          decoder: outputDecoder,
+          options: [],
+          channels: [],
+          children: [{
+            name: 'child-test',
+            decoder: new MockDecoder(),
+            options: [],
+            channels: [],
+            children: []
+          }]
+        }]
+      };
+      
+      const result = manager.execute(100000, mockChannelData, tree);
+      expect(result).toBeDefined();
+      expect(result!.size).toBeGreaterThan(0);
+    });
+  });
+
+  describe('解码器信息管理', () => {
+    it('应该获取所有注册的解码器信息', () => {
+      manager.registerDecoder('info-test', MockDecoder);
+      const infos = manager.getAvailableDecoders();
+      
+      expect(infos.length).toBeGreaterThan(0);
+      const mockInfo = infos.find(info => info.id === 'mock-decoder');
+      expect(mockInfo).toBeDefined();
+      expect(mockInfo!.name).toBe('Mock Decoder');
+    });
+
+    it('应该根据ID获取解码器实例', () => {
+      manager.registerDecoder('instance-test', MockDecoder);
+      
+      const instance = manager.getDecoder('instance-test');
+      expect(instance).toBeDefined();
+      expect(instance!.id).toBe('mock-decoder');
+    });
+
+    it('应该返回null当解码器不存在', () => {
+      const instance = manager.getDecoder('non-existent');
+      expect(instance).toBe(null);
+    });
+  });
+
+  describe('性能统计', () => {
+    it('应该收集解码器执行统计信息', () => {
+      const mockDecoder = new MockDecoder();
+      mockDecoder.decode = jest.fn().mockReturnValue([{
+        startSample: 0,
+        endSample: 100,
+        type: 0,
+        annotationType: 0,
+        values: ['test']
+      }]);
+      mockDecoder.validateOptions = jest.fn().mockReturnValue(true);
+      
+      manager.registerDecoder('stats-test', mockDecoder);
+      
+      const tree: DecodingTree = {
+        branches: [{
+          name: 'stats-test',
+          decoder: mockDecoder,
+          options: [],
+          channels: [],
+          children: []
+        }]
+      };
+      
+      const result = manager.execute(100000, mockChannelData, tree);
+      expect(result).toBeDefined();
+      expect(result!.size).toBe(1);
+      
+      const annotation = result!.get('stats-test');
+      expect(annotation).toBeDefined();
+      expect(annotation!.segments.length).toBe(1);
+    });
+  });
+
+  describe('高级流式解码', () => {
+    it('应该处理流式解码器的性能统计', async () => {
+      class StatsStreamingDecoder extends StreamingDecoderBase {
+        protected async initializeDecoding(): Promise<void> {}
+        protected async processChunk(): Promise<DecoderResult[]> {
+          return [{
+            startSample: 0,
+            endSample: 10,
+            type: 0,
+            annotationType: 0,
+            values: ['streaming-test']
+          }];
+        }
+        protected async finalizeDecoding(): Promise<void> {}
+      }
+      
+      manager.registerStreamingDecoder('stats-streaming', StatsStreamingDecoder);
+      
+      const result = await manager.executeStreamingDecoder(
+        'stats-streaming',
+        100000,
+        mockChannelData,
+        [],
+        []
+      );
+      
+      expect(result.success).toBe(true);
+      expect(result.performanceStats).toBeDefined();
+      expect(result.performanceStats!.totalSamples).toBeGreaterThan(0);
     });
   });
 });

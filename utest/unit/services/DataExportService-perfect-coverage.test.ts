@@ -5,7 +5,7 @@
  */
 
 import { DataExportService, dataExportService } from '../../../src/services/DataExportService';
-import { AnalyzerChannel, CaptureSession, ChannelMode } from '../../../src/models/AnalyzerTypes';
+import { AnalyzerChannel, CaptureSession } from '../../../src/models/AnalyzerTypes';
 import { DecoderResult } from '../../../src/decoders/types';
 import * as fs from 'fs/promises';
 
@@ -135,7 +135,6 @@ describe('DataExportService - 100%完美覆盖率测试', () => {
         triggerValue: 1,
         isComplex: false,
         prePostSamples: 500,
-        channelMode: ChannelMode.LOGIC_ANALYZER,
         actualSampleRate: 1000000,
         sourceName: 'Test'
       };
@@ -147,9 +146,8 @@ describe('DataExportService - 100%完美覆盖率测试', () => {
       };
 
       // 这应该触发验证错误
-      expect(() => {
-        (dataExportService as any).validateExportOptions(testSession, invalidOptions);
-      }).toThrow();
+      const validationResult = (dataExportService as any).validateExportOptions(testSession, invalidOptions);
+      expect(validationResult).toBeTruthy(); // 应该返回错误消息字符串
     });
 
     it('应该处理各种特殊的导出选项组合 - 覆盖行168-466', async () => {
@@ -165,14 +163,13 @@ describe('DataExportService - 100%完美覆盖率测试', () => {
         triggerValue: 1,
         isComplex: false,
         prePostSamples: 2,
-        channelMode: ChannelMode.LOGIC_ANALYZER,
         actualSampleRate: 1000000,
         sourceName: 'Test'
       };
 
       const channels: AnalyzerChannel[] = [
-        { channelIndex: 0, mode: ChannelMode.LOGIC_ANALYZER, isEnabled: true, triggerValue: 1 },
-        { channelIndex: 1, mode: ChannelMode.LOGIC_ANALYZER, isEnabled: true, triggerValue: 0 }
+        { channelIndex: 0, isEnabled: true, triggerValue: 1 },
+        { channelIndex: 1, isEnabled: true, triggerValue: 0 }
       ];
 
       // 测试各种特殊的导出选项
@@ -224,8 +221,7 @@ describe('DataExportService - 100%完美覆盖率测试', () => {
             triggerValue: 1,
             isComplex: false,
             prePostSamples: 0,
-            channelMode: ChannelMode.LOGIC_ANALYZER,
-            actualSampleRate: 1000000,
+                actualSampleRate: 1000000,
             sourceName: 'ComplexTest'
           }
         ],
@@ -322,7 +318,6 @@ describe('DataExportService - 100%完美覆盖率测试', () => {
         triggerValue: 1,
         isComplex: false,
         prePostSamples: 0,
-        channelMode: ChannelMode.LOGIC_ANALYZER,
         actualSampleRate: 1000000,
         sourceName: 'Test'
       };
@@ -401,14 +396,12 @@ describe('DataExportService - 100%完美覆盖率测试', () => {
         triggerValue: 1,
         isComplex: false,
         prePostSamples: 512000,
-        channelMode: ChannelMode.LOGIC_ANALYZER,
         actualSampleRate: 100000000,
         sourceName: 'LargeDataTest'
       };
 
       const channels: AnalyzerChannel[] = Array(32).fill(null).map((_, i) => ({
         channelIndex: i,
-        mode: ChannelMode.LOGIC_ANALYZER,
         isEnabled: i < 16, // 只启用前16个通道
         triggerValue: i % 2
       }));
@@ -588,8 +581,7 @@ describe('DataExportService - 100%完美覆盖率测试', () => {
           triggerValue: 1,
           isComplex: false,
           prePostSamples: 0,
-          channelMode: ChannelMode.LOGIC_ANALYZER,
-          actualSampleRate: 1000000,
+            actualSampleRate: 1000000,
           sourceName: 'Test'
         }, [], { format: 'csv', fileName: '/tmp/test.csv' });
       } catch (error) {
@@ -610,7 +602,6 @@ describe('DataExportService - 100%完美覆盖率测试', () => {
         triggerValue: 1,
         isComplex: false,
         prePostSamples: 1,
-        channelMode: ChannelMode.LOGIC_ANALYZER,
         actualSampleRate: 1000000,
         sourceName: 'ConcurrentTest'
       };
@@ -667,8 +658,7 @@ describe('DataExportService - 100%完美覆盖率测试', () => {
           triggerValue: 1,
           isComplex: true,
           prePostSamples: 50,
-          channelMode: ChannelMode.LOGIC_ANALYZER,
-          actualSampleRate: 1000000,
+            actualSampleRate: 1000000,
           sourceName: 'ComplexChain'
         },
         decoderResults: {
@@ -714,7 +704,6 @@ describe('DataExportService - 100%完美覆盖率测试', () => {
         triggerValue: 1,
         isComplex: true,
         prePostSamples: 5120000,
-        channelMode: ChannelMode.LOGIC_ANALYZER,
         actualSampleRate: 200000000,
         sourceName: 'PerformanceTest'
       };

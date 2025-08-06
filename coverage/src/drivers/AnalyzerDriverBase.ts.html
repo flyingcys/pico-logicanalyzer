@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">4.86% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>7/144</span>
+                <span class='fraction'>0/144</span>
             </div>
         
             
@@ -37,16 +37,16 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">3.44% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>1/29</span>
+                <span class='fraction'>0/29</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">5.14% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>7/136</span>
+                <span class='fraction'>0/136</span>
             </div>
         
             
@@ -462,8 +462,8 @@
 <a name='L397'></a><a href='#L397'>397</a>
 <a name='L398'></a><a href='#L398'>398</a>
 <a name='L399'></a><a href='#L399'>399</a>
-<a name='L400'></a><a href='#L400'>400</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
+<a name='L400'></a><a href='#L400'>400</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -483,7 +483,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -587,7 +587,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -608,8 +608,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -701,11 +701,11 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -803,7 +803,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -861,8 +861,8 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { EventEmitter } from 'events';
-import {
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" >import { EventEmitter } from 'events';</span>
+<span class="cstat-no" title="statement not covered" >import {</span>
   AnalyzerDriverType,
   CaptureMode,
   CaptureError,
@@ -882,7 +882,7 @@ import {
  * 逻辑分析器驱动抽象基类
  * 基于C# AnalyzerDriverBase的TypeScript移植
  */
-export abstract class AnalyzerDriverBase extends EventEmitter {
+<span class="cstat-no" title="statement not covered" >export abstract class A</span>nalyzerDriverBase extends EventEmitter {
   // 抽象属性 - 子类必须实现
   abstract get deviceVersion(): string | null;
   abstract get blastFrequency(): number;
@@ -985,8 +985,8 @@ export abstract class AnalyzerDriverBase extends EventEmitter {
   }
 &nbsp;
   // 资源清理
-  dispose(): void {
-    this.removeAllListeners();
+<span class="fstat-no" title="function not covered" >  dispose(</span>): void {
+<span class="cstat-no" title="statement not covered" >    this.removeAllListeners();</span>
   }
 &nbsp;
   // 事件触发辅助方法
@@ -1007,7 +1007,7 @@ export abstract class AnalyzerDriverBase extends EventEmitter {
  * 输出数据包类
  * 实现C#版本的OutputPacket功能，包括转义机制
  */
-<span class="fstat-no" title="function not covered" >export class O</span>utputPacket {
+<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >export class O</span></span>utputPacket {
   private <span class="cstat-no" title="statement not covered" >dataBuffer: number[] = [];</span>
 &nbsp;
 <span class="fstat-no" title="function not covered" >  addByte(</span>value: number): void {
@@ -1100,7 +1100,7 @@ export abstract class AnalyzerDriverBase extends EventEmitter {
  * 采集请求结构
  * 对应C#的CaptureRequest结构体，必须保持精确的内存布局
  */
-export class CaptureRequest {
+<span class="cstat-no" title="statement not covered" >export class C</span>aptureRequest {
   public <span class="cstat-no" title="statement not covered" >triggerType: number = 0; </span>// byte
   public <span class="cstat-no" title="statement not covered" >trigger: number = 0; </span>// byte
   public <span class="cstat-no" title="statement not covered" >invertedOrCount: number = 0; </span>// byte
@@ -1202,7 +1202,7 @@ export class CaptureRequest {
  * 网络配置结构
  * 对应C#的NetConfig结构体
  */
-export class NetConfig {
+<span class="cstat-no" title="statement not covered" >export class N</span>etConfig {
   public <span class="cstat-no" title="statement not covered" >accessPointName: string = ''; </span>// 33字节固定长度
   public <span class="cstat-no" title="statement not covered" >password: string = ''; </span>// 64字节固定长度
   public <span class="cstat-no" title="statement not covered" >ipAddress: string = ''; </span>// 16字节固定长度
@@ -1267,7 +1267,7 @@ export class NetConfig {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-08-03T16:12:30.077Z
+                at 2025-08-06T08:14:59.875Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

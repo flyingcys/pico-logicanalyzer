@@ -24,12 +24,10 @@ describe('MemoryManager - 最终覆盖率测试', () => {
 
   describe('异常处理路径精准覆盖', () => {
     it('应该精准覆盖release方法异常处理 - 行229', () => {
-      // 创建一个更复杂的对象，确保触发异常路径
+      // 创建一个会导致删除失败的对象
       const problematicObj = {
         regularProp: 'normal',
-        get badProp() {
-          throw new Error('Cannot access this property');
-        }
+        anotherProp: 'value'
       };
 
       // 手动添加一个会导致删除失败的属性
@@ -90,11 +88,14 @@ describe('MemoryManager - 最终覆盖率测试', () => {
       const testManager = new MemoryManager();
       
       try {
+        // Mock forceGarbageCollection 在监控逻辑执行之前
+        const gcSpy = jest.spyOn(testManager, 'forceGarbageCollection').mockImplementation(() => {});
+        
         // 设置低阈值确保触发高内存使用率检测
         testManager.setMemoryThreshold(0.01);
         
         // 分配大量内存确保超过阈值
-        const largeData = new ArrayBuffer(50 * 1024 * 1024); // 50MB
+        const largeData = new ArrayBuffer(10 * 1024 * 1024); // 10MB
         testManager.allocate('channelData', 'huge1', largeData);
         testManager.allocate('channelData', 'huge2', largeData);
         testManager.allocate('channelData', 'huge3', largeData);
@@ -111,9 +112,6 @@ describe('MemoryManager - 最终覆盖率测试', () => {
         for (let i = 0; i < 15; i++) {
           (testManager as any).updateMemoryHistory();
         }
-        
-        // Mock forceGarbageCollection 来验证调用
-        const gcSpy = jest.spyOn(testManager, 'forceGarbageCollection');
         
         // 触发监控检查 - 这应该覆盖行446-462的完整逻辑
         jest.advanceTimersByTime(30000);

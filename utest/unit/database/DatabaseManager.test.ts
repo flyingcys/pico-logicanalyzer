@@ -3,10 +3,10 @@
  * 测试数据库管理器的完整功能，包括智能匹配、设备发现、完整性验证等
  */
 
-import { DatabaseManager } from '../../src/database/DatabaseManager';
-import { HardwareCompatibilityDatabase, DeviceCompatibilityEntry } from '../../src/database/HardwareCompatibilityDatabase';
-import { HardwareDriverManager } from '../../src/drivers/HardwareDriverManager';
-import { DeviceInfo } from '../../src/models/AnalyzerTypes';
+import { DatabaseManager } from '../../../src/database/DatabaseManager';
+import { HardwareCompatibilityDatabase, DeviceCompatibilityEntry } from '../../../src/database/HardwareCompatibilityDatabase';
+import { HardwareDriverManager } from '../../../src/drivers/HardwareDriverManager';
+import { DeviceInfo } from '../../../src/models/AnalyzerTypes';
 import { promises as fs } from 'fs';
 
 // Mock fs

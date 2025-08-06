@@ -47,7 +47,7 @@ module.exports = {
   // 覆盖率配置
   collectCoverage: true,
   collectCoverageFrom: [
-    'src/**/*.{ts,js}',
+    'src/**/*.{ts,js,vue}',  // 关键修复：包含.vue文件
     '!src/**/*.d.ts',
     '!src/**/*.test.{ts,js}',
     '!src/**/*.spec.{ts,js}',
@@ -100,7 +100,8 @@ module.exports = {
     '/out/',
     '/dist/',
     '/.vscode-test/',
-    '/utest/docs/'
+    '/utest/docs/',
+    '.*archive.*'  // 忽略所有存档目录中的测试文件
   ],
   
   // 需要忽略转换的模块

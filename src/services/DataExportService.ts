@@ -156,7 +156,7 @@ export class DataExportService extends ServiceLifecycleBase {
           return input as Uint8Array[];
         }
         // 转换普通数组为Uint8Array
-        return input.map(item => 
+        return input.map(item =>
           item instanceof Uint8Array ? item : new Uint8Array(item)
         );
       }
@@ -291,7 +291,7 @@ export class DataExportService extends ServiceLifecycleBase {
     try {
       // 统一数据格式
       let unifiedInput: UnifiedDataInput;
-      
+
       if (input && typeof input === 'object') {
         // 检测输入类型
         if (input.frequency && input.captureChannels) {
@@ -355,7 +355,7 @@ export class DataExportService extends ServiceLifecycleBase {
         case 'json':
         case 'vcd':
           return this.exportWaveformData(convertedData.session, format, options);
-          
+
         case 'decoder':
         case 'decoders':
           if (!convertedData.decoderResults) {
@@ -368,11 +368,11 @@ export class DataExportService extends ServiceLifecycleBase {
             };
           }
           return this.exportDecoderResults(convertedData.decoderResults, 'csv', options);
-          
+
         case 'report':
         case 'analysis':
           return this.exportAnalysisReport(convertedData.analysisData || {}, 'html', options);
-          
+
         case 'project':
         case 'complete':
           return this.exportCompleteProject(
@@ -381,7 +381,7 @@ export class DataExportService extends ServiceLifecycleBase {
             convertedData.analysisData || {},
             options
           );
-          
+
         default:
           return {
             success: false,
@@ -1800,30 +1800,30 @@ export class DataExportService extends ServiceLifecycleBase {
     const dataType = this.detectInputFormat(input);
     const validation = this.validateInput(input);
     const formatInfo = this.getFormatInfo(format);
-    
+
     // 估算数据大小
     let estimatedSize = 0;
     let estimatedTime = 0;
-    
+
     try {
       const conversionResult = this.convertUnifiedData(
-        typeof input === 'object' && (input.session || input.captureSession) 
-          ? input as UnifiedDataInput 
+        typeof input === 'object' && (input.session || input.captureSession)
+          ? input as UnifiedDataInput
           : { data: input }
       );
-      
+
       if (conversionResult.success && conversionResult.data?.session) {
-        const session = conversionResult.data.session;
+        const { session } = conversionResult.data;
         const totalSamples = session.preTriggerSamples + session.postTriggerSamples;
         const channels = session.captureChannels?.length || 1;
-        
+
         estimatedSize = this.estimateFileSize(totalSamples, channels, format);
         estimatedTime = Math.max(100, totalSamples * channels / 100000); // 估算处理时间
       }
     } catch (error) {
       validation.warnings.push(`估算失败: ${error}`);
     }
-    
+
     return {
       estimatedSize,
       estimatedTime,
@@ -1935,7 +1935,7 @@ export async function smartExport(
 ): Promise<ExportResult> {
   const dataType = detectDataType(input);
   let format = 'json'; // 默认格式
-  
+
   // 根据数据类型选择最佳格式
   switch (dataType) {
     case 'captureSession':
@@ -1951,13 +1951,13 @@ export async function smartExport(
     default:
       format = 'json';
   }
-  
+
   const exportOptions: ExportOptions = {
     filename,
     timeRange: 'all',
     ...options
   };
-  
+
   return dataExportService.exportFlexible(input, format, exportOptions);
 }
 
@@ -1972,14 +1972,14 @@ export async function batchExport(
   onProgress?: (current: number, total: number, filename: string) => void
 ): Promise<ExportResult[]> {
   const results: ExportResult[] = [];
-  
+
   for (let i = 0; i < exports.length; i++) {
     const { input, format, filename, options = {} } = exports[i];
-    
+
     if (onProgress) {
       onProgress(i, exports.length, filename);
     }
-    
+
     try {
       const result = await dataExportService.exportFlexible(input, format, {
         filename,
@@ -1997,10 +1997,10 @@ export async function batchExport(
       });
     }
   }
-  
+
   if (onProgress) {
     onProgress(exports.length, exports.length, '批量导出完成');
   }
-  
+
   return results;
 }

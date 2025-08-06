@@ -1,6 +1,6 @@
 /**
  * 协议帮助工具
- * 提供常见通信协议的实现助手函数
+ * 提供常见通信协议的实现助手函数和逻辑分析器协议解码功能
  */
 
 /**
@@ -96,10 +96,490 @@ export interface DataPacket {
 }
 
 /**
+ * 协议配置基础接口
+ */
+export interface ProtocolConfig {
+  type: string;
+  [key: string]: any;
+}
+
+/**
+ * 协议验证结果
+ */
+export interface ProtocolValidationResult {
+  isValid: boolean;
+  protocol?: string;
+  errors: string[];
+  warnings?: string[];
+}
+
+/**
+ * I2C协议配置
+ */
+export interface I2CConfig extends ProtocolConfig {
+  type: 'I2C';
+  clockPin: number;
+  dataPin: number;
+  clockFrequency: number;
+  addressBits: 7 | 10;
+}
+
+/**
+ * SPI协议配置
+ */
+export interface SPIConfig extends ProtocolConfig {
+  type: 'SPI';
+  clockPin: number;
+  mosiPin: number;
+  misoPin: number;
+  selectPin: number;
+  clockFrequency: number;
+  mode: 0 | 1 | 2 | 3;
+  bitOrder: 'MSB' | 'LSB';
+}
+
+/**
+ * UART协议配置
+ */
+export interface UARTConfig extends ProtocolConfig {
+  type: 'UART';
+  txPin: number;
+  rxPin: number;
+  baudRate: number;
+  dataBits: 5 | 6 | 7 | 8;
+  stopBits: 1 | 2;
+  parity: 'none' | 'even' | 'odd';
+}
+
+/**
+ * CAN协议配置
+ */
+export interface CANConfig extends ProtocolConfig {
+  type: 'CAN';
+  canHighPin: number;
+  canLowPin: number;
+  baudRate: number;
+}
+
+/**
+ * 协议检测结果
+ */
+export interface ProtocolDetectionResult {
+  detectedProtocols: string[];
+  confidence: number;
+  suggestedConfigs?: ProtocolConfig[];
+}
+
+/**
+ * I2C配置建议
+ */
+export interface I2CConfigSuggestions {
+  clockFrequencies: number[];
+  addressBitOptions: number[];
+  commonConfigurations: Partial<I2CConfig>[];
+}
+
+/**
+ * 协议配置建议
+ */
+export interface ProtocolConfigSuggestions {
+  minimumChannels: number;
+  recommendedChannels: number[];
+  recommendedFrequencies: number[];
+  commonConfigurations: ProtocolConfig[];
+}
+
+/**
+ * 协议数据结构
+ */
+export interface ProtocolData {
+  frames: any[];
+  timing: {
+    clockPeriod?: number;
+    setupTime?: number;
+    holdTime?: number;
+  };
+  metadata?: any;
+}
+
+/**
+ * 协议时序分析结果
+ */
+export interface ProtocolTiming {
+  clockPeriod: number;
+  setupTime: number;
+  holdTime: number;
+  frequency: number;
+}
+
+/**
+ * 协议错误
+ */
+export interface ProtocolError {
+  type: string;
+  message: string;
+  position: number;
+  severity: 'error' | 'warning';
+}
+
+/**
  * 协议帮助工具类
  */
 export class ProtocolHelper {
   private registeredProtocols: Map<string, ProtocolDefinition> = new Map();
+  private supportedProtocols: string[] = ['I2C', 'SPI', 'UART', 'CAN'];
+
+  constructor() {
+    // 初始化支持的协议
+  }
+
+  /**
+   * 获取支持的协议列表
+   */
+  getSupportedProtocols(): string[] {
+    return [...this.supportedProtocols];
+  }
+
+  /**
+   * 检查协议是否支持
+   */
+  isProtocolSupported(protocol: string): boolean {
+    return this.supportedProtocols.includes(protocol);
+  }
+
+  /**
+   * 创建I2C配置
+   */
+  createI2CConfig(config: I2CConfig): I2CConfig {
+    return {
+      type: 'I2C',
+      clockPin: config.clockPin,
+      dataPin: config.dataPin,
+      clockFrequency: config.clockFrequency,
+      addressBits: config.addressBits
+    };
+  }
+
+  /**
+   * 验证I2C配置
+   */
+  validateI2CConfig(config: I2CConfig): ProtocolValidationResult {
+    const errors: string[] = [];
+
+    if (config.clockPin === undefined || config.clockPin < 0) {
+      errors.push('时钟引脚无效');
+    }
+
+    if (config.dataPin === undefined || config.dataPin < 0) {
+      errors.push('数据引脚无效');
+    }
+
+    if (config.clockPin === config.dataPin) {
+      errors.push('时钟引脚和数据引脚不能相同');
+    }
+
+    if (config.clockFrequency === undefined || config.clockFrequency <= 0) {
+      errors.push('时钟频率无效');
+    }
+
+    if (config.addressBits !== 7 && config.addressBits !== 10) {
+      errors.push('地址位数必须是7或10位');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      protocol: 'I2C',
+      errors
+    };
+  }
+
+  /**
+   * 获取I2C配置建议
+   */
+  getI2CConfigSuggestions(): I2CConfigSuggestions {
+    return {
+      clockFrequencies: [100000, 400000, 1000000], // 标准模式, 快速模式, 高速模式
+      addressBitOptions: [7, 10],
+      commonConfigurations: [
+        { clockFrequency: 100000, addressBits: 7 },
+        { clockFrequency: 400000, addressBits: 7 }
+      ]
+    };
+  }
+
+  /**
+   * 创建SPI配置
+   */
+  createSPIConfig(config: SPIConfig): SPIConfig {
+    return {
+      type: 'SPI',
+      clockPin: config.clockPin,
+      mosiPin: config.mosiPin,
+      misoPin: config.misoPin,
+      selectPin: config.selectPin,
+      clockFrequency: config.clockFrequency,
+      mode: config.mode,
+      bitOrder: config.bitOrder
+    };
+  }
+
+  /**
+   * 验证SPI配置
+   */
+  validateSPIConfig(config: SPIConfig): ProtocolValidationResult {
+    const errors: string[] = [];
+    const pins = [config.clockPin, config.mosiPin, config.misoPin, config.selectPin];
+
+    // 检查引脚冲突
+    const uniquePins = new Set(pins);
+    if (uniquePins.size !== pins.length) {
+      errors.push('SPI引脚不能重复使用');
+    }
+
+    // 检查模式
+    if (![0, 1, 2, 3].includes(config.mode)) {
+      errors.push('SPI模式必须是0-3之间');
+    }
+
+    // 检查频率
+    if (config.clockFrequency <= 0) {
+      errors.push('时钟频率必须大于0');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      protocol: 'SPI',
+      errors
+    };
+  }
+
+  /**
+   * 创建UART配置
+   */
+  createUARTConfig(config: UARTConfig): UARTConfig {
+    return {
+      type: 'UART',
+      txPin: config.txPin,
+      rxPin: config.rxPin,
+      baudRate: config.baudRate,
+      dataBits: config.dataBits,
+      stopBits: config.stopBits,
+      parity: config.parity
+    };
+  }
+
+  /**
+   * 验证UART配置
+   */
+  validateUARTConfig(config: UARTConfig): ProtocolValidationResult {
+    const errors: string[] = [];
+
+    if (config.baudRate <= 0) {
+      errors.push('波特率必须大于0');
+    }
+
+    if (![5, 6, 7, 8].includes(config.dataBits)) {
+      errors.push('数据位必须是5-8位');
+    }
+
+    if (![1, 2].includes(config.stopBits)) {
+      errors.push('停止位必须是1或2位');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      protocol: 'UART',
+      errors
+    };
+  }
+
+  /**
+   * 验证通用协议配置
+   */
+  validateProtocolConfig(config: ProtocolConfig): ProtocolValidationResult {
+    if (!config.type) {
+      return {
+        isValid: false,
+        errors: ['协议类型不能为空']
+      };
+    }
+
+    if (!this.isProtocolSupported(config.type)) {
+      return {
+        isValid: false,
+        errors: [`不支持的协议类型: ${config.type}`]
+      };
+    }
+
+    switch (config.type) {
+      case 'I2C':
+        return this.validateI2CConfig(config as I2CConfig);
+      case 'SPI':
+        return this.validateSPIConfig(config as SPIConfig);
+      case 'UART':
+        return this.validateUARTConfig(config as UARTConfig);
+      default:
+        return {
+          isValid: false,
+          errors: [`未实现的协议验证: ${config.type}`]
+        };
+    }
+  }
+
+  /**
+   * 检测协议
+   */
+  detectProtocol(sampleData: Uint8Array, channelCount: number): ProtocolDetectionResult {
+    const detectedProtocols: string[] = [];
+    let confidence = 0;
+
+    if (sampleData.length === 0) {
+      return { detectedProtocols: [], confidence: 0 };
+    }
+
+    // 简单的协议检测逻辑
+    if (channelCount >= 2) {
+      // 可能是I2C
+      detectedProtocols.push('I2C');
+      confidence = Math.max(confidence, 0.6);
+    }
+
+    if (channelCount >= 4) {
+      // 可能是SPI
+      detectedProtocols.push('SPI');
+      confidence = Math.max(confidence, 0.7);
+    }
+
+    if (channelCount >= 2) {
+      // 可能是UART
+      detectedProtocols.push('UART');
+      confidence = Math.max(confidence, 0.5);
+    }
+
+    return { detectedProtocols, confidence };
+  }
+
+  /**
+   * 生成I2C解码器模板
+   */
+  generateI2CDecoderTemplate(config: Partial<I2CConfig>): string {
+    return `// I2C Decoder Template
+const i2cDecoder = {
+  protocol: 'I2C',
+  clockPin: ${config.clockPin || 0},
+  dataPin: ${config.dataPin || 1},
+  clockFrequency: ${config.clockFrequency || 100000}
+};`;
+  }
+
+  /**
+   * 生成SPI解码器模板
+   */
+  generateSPIDecoderTemplate(config: Partial<SPIConfig>): string {
+    return `// SPI Decoder Template
+const spiDecoder = {
+  protocol: 'SPI',
+  clockPin: ${config.clockPin || 0},
+  mosiPin: ${config.mosiPin || 1},
+  misoPin: ${config.misoPin || 2},
+  selectPin: ${config.selectPin || 3}
+};`;
+  }
+
+  /**
+   * 生成UART解码器模板
+   */
+  generateUARTDecoderTemplate(config: Partial<UARTConfig>): string {
+    return `// UART Decoder Template
+const uartDecoder = {
+  protocol: 'UART',
+  txPin: ${config.txPin || 0},
+  rxPin: ${config.rxPin || 1},
+  baudRate: ${config.baudRate || 115200}
+};`;
+  }
+
+  /**
+   * 获取协议配置建议
+   */
+  getProtocolConfigSuggestions(protocol: string, hardwareCapability: any): ProtocolConfigSuggestions {
+    const suggestions: ProtocolConfigSuggestions = {
+      minimumChannels: 2,
+      recommendedChannels: [],
+      recommendedFrequencies: [],
+      commonConfigurations: []
+    };
+
+    switch (protocol) {
+      case 'I2C':
+        suggestions.minimumChannels = 2;
+        suggestions.recommendedChannels = [0, 1];
+        suggestions.recommendedFrequencies = [100000, 400000];
+        break;
+      case 'SPI':
+        suggestions.minimumChannels = 4;
+        suggestions.recommendedChannels = [0, 1, 2, 3];
+        suggestions.recommendedFrequencies = [1000000, 10000000];
+        break;
+      case 'UART':
+        suggestions.minimumChannels = 2;
+        suggestions.recommendedChannels = [0, 1];
+        suggestions.recommendedFrequencies = [9600, 115200];
+        break;
+    }
+
+    return suggestions;
+  }
+
+  /**
+   * 将采样数据转换为协议数据
+   */
+  convertSampleDataToProtocol(sampleData: Uint8Array, config: ProtocolConfig): ProtocolData {
+    return {
+      frames: [],
+      timing: {
+        clockPeriod: 1000,
+        setupTime: 100,
+        holdTime: 100
+      },
+      metadata: {
+        protocol: config.type,
+        sampleCount: sampleData.length
+      }
+    };
+  }
+
+  /**
+   * 分析协议时序
+   */
+  analyzeProtocolTiming(sampleData: Uint8Array, sampleRate: number): ProtocolTiming {
+    const clockPeriod = 1000000 / sampleRate; // 微秒
+    return {
+      clockPeriod,
+      setupTime: clockPeriod * 0.1,
+      holdTime: clockPeriod * 0.1,
+      frequency: sampleRate
+    };
+  }
+
+  /**
+   * 检测协议错误
+   */
+  detectProtocolErrors(sampleData: Uint8Array, config: ProtocolConfig): ProtocolError[] {
+    const errors: ProtocolError[] = [];
+
+    // 简单的错误检测
+    if (sampleData.length === 0) {
+      errors.push({
+        type: 'NO_DATA',
+        message: '没有采样数据',
+        position: 0,
+        severity: 'error'
+      });
+    }
+
+    return errors;
+  }
 
   /**
    * 注册协议定义

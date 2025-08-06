@@ -541,7 +541,7 @@ describe('WorkspaceManager 增强覆盖率测试', () => {
       expect(listener2).toHaveBeenCalledWith({ name: '测试项目2' });
 
       // 移除监听器
-      workspaceManager.removeListener('projectCreated', listener1);
+      workspaceManager.off('projectCreated', listener1);
       workspaceManager.emit('projectCreated', { name: '测试项目3' });
 
       // listener1不应该再被调用

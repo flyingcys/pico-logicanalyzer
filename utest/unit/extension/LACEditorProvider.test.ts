@@ -12,7 +12,10 @@ const mockWebview = {
   options: {},
   postMessage: jest.fn(),
   onDidReceiveMessage: jest.fn(),
-  asWebviewUri: jest.fn().mockImplementation((uri) => uri),
+  asWebviewUri: jest.fn().mockImplementation((uri) => ({
+    ...uri,
+    toString: () => uri.path || uri.toString(),
+  })),
   cspSource: 'vscode-webview:',
 };
 
@@ -26,7 +29,10 @@ const mockWebviewPanel = {
 };
 
 const mockDocument = {
-  uri: { fsPath: '/test/path/test.lac' } as vscode.Uri,
+  uri: { 
+    fsPath: '/test/path/test.lac',
+    toString: () => '/test/path/test.lac',
+  } as vscode.Uri,
   getText: jest.fn().mockReturnValue('test lac content'),
   save: jest.fn(),
   isDirty: false,
@@ -46,7 +52,10 @@ const mockDocument = {
 };
 
 const mockContext = {
-  extensionUri: { path: '/test/extension' } as vscode.Uri,
+  extensionUri: { 
+    path: '/test/extension',
+    toString: () => '/test/extension',
+  } as vscode.Uri,
   subscriptions: [],
   workspaceState: {
     get: jest.fn(),
@@ -75,6 +84,7 @@ jest.mock('vscode', () => ({
   Uri: {
     joinPath: jest.fn().mockImplementation((...paths) => ({
       path: paths.join('/'),
+      toString: () => paths.join('/'),
     })),
   },
   workspace: {
@@ -142,7 +152,9 @@ describe('LACEditorProvider 测试', () => {
       // Assert
       expect(mockWebviewPanel.webview.options).toEqual({
         enableScripts: true,
-        localResourceRoots: [{ path: '/test/extension/out/webview' }],
+        localResourceRoots: [expect.objectContaining({
+          path: expect.stringContaining('/test/extension/out/webview'),
+        })],
       });
     });
 
@@ -257,7 +269,7 @@ describe('LACEditorProvider 测试', () => {
       // Assert
       const html = mockWebviewPanel.webview.html;
       expect(html).toContain('<script');
-      expect(html).toContain('<style');
+      expect(html).toContain('<link'); // 源代码使用 <link> 而不是 <style>
       expect(html).toContain('<!DOCTYPE html>');
     });
 

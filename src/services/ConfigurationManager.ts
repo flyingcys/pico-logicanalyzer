@@ -108,7 +108,7 @@ export class ConfigurationManager extends ServiceLifecycleBase {
   private deviceConfigurations: Map<string, DeviceConfiguration> = new Map();
   private themes: Map<string, ThemeConfiguration> = new Map();
   private currentTheme?: string;
-  
+
   // 本地配置缓存，解决set/get同步问题
   private localConfigCache: Map<string, ConfigValue> = new Map();
 
@@ -131,7 +131,7 @@ export class ConfigurationManager extends ServiceLifecycleBase {
   protected async onDispose(options: ServiceDisposeOptions): Promise<void> {
     // 清理配置监听器
     this.eventEmitter.removeAllListeners();
-    
+
     // 清理缓存
     this.localConfigCache.clear();
     this.deviceConfigurations.clear();
@@ -156,6 +156,10 @@ export class ConfigurationManager extends ServiceLifecycleBase {
   removeAllListeners(event?: string | symbol): this {
     this.eventEmitter.removeAllListeners(event);
     return this;
+  }
+
+  listenerCount(event: string | symbol): number {
+    return this.eventEmitter.listenerCount(event);
   }
 
   /**
@@ -818,12 +822,30 @@ export class ConfigurationManager extends ServiceLifecycleBase {
 
       this.deviceConfigurations.clear();
       for (const device of devices) {
-        this.deviceConfigurations.set(device.deviceId, device);
+        // 验证设备配置的有效性
+        if (this.isValidDeviceConfiguration(device)) {
+          this.deviceConfigurations.set(device.deviceId, device);
+        }
       }
 
     } catch (error) {
       // 文件不存在或读取失败，使用空配置
     }
+  }
+
+  /**
+   * 验证设备配置是否有效
+   */
+  private isValidDeviceConfiguration(device: any): device is DeviceConfiguration {
+    return device &&
+           typeof device.deviceId === 'string' &&
+           device.deviceId.length > 0 &&
+           typeof device.name === 'string' &&
+           typeof device.type === 'string' &&
+           typeof device.connectionString === 'string' &&
+           typeof device.settings === 'object' &&
+           typeof device.lastUsed === 'string' &&
+           typeof device.favorite === 'boolean';
   }
 
   /**
@@ -848,20 +870,39 @@ export class ConfigurationManager extends ServiceLifecycleBase {
    * 加载主题
    */
   private async loadThemes(): Promise<void> {
+    // 首先加载默认主题
+    this.loadDefaultThemes();
+
     try {
       const configPath = this.getWorkspaceConfigPath(this.THEMES_FILE);
       const content = await fs.readFile(configPath, 'utf8');
       const themes = JSON.parse(content) as ThemeConfiguration[];
 
-      this.themes.clear();
+      // 加载用户自定义主题（如果名称相同会覆盖默认主题）
       for (const theme of themes) {
-        this.themes.set(theme.name, theme);
+        if (this.isValidThemeConfiguration(theme)) {
+          this.themes.set(theme.name, theme);
+        }
       }
 
     } catch (error) {
-      // 加载默认主题
-      this.loadDefaultThemes();
+      // 文件不存在或读取失败时，保持默认主题
     }
+  }
+
+  /**
+   * 验证主题配置是否有效
+   */
+  private isValidThemeConfiguration(theme: any): theme is ThemeConfiguration {
+    return theme &&
+           typeof theme.name === 'string' &&
+           theme.name.length > 0 &&
+           typeof theme.colors === 'object' &&
+           typeof theme.colors.background === 'string' &&
+           typeof theme.colors.foreground === 'string' &&
+           Array.isArray(theme.colors.channelColors) &&
+           typeof theme.fonts === 'object' &&
+           typeof theme.fonts.family === 'string';
   }
 
   /**

@@ -12,7 +12,7 @@
  */
 
 import * as vscode from 'vscode';
-import { activate, deactivate } from '../../../src/extension';
+import { activate, deactivate, ExtensionServices } from '../../../src/extension';
 
 // Mock 网络服务实例将在beforeEach中设置
 
@@ -83,6 +83,12 @@ describe('VSCode Extension 网络功能测试', () => {
     const { hardwareDriverManager } = require('../../../src/drivers/HardwareDriverManager');
     mockHardwareDriverManager = hardwareDriverManager;
     
+    // 获取网络服务的 mock 实例
+    const { WiFiDeviceDiscovery } = require('../../../src/services/WiFiDeviceDiscovery');
+    const { NetworkStabilityService } = require('../../../src/services/NetworkStabilityService');
+    mockWiFiDeviceDiscovery = new WiFiDeviceDiscovery();
+    mockNetworkStabilityService = new NetworkStabilityService();
+    
     context = { subscriptions: [] } as any;
     jest.clearAllMocks();
     
@@ -92,13 +98,25 @@ describe('VSCode Extension 网络功能测试', () => {
     mockHardwareDriverManager.getCurrentDevice.mockReturnValue(null);
     mockHardwareDriverManager.dispose.mockResolvedValue(undefined);
     mockVSCode.workspace.openTextDocument.mockResolvedValue({ uri: 'test://doc' });
+    
+    // 设置网络服务的默认返回值
+    mockWiFiDeviceDiscovery.scanForDevices.mockResolvedValue({ devices: [] });
+    mockNetworkStabilityService.runDiagnostics.mockResolvedValue([]);
+    mockNetworkStabilityService.connect.mockResolvedValue(true);
+    mockNetworkStabilityService.disconnect.mockResolvedValue(undefined);
+    mockNetworkStabilityService.getConnectionQuality.mockReturnValue({ score: 0.8 });
   });
 
   describe('网络设备扫描命令 (scanNetworkDevices)', () => {
     let scanNetworkDevicesHandler: () => Promise<void>;
 
     beforeEach(() => {
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       scanNetworkDevicesHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.scanNetworkDevices')?.[1];
     });
@@ -266,7 +284,12 @@ describe('VSCode Extension 网络功能测试', () => {
     let networkDiagnosticsHandler: () => Promise<void>;
 
     beforeEach(() => {
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       networkDiagnosticsHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.networkDiagnostics')?.[1];
     });
@@ -401,7 +424,12 @@ describe('VSCode Extension 网络功能测试', () => {
     let mockCurrentDevice: any;
 
     beforeEach(() => {
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       configureWiFiHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.configureWiFi')?.[1];
       
@@ -607,7 +635,12 @@ describe('VSCode Extension 网络功能测试', () => {
     
     it('应该正确解析有效的网络地址', async () => {
       // 这个测试通过网络诊断命令间接测试parseNetworkAddress函数
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       const networkDiagnosticsHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.networkDiagnostics')?.[1];
       
@@ -622,7 +655,12 @@ describe('VSCode Extension 网络功能测试', () => {
     });
 
     it('应该处理无效的网络地址格式', async () => {
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       const networkDiagnosticsHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.networkDiagnostics')?.[1];
       
@@ -637,7 +675,12 @@ describe('VSCode Extension 网络功能测试', () => {
     });
 
     it('应该处理端口号超出范围的情况', async () => {
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       const networkDiagnosticsHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.networkDiagnostics')?.[1];
       
@@ -655,7 +698,12 @@ describe('VSCode Extension 网络功能测试', () => {
   describe('网络设备连接函数 (connectToNetworkDevice)', () => {
     it('应该建立网络连接并注册到硬件驱动管理器', async () => {
       // 通过网络设备扫描命令间接测试connectToNetworkDevice函数
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       const scanHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.scanNetworkDevices')?.[1];
       
@@ -684,7 +732,12 @@ describe('VSCode Extension 网络功能测试', () => {
     });
 
     it('网络连接失败时应该显示错误消息', async () => {
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       const scanHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.scanNetworkDevices')?.[1];
       
@@ -707,7 +760,12 @@ describe('VSCode Extension 网络功能测试', () => {
     });
 
     it('硬件驱动管理器连接失败时应该断开网络连接', async () => {
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       const scanHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.scanNetworkDevices')?.[1];
       
@@ -736,20 +794,46 @@ describe('VSCode Extension 网络功能测试', () => {
   });
 
   describe('扩展生命周期与网络服务管理', () => {
-    it('激活时应该初始化网络服务', () => {
-      // Act
+    it('无依赖注入时应该初始化真实网络服务', () => {
+      // Arrange
+      const WiFiDeviceDiscovery = require('../../../src/services/WiFiDeviceDiscovery').WiFiDeviceDiscovery;
+      const NetworkStabilityService = require('../../../src/services/NetworkStabilityService').NetworkStabilityService;
+      
+      // Act - 不传入services参数，应该创建真实实例
       activate(context);
 
       // Assert - 验证网络服务构造函数被调用
-      const WiFiDeviceDiscovery = require('../../../src/services/WiFiDeviceDiscovery').WiFiDeviceDiscovery;
-      const NetworkStabilityService = require('../../../src/services/NetworkStabilityService').NetworkStabilityService;
       expect(WiFiDeviceDiscovery).toHaveBeenCalled();
       expect(NetworkStabilityService).toHaveBeenCalled();
     });
 
+    it('使用依赖注入时应该使用提供的服务实例', () => {
+      // Arrange
+      const WiFiDeviceDiscovery = require('../../../src/services/WiFiDeviceDiscovery').WiFiDeviceDiscovery;
+      const NetworkStabilityService = require('../../../src/services/NetworkStabilityService').NetworkStabilityService;
+      WiFiDeviceDiscovery.mockClear();
+      NetworkStabilityService.mockClear();
+      
+      // Act - 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
+
+      // Assert - 使用依赖注入时构造函数不应该被调用
+      expect(WiFiDeviceDiscovery).not.toHaveBeenCalled();
+      expect(NetworkStabilityService).not.toHaveBeenCalled();
+    });
+
     it('去激活时应该清理网络服务', () => {
       // Arrange
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
 
       // Act
       deactivate();
@@ -763,7 +847,12 @@ describe('VSCode Extension 网络功能测试', () => {
 
     it('去激活时应该处理网络服务清理异常', () => {
       // Arrange
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       mockNetworkStabilityService.disconnect.mockRejectedValue(new Error('清理失败'));
       mockHardwareDriverManager.dispose.mockRejectedValue(new Error('驱动清理失败'));
       
@@ -779,7 +868,12 @@ describe('VSCode Extension 网络功能测试', () => {
 
   describe('边界条件和错误处理', () => {
     it('应该处理空设备列表', async () => {
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       const scanHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.scanNetworkDevices')?.[1];
       
@@ -794,7 +888,12 @@ describe('VSCode Extension 网络功能测试', () => {
     });
 
     it('应该处理用户取消设备选择', async () => {
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       const scanHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.scanNetworkDevices')?.[1];
       
@@ -809,7 +908,12 @@ describe('VSCode Extension 网络功能测试', () => {
     });
 
     it('应该处理网络连接异常', async () => {
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       const scanHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.scanNetworkDevices')?.[1];
       
@@ -830,7 +934,12 @@ describe('VSCode Extension 网络功能测试', () => {
     });
 
     it('应该处理诊断报告创建失败', async () => {
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       const diagnosticsHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.networkDiagnostics')?.[1];
       
@@ -846,7 +955,12 @@ describe('VSCode Extension 网络功能测试', () => {
 
   describe('性能和资源管理', () => {
     it('网络设备扫描应该在合理时间内完成', async () => {
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       const scanHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.scanNetworkDevices')?.[1];
       
@@ -862,7 +976,12 @@ describe('VSCode Extension 网络功能测试', () => {
     });
 
     it('大量网络设备处理应该高效', async () => {
-      activate(context);
+      // 使用依赖注入传入Mock服务
+      const services: ExtensionServices = {
+        wifiDiscoveryService: mockWiFiDeviceDiscovery,
+        networkStabilityService: mockNetworkStabilityService,
+      };
+      activate(context, services);
       const scanHandler = mockVSCode.commands.registerCommand.mock.calls
         .find(call => call[0] === 'logicAnalyzer.scanNetworkDevices')?.[1];
       

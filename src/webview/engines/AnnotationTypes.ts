@@ -98,7 +98,9 @@ export class AnnotationColorManager {
    * 根据类型ID获取颜色
    */
   getColor(typeId: number): string {
-    return this.colorPalette[typeId % this.colorPalette.length];
+    // 处理负数情况，确保索引始终为正数
+    const index = ((typeId % this.colorPalette.length) + this.colorPalette.length) % this.colorPalette.length;
+    return this.colorPalette[index];
   }
 
   /**

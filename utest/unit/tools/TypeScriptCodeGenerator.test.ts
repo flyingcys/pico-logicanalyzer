@@ -8,13 +8,13 @@ import {
   TypeScriptCodeGenerator, 
   CodeGenerationOptions, 
   GeneratedCode 
-} from '../../src/tools/TypeScriptCodeGenerator';
+} from '../../../src/tools/TypeScriptCodeGenerator';
 import { 
   ConversionPlan, 
   DecoderMetadata, 
   PythonClassInfo, 
   PythonMethodInfo 
-} from '../../src/tools/PythonDecoderAnalyzer';
+} from '../../../src/tools/PythonDecoderAnalyzer';
 
 describe('TypeScriptCodeGenerator', () => {
   let generator: TypeScriptCodeGenerator;

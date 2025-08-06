@@ -403,7 +403,8 @@ describe('StreamingDecoder', () => {
     });
 
     it('应该正确处理块处理失败', async () => {
-      const failingDecoder = new ProcessingFailingDecoder();
+      // 使用较小的块大小确保能创建足够的块来触发失败
+      const failingDecoder = new ProcessingFailingDecoder({ chunkSize: 3 });
 
       const result = await failingDecoder.streamingDecode(
         1000000,
@@ -607,15 +608,22 @@ describe('PerformanceMonitor', () => {
     });
 
     it('应该计算检查点之间的时间差', () => {
-      monitor.start();
-      monitor.addCheckpoint('checkpoint-1');
-      monitor.addCheckpoint('checkpoint-2');
+      // 重新设置mock让时间更可预测
+      let callCount = 0;
+      performance.now = jest.fn(() => {
+        return callCount++ * 10; // 0, 10, 20, 30...
+      });
+
+      monitor.start(); // performance.now() = 0, startTime = 0, 'start' checkpoint at time 0
+      monitor.addCheckpoint('checkpoint-1'); // performance.now() = 10, time = 10-0 = 10
+      monitor.addCheckpoint('checkpoint-2'); // performance.now() = 20, time = 20-0 = 20
 
       const report = monitor.getReport();
 
       expect(report.checkpoints.length).toBeGreaterThanOrEqual(3); // start + 2 checkpoints
-      expect(report.checkpoints[1].deltaTime).toBe(0); // 第一个检查点
-      expect(report.checkpoints[2].deltaTime).toBeGreaterThan(0); // 第二个检查点应该有时间差
+      expect(report.checkpoints[0].deltaTime).toBe(0); // start checkpoint
+      expect(report.checkpoints[1].deltaTime).toBe(10); // checkpoint-1: 10-0 = 10
+      expect(report.checkpoints[2].deltaTime).toBe(10); // checkpoint-2: 20-10 = 10
     });
 
     it('应该处理没有 performance.memory 的环境', () => {

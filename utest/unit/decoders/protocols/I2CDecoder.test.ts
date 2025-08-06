@@ -3,8 +3,8 @@
  * 基于原版Python解码器功能的完整验证
  */
 
-import '../../../../src/tests/setup';
-import '../../../../src/tests/matchers';
+import '../../../setup';
+import '../../../matchers';
 import { I2CDecoder } from '../../../../src/decoders/protocols/I2CDecoder';
 import { AnalyzerChannel } from '../../../../src/models/CaptureModels';
 import { DecoderOptionValue, DecoderOutputType } from '../../../../src/decoders/types';

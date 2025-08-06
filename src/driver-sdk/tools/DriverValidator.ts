@@ -111,7 +111,7 @@ export class DriverValidator {
         }
 
         try {
-          // 测试方法签名
+          // 测试方法签名和基本功能
           const mockParams: ConnectionParams = { timeout: 5000 };
           const result = driver.connect(mockParams);
 
@@ -123,10 +123,37 @@ export class DriverValidator {
             };
           }
 
-          return {
-            passed: true,
-            message: 'connect方法签名正确'
-          };
+          // 测试连接结果的结构
+          try {
+            const connectionResult = await result;
+
+            if (typeof connectionResult !== 'object' || connectionResult === null) {
+              return {
+                passed: false,
+                message: 'connect方法必须返回ConnectionResult对象',
+                suggestions: ['确保connect方法返回包含success属性的对象']
+              };
+            }
+
+            if (typeof connectionResult.success !== 'boolean') {
+              return {
+                passed: false,
+                message: 'ConnectionResult必须包含success属性',
+                suggestions: ['确保返回的对象包含boolean类型的success属性']
+              };
+            }
+
+            return {
+              passed: true,
+              message: 'connect方法实现正确'
+            };
+          } catch (error) {
+            return {
+              passed: false,
+              message: `connect方法执行失败: ${error}`,
+              suggestions: ['检查connect方法的异步实现']
+            };
+          }
         } catch (error) {
           return {
             passed: false,
@@ -318,11 +345,13 @@ export class DriverValidator {
       report.overallStatus = 'pass';
     }
 
-    // 计算评分 (0-100)
+    // 计算评分 (0-100) - 严格扣分制度
     const totalRules = this.rules.length;
-    const passedRules = totalRules - report.errors.length - report.warnings.length;
-    const partialRules = report.warnings.length * 0.5; // 警告按50%计分
-    report.score = Math.round(((passedRules + partialRules) / totalRules) * 100);
+    const errorWeight = 40; // 每个错误扣40分
+    const warningWeight = 15; // 每个警告扣15分
+    const baseScore = 100;
+    const penaltyScore = (report.errors.length * errorWeight) + (report.warnings.length * warningWeight);
+    report.score = Math.max(0, Math.round(baseScore - penaltyScore));
 
     console.log(`验证完成，评分: ${report.score}/100`);
     return report;

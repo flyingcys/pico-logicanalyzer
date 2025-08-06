@@ -123,7 +123,7 @@ export class InteractionEngine {
         // 左键：开始拖拽平移
         if (this.config.enablePan) {
           this.isDragging = true;
-          this.canvas.style.cursor = 'grabbing';
+          this.setCursor('grabbing');
         }
       }
     }
@@ -164,7 +164,7 @@ export class InteractionEngine {
   private onMouseUp(event: MouseEvent): void {
     if (this.isDragging) {
       this.isDragging = false;
-      this.canvas.style.cursor = 'default';
+      this.setCursor('default');
     }
 
     if (this.isSelecting) {
@@ -187,7 +187,9 @@ export class InteractionEngine {
     const centerSample = this.pixelToSample(mouseX);
 
     // 计算缩放因子
-    const zoomFactor = event.deltaY > 0 ?
+    // deltaY < 0: 向上滚动 = 放大 (zoom in)
+    // deltaY > 0: 向下滚动 = 缩小 (zoom out)
+    const zoomFactor = event.deltaY < 0 ?
       (1 + this.config.zoomSensitivity) :
       (1 - this.config.zoomSensitivity);
 
@@ -198,8 +200,17 @@ export class InteractionEngine {
    * 双击事件
    */
   private onDoubleClick(event: MouseEvent): void {
-    // 双击重置视图
-    this.resetView();
+    // 双击缩放到鼠标位置
+    const rect = this.canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const centerSample = this.pixelToSample(mouseX);
+
+    // 如果当前已经放大，则缩小；否则放大
+    const currentZoom = this.viewport.zoomLevel;
+    const targetZoom = currentZoom > 1.5 ? 0.5 : 2.0;
+    const zoomFactor = targetZoom / currentZoom;
+
+    this.zoomAtPoint(centerSample, zoomFactor);
   }
 
   /**
@@ -385,6 +396,7 @@ export class InteractionEngine {
 
     this.emitEvent('zoom', {
       factor,
+      direction: factor > 1 ? 'in' : 'out',
       centerSample,
       viewport: { ...this.viewport }
     });
@@ -438,9 +450,9 @@ export class InteractionEngine {
    */
   private updateCursor(event: MouseEvent): void {
     if (event.ctrlKey || event.metaKey) {
-      this.canvas.style.cursor = 'crosshair'; // 选择模式
+      this.setCursor('crosshair'); // 选择模式
     } else {
-      this.canvas.style.cursor = 'grab'; // 平移模式
+      this.setCursor('grab'); // 平移模式
     }
   }
 
@@ -506,6 +518,20 @@ export class InteractionEngine {
   }
 
   /**
+   * 获取配置 - 测试兼容方法
+   */
+  public getConfig(): InteractionConfig {
+    return { ...this.config };
+  }
+
+  /**
+   * 事件监听器 - 测试兼容方法
+   */
+  public on(event: string, callback: (data: any) => void): void {
+    this.addEventListener(event, callback);
+  }
+
+  /**
    * 获取选择区域
    */
   public getSelection(): { start: number, end: number } | null {
@@ -554,5 +580,14 @@ export class InteractionEngine {
     this.isSelecting = false;
     this.selectionStart = null;
     this.selectionEnd = null;
+  }
+
+  /**
+   * 安全设置Canvas cursor样式，支持测试环境
+   */
+  private setCursor(cursorStyle: string): void {
+    if (this.canvas.style) {
+      this.canvas.style.cursor = cursorStyle;
+    }
   }
 }

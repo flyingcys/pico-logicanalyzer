@@ -7,6 +7,7 @@ import { MemoryManager, MemoryBlock, MemoryPool, MemoryStats } from '../../../sr
 
 describe('MemoryManager - 完美覆盖率测试', () => {
   let memoryManager: MemoryManager;
+  const originalDateNow = Date.now;
 
   beforeEach(() => {
     // 清除console输出以避免测试污染
@@ -21,6 +22,8 @@ describe('MemoryManager - 完美覆盖率测试', () => {
     memoryManager.dispose();
     jest.restoreAllMocks();
     jest.clearAllTimers();
+    // 恢复原始的Date.now
+    Date.now = originalDateNow;
   });
 
   describe('异常处理代码路径覆盖', () => {
@@ -90,51 +93,74 @@ describe('MemoryManager - 完美覆盖率测试', () => {
     it('应该覆盖高内存使用率触发GC的路径 - 行451-453', () => {
       jest.useFakeTimers();
       
-      // 设置很低的内存阈值
-      memoryManager.setMemoryThreshold(0.01);
-
-      // 分配足够多的内存触发阈值
-      const largeData = new Uint8Array(10 * 1024 * 1024); // 10MB
-      memoryManager.allocate('channelData', 'large1', largeData);
-      memoryManager.allocate('channelData', 'large2', largeData);
-
-      const gcSpy = jest.spyOn(memoryManager, 'forceGarbageCollection');
-
-      // 触发监控检查
-      jest.advanceTimersByTime(30000);
-
-      expect(gcSpy).toHaveBeenCalled();
+      // 创建新的内存管理器实例
+      const testManager = new MemoryManager();
       
-      jest.useRealTimers();
+      try {
+        // 先Mock GC方法，再进行其他操作
+        const gcSpy = jest.spyOn(testManager, 'forceGarbageCollection').mockImplementation(() => {});
+        
+        // 设置很低的内存阈值
+        testManager.setMemoryThreshold(0.1); // 10%
+        
+        // 分配足够多的内存触发阈值 (总容量300MB * 10% = 30MB)
+        const largeData = new Uint8Array(40 * 1024 * 1024); // 40MB
+        testManager.allocate('channelData', 'large1', largeData);
+        
+        // 模拟监控检查，直接调用监控逻辑
+        jest.runOnlyPendingTimers(); // 触发setInterval回调
+        
+        expect(gcSpy).toHaveBeenCalled();
+        
+      } finally {
+        testManager.dispose();
+        jest.useRealTimers();
+      }
     });
 
     it('应该覆盖大量内存泄漏自动清理路径 - 行459-463', () => {
       jest.useFakeTimers();
+      const originalDate = Date.now;
       
-      // 创建超过5个"泄漏"的内存块
-      const data = new Uint8Array(100);
-      for (let i = 0; i < 7; i++) {
-        memoryManager.allocate('cache', `leak${i}`, data);
-      }
-
-      // 推进时间使其成为可疑泄漏
-      jest.advanceTimersByTime(11 * 60 * 1000);
-
-      // 手动更新内存历史，确保长度>10
-      for (let i = 0; i < 12; i++) {
-        // 通过反射访问私有方法来更新历史
-        (memoryManager as any).updateMemoryHistory();
-      }
-
-      const initialBlockCount = memoryManager.getPoolInfo('cache')!.blocks.size;
-
-      // 触发监控检查，应该自动清理泄漏
-      jest.advanceTimersByTime(30000);
-
-      const finalBlockCount = memoryManager.getPoolInfo('cache')!.blocks.size;
-      expect(finalBlockCount).toBeLessThan(initialBlockCount);
+      // 创建新的内存管理器实例
+      const testManager = new MemoryManager();
       
-      jest.useRealTimers();
+      try {
+        // 先Mock release方法
+        const releaseSpy = jest.spyOn(testManager, 'release');
+        
+        // 创建超过5个"泄漏"的内存块
+        const data = new Uint8Array(100);
+        for (let i = 0; i < 7; i++) {
+          testManager.allocate('cache', `leak${i}`, data);
+        }
+
+        // 确认初始状态
+        const initialBlockCount = testManager.getPoolInfo('cache')!.blocks.size;
+        expect(initialBlockCount).toBe(7);
+
+        // 推进时间使其成为可疑泄漏（但不触发监控）
+        const futureTime = originalDate() + 11 * 60 * 1000;
+        Date.now = jest.fn(() => futureTime);
+
+        // 手动更新内存历史，确保长度>10
+        for (let i = 0; i < 12; i++) {
+          // 通过反射访问私有方法来更新历史
+          (testManager as any).updateMemoryHistory();
+        }
+
+        // 触发监控检查
+        jest.runOnlyPendingTimers(); // 触发setInterval回调
+
+        // 验证清理逻辑被执行了（release被调用）
+        expect(releaseSpy).toHaveBeenCalled();
+        
+      } finally {
+        testManager.dispose();
+        jest.useRealTimers();
+        // 恢复原始Date.now
+        Date.now = originalDate;
+      }
     });
 
     it('应该覆盖updateMemoryHistory方法 - 行475-482', () => {

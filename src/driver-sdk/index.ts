@@ -22,13 +22,15 @@ export { NetworkDriverTemplate } from './templates/NetworkDriverTemplate';
 export { ExampleSerialDriver } from './examples/ExampleSerialDriver';
 export { ExampleNetworkDriver } from './examples/ExampleNetworkDriver';
 
-// 导出工具函数
-export {
-  createDriverPackage,
-  validateDriverImplementation,
-  testDriverFunctionality,
-  generateDriverDocumentation
-} from './utils/DriverUtils';
+// 导出工具类
+export { DriverUtils } from './utils/DriverUtils';
+
+// 导出工具函数（作为便捷导出）
+import { DriverUtils } from './utils/DriverUtils';
+export const createDriverPackage = DriverUtils.createDriverPackage.bind(DriverUtils);
+export const validateDriverImplementation = DriverUtils.validateDriverImplementation.bind(DriverUtils);
+export const testDriverFunctionality = DriverUtils.testDriverFunctionality.bind(DriverUtils);
+export const generateDriverDocumentation = DriverUtils.generateDriverDocumentation.bind(DriverUtils);
 
 /**
  * 驱动SDK版本信息

@@ -9,10 +9,14 @@ import enUS from './locales/en-US';
 
 // 获取默认语言设置
 const getDefaultLocale = (): string => {
-  // 从localStorage获取用户设置的语言
-  const savedLocale = localStorage.getItem('ui-locale');
-  if (savedLocale) {
-    return savedLocale;
+  try {
+    // 从localStorage获取用户设置的语言
+    const savedLocale = localStorage.getItem('ui-locale');
+    if (savedLocale) {
+      return savedLocale;
+    }
+  } catch (error) {
+    console.warn('无法访问 localStorage:', error);
   }
 
   // 根据浏览器语言自动检测
@@ -43,10 +47,17 @@ export default i18n;
 // 切换语言的辅助函数
 export const switchLocale = (locale: string) => {
   i18n.global.locale.value = locale;
-  localStorage.setItem('ui-locale', locale);
+
+  try {
+    localStorage.setItem('ui-locale', locale);
+  } catch (error) {
+    console.warn('无法保存语言设置到 localStorage:', error);
+  }
 
   // 更新HTML lang属性
-  document.documentElement.lang = locale;
+  if (document && document.documentElement) {
+    document.documentElement.lang = locale;
+  }
 };
 
 // 获取当前语言
