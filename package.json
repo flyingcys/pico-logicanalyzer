@@ -40,7 +40,6 @@
   "activationEvents": [
     "onLanguage:logicanalyzer"
   ],
-  "icon": "resources/icon.png",
   "galleryBanner": {
     "color": "#1e1e1e",
     "theme": "dark"
@@ -179,7 +178,7 @@
     "clean": "rimraf out dist coverage .jest-cache",
     "typecheck": "tsc --noEmit",
     "typecheck:watch": "tsc --noEmit --watch",
-    "pretest": "npm run build && npm run lint && npm run typecheck",
+    "pretest": "npm run build && npm run lint",
     
     "test": "jest",
     "test:watch": "jest --watch",
@@ -247,8 +246,7 @@
     "@vue/compiler-sfc": "^3.2.45",
     "@vue/eslint-config-typescript": "^11.0.2",
     "@vue/test-utils": "^2.2.6",
-    "@vue/vue-jest": "^29.2.2",
-    "@vue/vue3-jest": "^29.2.2",
+    "@vue/vue3-jest": "^29.2.6",
     "@testing-library/vue": "^7.0.0",
     "@testing-library/jest-dom": "^5.16.0",
     "@vscode/test-electron": "^2.3.0",

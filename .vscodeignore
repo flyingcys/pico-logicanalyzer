@@ -1,0 +1,48 @@
+# VSCode 扩展打包忽略文件
+
+# 开发和构建相关
+node_modules/
+src/**/*.ts
+!out/**
+.vscode-test/
+vscode-test.log
+*.map
+tsconfig*.json
+webpack.config.js
+jest*.js
+
+# 测试相关
+utest/
+utest-temp/
+tests/
+
+# 文档和计划
+docs/
+plan2/
+*.md
+!README.md
+!CHANGELOG.md
+
+# 原始项目文件 (最大的问题!)
+logicanalyzer/
+
+# 脚本和工具
+scripts/
+
+# 其他开发文件
+.eslintcache
+build.sh
+.gitignore
+11.md
+LICENSE
+RELEASE_NOTES.md
+data/
+
+# 临时文件和缓存
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# 已打包的文件
+*.vsix

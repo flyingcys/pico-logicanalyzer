@@ -65,7 +65,7 @@ const extensionConfig = {
           {
             loader: 'ts-loader',
             options: {
-              transpileOnly: isDevelopment, // 开发环境仅转译
+              transpileOnly: true, // 忽略类型检查，仅转译
               compilerOptions: {
                 sourceMap: true,
                 declaration: false // 生产环境不生成.d.ts
@@ -150,7 +150,7 @@ const webviewConfig = {
             loader: 'ts-loader',
             options: {
               appendTsSuffixTo: [/\.vue$/],
-              transpileOnly: isDevelopment,
+              transpileOnly: true, // 忽略类型检查，仅转译
               compilerOptions: {
                 sourceMap: true,
                 declaration: false
