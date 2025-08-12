@@ -1,0 +1,5 @@
+# 测试质量检查
+node scripts/test-quality-check.js
+
+# 运行核心测试
+npm run test:unit
