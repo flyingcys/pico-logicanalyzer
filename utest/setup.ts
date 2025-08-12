@@ -1,9 +1,7 @@
 /**
- * Jest测试全局设置
- * 用于配置测试环境和全局变量
+ * Jest测试全局设置 - 修复版本
+ * 修复了 Mock 对象的类型定义问题
  */
-
-// import 'jest-extended';
 
 // 首先设置Vue全局对象和编译器
 import * as Vue from 'vue';
@@ -39,13 +37,17 @@ global.window = global.window || ({
     }),
     setItem: jest.fn(),
     removeItem: jest.fn(),
-    clear: jest.fn()
+    clear: jest.fn(),
+    length: 0,
+    key: jest.fn().mockReturnValue(null)
   },
   sessionStorage: {
     getItem: jest.fn(),
     setItem: jest.fn(),
     removeItem: jest.fn(),
-    clear: jest.fn()
+    clear: jest.fn(),
+    length: 0,
+    key: jest.fn().mockReturnValue(null)
   },
   performance: {
     now: jest.fn(() => Date.now() + Math.random()),
@@ -113,102 +115,106 @@ global.document = global.document || ({
   }))
 } as any);
 
-// 确保localStorage全局可用
+// 修复 localStorage 全局对象
 global.localStorage = global.localStorage || {
   getItem: jest.fn(),
   setItem: jest.fn(),
   removeItem: jest.fn(),
-  clear: jest.fn()
-};
+  clear: jest.fn(),
+  length: 0,
+  key: jest.fn().mockReturnValue(null)
+} as Storage;
 
-// 完整的Vue 3测试环境设置
-let config: any = {};
-try {
-  // 尝试导入Vue Test Utils配置
-  const vueTestUtils = require('@vue/test-utils');
-  config = vueTestUtils.config || {};
+// 修复 KeyboardEvent Mock
+global.KeyboardEvent = class MockKeyboardEvent extends Event {
+  static readonly DOM_KEY_LOCATION_STANDARD = 0;
+  static readonly DOM_KEY_LOCATION_LEFT = 1;
+  static readonly DOM_KEY_LOCATION_RIGHT = 2;
+  static readonly DOM_KEY_LOCATION_NUMPAD = 3;
   
-  // 确保config.global存在
-  if (!config.global) {
-    config.global = {};
+  key: string;
+  keyCode: number;
+  which: number;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
+  repeat: boolean;
+  code: string;
+  
+  constructor(type: string, eventInitDict?: KeyboardEventInit) {
+    super(type, eventInitDict);
+    this.key = eventInitDict?.key || '';
+    this.keyCode = eventInitDict?.keyCode || 0;
+    this.which = this.keyCode;
+    this.ctrlKey = eventInitDict?.ctrlKey || false;
+    this.shiftKey = eventInitDict?.shiftKey || false;
+    this.altKey = eventInitDict?.altKey || false;
+    this.metaKey = eventInitDict?.metaKey || false;
+    this.repeat = eventInitDict?.repeat || false;
+    this.code = eventInitDict?.code || '';
   }
+} as any;
+
+// 修复 WheelEvent Mock
+global.WheelEvent = class MockWheelEvent extends Event {
+  static readonly DOM_DELTA_PIXEL = 0;
+  static readonly DOM_DELTA_LINE = 1;
+  static readonly DOM_DELTA_PAGE = 2;
   
-  // 配置Vue Test Utils全局配置
-  config.global.mocks = {
-    // Element Plus组件模拟
-    $message: {
-      success: jest.fn(),
-      error: jest.fn(),
-      warning: jest.fn(),
-      info: jest.fn()
-    },
-    $loading: {
-      service: jest.fn(() => ({
-        close: jest.fn()
-      }))
-    },
-    $confirm: jest.fn(() => Promise.resolve()),
-    $alert: jest.fn(() => Promise.resolve()),
-    
-    // Vue Router模拟
-    $router: {
-      push: jest.fn(),
-      replace: jest.fn(),
-      go: jest.fn(),
-      back: jest.fn(),
-      forward: jest.fn()
-    },
-    $route: {
-      path: '/',
-      name: 'test',
-      params: {},
-      query: {},
-      meta: {}
-    },
-    
-    // i18n模拟
-    $t: jest.fn((key: string) => key),
-    $tc: jest.fn((key: string) => key),
-    $te: jest.fn(() => true),
-    $d: jest.fn((value: any) => value),
-    $n: jest.fn((value: any) => value)
-  };
-
-  // 配置全局组件模拟
-  config.global.stubs = {
-    // Element Plus组件存根
-    'el-button': true,
-    'el-input': true,
-    'el-select': true,
-    'el-dropdown': true,
-    'el-dropdown-menu': true,
-    'el-dropdown-item': true,
-    'el-icon': true,
-    'el-message': true,
-    'el-dialog': true,
-    'el-table': true,
-    'el-table-column': true,
-    'el-pagination': true,
-    'el-form': true,
-    'el-form-item': true,
-    'el-loading': true,
-    
-    // 自定义组件存根
-    'router-link': true,
-    'router-view': true,
-    'transition': false,
-    'transition-group': false
-  };
-
-  // 配置全局插件
-  config.global.plugins = [];
-
-  // 设置Vue全局对象
-  (global as any).Vue = require('vue');
+  deltaX: number;
+  deltaY: number;
+  deltaZ: number;
+  deltaMode: number;
+  clientX: number;
+  clientY: number;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
   
-} catch (e) {
-  console.warn('Vue test configuration failed:', e);
-}
+  constructor(type: string, eventInitDict?: WheelEventInit) {
+    super(type, eventInitDict);
+    this.deltaX = eventInitDict?.deltaX || 0;
+    this.deltaY = eventInitDict?.deltaY || 0;
+    this.deltaZ = eventInitDict?.deltaZ || 0;
+    this.deltaMode = eventInitDict?.deltaMode || 0;
+    this.clientX = eventInitDict?.clientX || 0;
+    this.clientY = eventInitDict?.clientY || 0;
+    this.ctrlKey = eventInitDict?.ctrlKey || false;
+    this.shiftKey = eventInitDict?.shiftKey || false;
+    this.altKey = eventInitDict?.altKey || false;
+    this.metaKey = eventInitDict?.metaKey || false;
+  }
+} as any;
+
+// 修复 MouseEvent Mock
+global.MouseEvent = class MockMouseEvent extends Event {
+  button: number;
+  buttons: number;
+  clientX: number;
+  clientY: number;
+  screenX: number;
+  screenY: number;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
+  
+  constructor(type: string, options: any = {}) {
+    super(type, options);
+    this.button = options.button || 0;
+    this.buttons = options.buttons || 0;
+    this.clientX = options.clientX || 0;
+    this.clientY = options.clientY || 0;
+    this.screenX = options.screenX || 0;
+    this.screenY = options.screenY || 0;
+    this.ctrlKey = options.ctrlKey || false;
+    this.shiftKey = options.shiftKey || false;
+    this.altKey = options.altKey || false;
+    this.metaKey = options.metaKey || false;
+  }
+} as any;
 
 // 模拟Performance API
 if (!global.performance) {
@@ -238,62 +244,6 @@ global.Path2D = global.Path2D || jest.fn().mockImplementation(() => ({
   rect: jest.fn(),
   ellipse: jest.fn(),
   addPath: jest.fn()
-}));
-
-// 增强的事件Mock
-global.MouseEvent = global.MouseEvent || jest.fn().mockImplementation((type, options = {}) => ({
-  type,
-  button: options.button || 0,
-  buttons: options.buttons || 0,
-  clientX: options.clientX || 0,
-  clientY: options.clientY || 0,
-  screenX: options.screenX || 0,
-  screenY: options.screenY || 0,
-  ctrlKey: options.ctrlKey || false,
-  shiftKey: options.shiftKey || false,
-  altKey: options.altKey || false,
-  metaKey: options.metaKey || false,
-  preventDefault: jest.fn(),
-  stopPropagation: jest.fn(),
-  stopImmediatePropagation: jest.fn(),
-  target: options.target || null,
-  currentTarget: options.currentTarget || null
-}));
-
-global.KeyboardEvent = global.KeyboardEvent || jest.fn().mockImplementation((type, options = {}) => ({
-  type,
-  key: options.key || '',
-  keyCode: options.keyCode || 0,
-  which: options.which || options.keyCode || 0,
-  ctrlKey: options.ctrlKey || false,
-  shiftKey: options.shiftKey || false,
-  altKey: options.altKey || false,
-  metaKey: options.metaKey || false,
-  repeat: options.repeat || false,
-  code: options.code || '',
-  preventDefault: jest.fn(),
-  stopPropagation: jest.fn(),
-  stopImmediatePropagation: jest.fn(),
-  target: options.target || null,
-  currentTarget: options.currentTarget || null
-}));
-
-global.WheelEvent = global.WheelEvent || jest.fn().mockImplementation((type, options = {}) => ({
-  type,
-  deltaX: options.deltaX || 0,
-  deltaY: options.deltaY || 0,
-  deltaZ: options.deltaZ || 0,
-  deltaMode: options.deltaMode || 0,
-  clientX: options.clientX || 0,
-  clientY: options.clientY || 0,
-  ctrlKey: options.ctrlKey || false,
-  shiftKey: options.shiftKey || false,
-  altKey: options.altKey || false,
-  metaKey: options.metaKey || false,
-  preventDefault: jest.fn(),
-  stopPropagation: jest.fn(),
-  target: options.target || null,
-  currentTarget: options.currentTarget || null
 }));
 
 // 模拟Canvas API用于波形渲染测试
@@ -352,30 +302,10 @@ if (typeof document !== 'undefined') {
 // 设置测试超时
 jest.setTimeout(10000);
 
-// 全局错误处理
-process.on('unhandledRejection', (error) => {
-  console.error('Unhandled promise rejection:', error);
-});
-
-// 禁用console.warn在测试中的输出（避免干扰测试结果）
-const originalWarn = console.warn;
-beforeAll(() => {
-  console.warn = jest.fn();
-});
-
-afterAll(() => {
-  console.warn = originalWarn;
-});
-
 // 清理每个测试之间的状态
 afterEach(() => {
   jest.clearAllMocks();
   jest.clearAllTimers();
-  
-  // 清理任何可能的内存泄漏
-  if (global.gc) {
-    global.gc();
-  }
 });
 
 // 全局测试工具
@@ -398,17 +328,6 @@ global.waitFor = (condition: () => boolean, timeout: number = 5000): Promise<voi
 // 异步延迟工具
 global.delay = (ms: number): Promise<void> => {
   return new Promise(resolve => setTimeout(resolve, ms));
-};
-
-// 性能测试工具
-global.measureTime = async <T>(operation: () => Promise<T>): Promise<{ result: T; duration: number }> => {
-  const startTime = performance.now();
-  const result = await operation();
-  const endTime = performance.now();
-  return {
-    result,
-    duration: endTime - startTime
-  };
 };
 
 export {};

@@ -187,16 +187,16 @@ export class UARTDecoder extends DecoderBase {
 
   // 注释行定义 - 匹配原解码器的annotation_rows
   readonly annotationRows: Array<[string, string, number[]]> = [
-    ['rx-data-bits', 'RX bits', [_Ann.RX_DATA_BIT]],
-    ['rx-data-vals', 'RX data', [_Ann.RX_DATA, _Ann.RX_START, _Ann.RX_PARITY_OK, _Ann.RX_PARITY_ERR, _Ann.RX_STOP]],
-    ['rx-warnings', 'RX warnings', [_Ann.RX_WARN]],
-    ['rx-breaks', 'RX breaks', [_Ann.RX_BREAK]],
-    ['rx-packets', 'RX packets', [_Ann.RX_PACKET]],
-    ['tx-data-bits', 'TX bits', [_Ann.TX_DATA_BIT]],
-    ['tx-data-vals', 'TX data', [_Ann.TX_DATA, _Ann.TX_START, _Ann.TX_PARITY_OK, _Ann.TX_PARITY_ERR, _Ann.TX_STOP]],
-    ['tx-warnings', 'TX warnings', [_Ann.TX_WARN]],
-    ['tx-breaks', 'TX breaks', [_Ann.TX_BREAK]],
-    ['tx-packets', 'TX packets', [_Ann.TX_PACKET]]
+    ['rx-data-bits', 'RX bits', [_Ann._RX_DATA_BIT]],
+    ['rx-data-vals', 'RX data', [_Ann._RX_DATA, _Ann._RX_START, _Ann._RX_PARITY_OK, _Ann._RX_PARITY_ERR, _Ann._RX_STOP]],
+    ['rx-warnings', 'RX warnings', [_Ann._RX_WARN]],
+    ['rx-breaks', 'RX breaks', [_Ann._RX_BREAK]],
+    ['rx-packets', 'RX packets', [_Ann._RX_PACKET]],
+    ['tx-data-bits', 'TX bits', [_Ann._TX_DATA_BIT]],
+    ['tx-data-vals', 'TX data', [_Ann._TX_DATA, _Ann._TX_START, _Ann._TX_PARITY_OK, _Ann._TX_PARITY_ERR, _Ann._TX_STOP]],
+    ['tx-warnings', 'TX warnings', [_Ann._TX_WARN]],
+    ['tx-breaks', 'TX breaks', [_Ann._TX_BREAK]],
+    ['tx-packets', 'TX packets', [_Ann._TX_PACKET]]
   ];
 
   // 解码器状态变量 - 对应原解码器的实例变量
@@ -498,7 +498,7 @@ export class UARTDecoder extends DecoderBase {
   private handleBreak(rxtx: number, ss: number, es: number): void {
     this.put(ss, es, {
       type: DecoderOutputType.ANNOTATION,
-      annotationType: _Ann.RX_BREAK + rxtx,
+      annotationType: _Ann._RX_BREAK + rxtx,
       values: ['Break condition', 'Break', 'Brk', 'B']
     });
     this.state[rxtx] = 'WAIT FOR START BIT';
@@ -592,7 +592,7 @@ export class UARTDecoder extends DecoderBase {
     if (this.startBit[rxtx] !== 0) {
       this.put(this.frameStart[rxtx], this.sampleIndex, {
         type: DecoderOutputType.ANNOTATION,
-        annotationType: _Ann.RX_WARN + rxtx,
+        annotationType: _Ann._RX_WARN + rxtx,
         values: ['Frame error', 'Frame err', 'FE']
       });
       this.frameValid[rxtx] = false;
@@ -611,7 +611,7 @@ export class UARTDecoder extends DecoderBase {
 
     this.put(this.frameStart[rxtx], this.sampleIndex, {
       type: DecoderOutputType.ANNOTATION,
-      annotationType: _Ann.RX_START + rxtx,
+      annotationType: _Ann._RX_START + rxtx,
       values: ['Start bit', 'Start', 'S']
     });
 
@@ -630,7 +630,7 @@ export class UARTDecoder extends DecoderBase {
 
     this.put(this.sampleIndex, this.sampleIndex + 1, {
       type: DecoderOutputType.ANNOTATION,
-      annotationType: _Ann.RX_DATA_BIT + rxtx,
+      annotationType: _Ann._RX_DATA_BIT + rxtx,
       values: [signal.toString()]
     });
 
@@ -665,7 +665,7 @@ export class UARTDecoder extends DecoderBase {
     if (formatted !== null) {
       this.put(this.startSample[rxtx], this.sampleIndex, {
         type: DecoderOutputType.ANNOTATION,
-        annotationType: _Ann.RX_DATA + rxtx,
+        annotationType: _Ann._RX_DATA + rxtx,
         values: [formatted],
         rawData: this.dataValue[rxtx]
       });
@@ -706,7 +706,7 @@ export class UARTDecoder extends DecoderBase {
 
       this.put(this.ssPacket[rxtx]!, this.esPacket[rxtx]!, {
         type: DecoderOutputType.ANNOTATION,
-        annotationType: _Ann.RX_PACKET + rxtx,
+        annotationType: _Ann._RX_PACKET + rxtx,
         values: [packetString]
       });
       this.packetCache[rxtx] = [];
@@ -724,13 +724,13 @@ export class UARTDecoder extends DecoderBase {
     if (parityOk(this.parity, this.parityBit[rxtx], this.dataValue[rxtx], this.dataBitsCount)) {
       this.put(this.sampleIndex, this.sampleIndex + 1, {
         type: DecoderOutputType.ANNOTATION,
-        annotationType: _Ann.RX_PARITY_OK + rxtx,
+        annotationType: _Ann._RX_PARITY_OK + rxtx,
         values: ['Parity bit', 'Parity', 'P']
       });
     } else {
       this.put(this.sampleIndex, this.sampleIndex + 1, {
         type: DecoderOutputType.ANNOTATION,
-        annotationType: _Ann.RX_PARITY_ERR + rxtx,
+        annotationType: _Ann._RX_PARITY_ERR + rxtx,
         values: ['Parity error', 'Parity err', 'PE']
       });
       this.frameValid[rxtx] = false;
@@ -751,7 +751,7 @@ export class UARTDecoder extends DecoderBase {
     if (signal !== 1) {
       this.put(this.sampleIndex, this.sampleIndex + 1, {
         type: DecoderOutputType.ANNOTATION,
-        annotationType: _Ann.RX_WARN + rxtx,
+        annotationType: _Ann._RX_WARN + rxtx,
         values: ['Frame error', 'Frame err', 'FE']
       });
       this.frameValid[rxtx] = false;
@@ -759,7 +759,7 @@ export class UARTDecoder extends DecoderBase {
 
     this.put(this.sampleIndex, this.sampleIndex + 1, {
       type: DecoderOutputType.ANNOTATION,
-      annotationType: _Ann.RX_STOP + rxtx,
+      annotationType: _Ann._RX_STOP + rxtx,
       values: ['Stop bit', 'Stop', 'T']
     });
 

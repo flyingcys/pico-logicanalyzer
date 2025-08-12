@@ -9,7 +9,7 @@ import {
   StreamingDecoderBase,
   StreamingConfig,
   StreamingProgress,
-  _StreamingResult,
+  StreamingResult,
   PerformanceMonitor
 } from './StreamingDecoder';
 import {

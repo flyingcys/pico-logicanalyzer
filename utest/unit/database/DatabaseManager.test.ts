@@ -337,7 +337,7 @@ describe('DatabaseManager', () => {
         dispose: jest.fn()
       };
 
-      mockDriverManager.createDriver.mockReturnValue(mockDriver);
+      mockDriverManager.createDriver.mockResolvedValue(mockDriver);
       mockDatabase.findCompatibleDrivers.mockResolvedValue([]);
 
       const result = await manager.discoverAndUpdateDevices();
@@ -361,7 +361,7 @@ describe('DatabaseManager', () => {
         dispose: jest.fn()
       };
 
-      mockDriverManager.createDriver.mockReturnValue(mockDriver);
+      mockDriverManager.createDriver.mockResolvedValue(mockDriver);
       mockDatabase.findCompatibleDrivers.mockResolvedValue([mockDeviceEntry]);
 
       const result = await manager.discoverAndUpdateDevices();
@@ -377,7 +377,7 @@ describe('DatabaseManager', () => {
         dispose: jest.fn()
       };
 
-      mockDriverManager.createDriver.mockReturnValue(mockDriver);
+      mockDriverManager.createDriver.mockResolvedValue(mockDriver);
 
       const result = await manager.discoverAndUpdateDevices();
 
@@ -396,7 +396,7 @@ describe('DatabaseManager', () => {
         dispose: jest.fn()
       };
 
-      mockDriverManager.createDriver.mockReturnValue(mockDriver);
+      mockDriverManager.createDriver.mockResolvedValue(mockDriver);
 
       const result = await manager.discoverAndUpdateDevices();
 
@@ -636,7 +636,7 @@ describe('DatabaseManager', () => {
         dispose: jest.fn()
       };
 
-      mockDriverManager.createDriver.mockReturnValue(mockDriver);
+      mockDriverManager.createDriver.mockResolvedValue(mockDriver);
       mockDatabase.findCompatibleDrivers.mockResolvedValue([]);
 
       await manager.discoverAndUpdateDevices();
@@ -650,10 +650,28 @@ describe('DatabaseManager', () => {
 
     it('应该推断网络设备类别', async () => {
       const networkDevice: DeviceInfo = {
+        name: 'Ethernet Logic Analyzer',
         manufacturer: 'Network Devices Inc',
         model: 'Ethernet Logic Analyzer',
         version: '1.0',
-        serialNumber: '192.168.1.100'
+        serialNumber: '192.168.1.100',
+        type: 'network',
+        isNetwork: true,
+        capabilities: {
+          channels: {
+            digital: 16,
+            maxVoltage: 3.3
+          },
+          sampling: {
+            maxRate: 200000000,
+            supportedRates: [200000000, 100000000, 50000000],
+            bufferSize: 2048
+          },
+          triggers: {
+            types: ['edge', 'level', 'pattern'],
+            maxChannels: 16
+          }
+        }
       };
 
       const mockDriver = {
@@ -661,7 +679,7 @@ describe('DatabaseManager', () => {
         dispose: jest.fn()
       };
 
-      mockDriverManager.createDriver.mockReturnValue(mockDriver);
+      mockDriverManager.createDriver.mockResolvedValue(mockDriver);
       mockDatabase.findCompatibleDrivers.mockResolvedValue([]);
 
       await manager.discoverAndUpdateDevices();
@@ -675,10 +693,28 @@ describe('DatabaseManager', () => {
 
     it('应该推断混合信号设备类别', async () => {
       const mixedSignalDevice: DeviceInfo = {
+        name: 'MSO5000 Mixed Signal Oscilloscope',
         manufacturer: 'Mixed Signal Corp',
         model: 'MSO5000 Mixed Signal Oscilloscope',
         version: '1.0',
-        serialNumber: 'MSO123'
+        serialNumber: 'MSO123',
+        type: 'usb',
+        isNetwork: false,
+        capabilities: {
+          channels: {
+            digital: 16,
+            maxVoltage: 5.0
+          },
+          sampling: {
+            maxRate: 1000000000,
+            supportedRates: [1000000000, 500000000, 250000000],
+            bufferSize: 8192
+          },
+          triggers: {
+            types: ['edge', 'level', 'pattern'],
+            maxChannels: 16
+          }
+        }
       };
 
       const mockDriver = {
@@ -686,7 +722,7 @@ describe('DatabaseManager', () => {
         dispose: jest.fn()
       };
 
-      mockDriverManager.createDriver.mockReturnValue(mockDriver);
+      mockDriverManager.createDriver.mockResolvedValue(mockDriver);
       mockDatabase.findCompatibleDrivers.mockResolvedValue([]);
 
       await manager.discoverAndUpdateDevices();
@@ -700,10 +736,28 @@ describe('DatabaseManager', () => {
 
     it('应该推断协议分析器类别', async () => {
       const protocolDevice: DeviceInfo = {
+        name: 'Advanced Protocol Decoder',
         manufacturer: 'Protocol Systems',
         model: 'Advanced Protocol Decoder',
         version: '1.0',
-        serialNumber: 'PROTO123'
+        serialNumber: 'PROTO123',
+        type: 'usb',
+        isNetwork: false,
+        capabilities: {
+          channels: {
+            digital: 64,
+            maxVoltage: 3.3
+          },
+          sampling: {
+            maxRate: 2000000000,
+            supportedRates: [2000000000, 1000000000, 500000000],
+            bufferSize: 16384
+          },
+          triggers: {
+            types: ['edge', 'level', 'pattern', 'serial', 'protocol'],
+            maxChannels: 64
+          }
+        }
       };
 
       const mockDriver = {
@@ -711,7 +765,7 @@ describe('DatabaseManager', () => {
         dispose: jest.fn()
       };
 
-      mockDriverManager.createDriver.mockReturnValue(mockDriver);
+      mockDriverManager.createDriver.mockResolvedValue(mockDriver);
       mockDatabase.findCompatibleDrivers.mockResolvedValue([]);
 
       await manager.discoverAndUpdateDevices();
@@ -725,10 +779,28 @@ describe('DatabaseManager', () => {
 
     it('应该为未知设备使用默认类别', async () => {
       const unknownDevice: DeviceInfo = {
+        name: 'Unknown Device',
         manufacturer: 'Unknown Corp',
-        model: 'Unknown Device',
+        model: 'Unknown Device', 
         version: '1.0',
-        serialNumber: 'UNKNOWN123'
+        serialNumber: 'UNKNOWN123',
+        type: 'usb',
+        isNetwork: false,
+        capabilities: {
+          channels: {
+            digital: 8,
+            maxVoltage: 5.0
+          },
+          sampling: {
+            maxRate: 100000000,
+            supportedRates: [100000000, 50000000, 25000000],
+            bufferSize: 1024
+          },
+          triggers: {
+            types: ['edge', 'level'],
+            maxChannels: 8
+          }
+        }
       };
 
       const mockDriver = {
@@ -736,7 +808,7 @@ describe('DatabaseManager', () => {
         dispose: jest.fn()
       };
 
-      mockDriverManager.createDriver.mockReturnValue(mockDriver);
+      mockDriverManager.createDriver.mockResolvedValue(mockDriver);
       mockDatabase.findCompatibleDrivers.mockResolvedValue([]);
 
       await manager.discoverAndUpdateDevices();
@@ -756,10 +828,28 @@ describe('DatabaseManager', () => {
 
     it('应该识别COM端口连接字符串', async () => {
       const serialDevice: DeviceInfo = {
+        name: 'Serial Analyzer',
         manufacturer: 'Serial Corp',
         model: 'Serial Analyzer',
         version: '1.0',
-        serialNumber: 'COM5'
+        serialNumber: 'COM5',
+        type: 'usb',
+        isNetwork: false,
+        capabilities: {
+          channels: {
+            digital: 8,
+            maxVoltage: 5.0
+          },
+          sampling: {
+            maxRate: 100000000,
+            supportedRates: [100000000, 50000000, 25000000],
+            bufferSize: 1024
+          },
+          triggers: {
+            types: ['edge', 'level'],
+            maxChannels: 8
+          }
+        }
       };
 
       const mockDriver = {
@@ -767,7 +857,7 @@ describe('DatabaseManager', () => {
         dispose: jest.fn()
       };
 
-      mockDriverManager.createDriver.mockReturnValue(mockDriver);
+      mockDriverManager.createDriver.mockResolvedValue(mockDriver);
       mockDatabase.findCompatibleDrivers.mockResolvedValue([]);
 
       await manager.discoverAndUpdateDevices();
@@ -783,10 +873,28 @@ describe('DatabaseManager', () => {
 
     it('应该识别网络地址连接字符串', async () => {
       const networkDevice: DeviceInfo = {
+        name: 'Network Analyzer',
         manufacturer: 'Network Corp',
         model: 'Network Analyzer',
         version: '1.0',
-        serialNumber: '192.168.1.100:8080'
+        serialNumber: '192.168.1.100:8080',
+        type: 'network',
+        isNetwork: true,
+        capabilities: {
+          channels: {
+            digital: 32,
+            maxVoltage: 3.3
+          },
+          sampling: {
+            maxRate: 500000000,
+            supportedRates: [500000000, 250000000, 100000000],
+            bufferSize: 4096
+          },
+          triggers: {
+            types: ['edge', 'level', 'pattern', 'serial'],
+            maxChannels: 32
+          }
+        }
       };
 
       const mockDriver = {
@@ -794,7 +902,7 @@ describe('DatabaseManager', () => {
         dispose: jest.fn()
       };
 
-      mockDriverManager.createDriver.mockReturnValue(mockDriver);
+      mockDriverManager.createDriver.mockResolvedValue(mockDriver);
       mockDatabase.findCompatibleDrivers.mockResolvedValue([]);
 
       await manager.discoverAndUpdateDevices();
@@ -810,10 +918,28 @@ describe('DatabaseManager', () => {
 
     it('应该为未知连接使用自动检测', async () => {
       const unknownDevice: DeviceInfo = {
+        name: 'Unknown Device',
         manufacturer: 'Unknown Corp',
         model: 'Unknown Device',
         version: '1.0',
-        serialNumber: 'UNKNOWN123'
+        serialNumber: 'UNKNOWN123',
+        type: 'usb',
+        isNetwork: false,
+        capabilities: {
+          channels: {
+            digital: 8,
+            maxVoltage: 5.0
+          },
+          sampling: {
+            maxRate: 100000000,
+            supportedRates: [100000000, 50000000, 25000000],
+            bufferSize: 1024
+          },
+          triggers: {
+            types: ['edge', 'level'],
+            maxChannels: 8
+          }
+        }
       };
 
       const mockDriver = {
@@ -821,7 +947,7 @@ describe('DatabaseManager', () => {
         dispose: jest.fn()
       };
 
-      mockDriverManager.createDriver.mockReturnValue(mockDriver);
+      mockDriverManager.createDriver.mockResolvedValue(mockDriver);
       mockDatabase.findCompatibleDrivers.mockResolvedValue([]);
 
       await manager.discoverAndUpdateDevices();

@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 // import { join } from 'path'; // 暂时注释掉未使用的导入
-import { HardwareCapabilities, DeviceInfo, TriggerType, _TriggerCondition } from '../models/AnalyzerTypes';
+import { HardwareCapabilities, DeviceInfo, TriggerType, TriggerCondition } from '../models/AnalyzerTypes';
 
 /**
  * 设备兼容性条目
