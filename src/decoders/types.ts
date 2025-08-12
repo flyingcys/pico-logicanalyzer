@@ -57,6 +57,10 @@ export interface DecoderSelectedChannel {
   captureIndex: number;
   /** 解码器通道索引 */
   decoderIndex: number;
+  /** 通道名称 - 兼容字段 */
+  name?: string;
+  /** 通道编号 - 兼容字段 */
+  channel?: number;
 }
 
 /**

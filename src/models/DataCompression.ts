@@ -131,26 +131,22 @@ export class DataCompressor {
       switch (useAlgorithm) {
         case CompressionAlgorithm.RLE:
           const rleResult = this.compressRLE(channelData);
-          compressedData = rleResult.data;
-          metadata = rleResult.metadata;
+          ({ data: compressedData, metadata } = rleResult);
           break;
 
         case CompressionAlgorithm.Delta:
           const deltaResult = this.compressDelta(channelData);
-          compressedData = deltaResult.data;
-          metadata = deltaResult.metadata;
+          ({ data: compressedData, metadata } = deltaResult);
           break;
 
         case CompressionAlgorithm.Dictionary:
           const dictResult = this.compressDictionary(channelData);
-          compressedData = dictResult.data;
-          metadata = dictResult.metadata;
+          ({ data: compressedData, metadata } = dictResult);
           break;
 
         case CompressionAlgorithm.Huffman:
           const huffmanResult = this.compressHuffman(channelData);
-          compressedData = huffmanResult.data;
-          metadata = huffmanResult.metadata;
+          ({ data: compressedData, metadata } = huffmanResult);
           break;
 
         default:

@@ -3,39 +3,6 @@
 支持中英文切换
 -->
 
-<template>
-  <div class="language-switcher">
-    <el-dropdown @command="handleLanguageChange" trigger="click">
-      <el-button type="text" class="language-button">
-        <span class="language-flag">{{ currentLanguage.flag }}</span>
-        <span class="language-name">{{ currentLanguage.name }}</span>
-        <el-icon class="el-icon--right">
-          <ArrowDown />
-        </el-icon>
-      </el-button>
-      
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item
-            v-for="language in availableLanguages"
-            :key="language.code"
-            :command="language.code"
-            :class="{ active: language.code === currentLocale }"
-          >
-            <div class="language-option">
-              <span class="language-flag">{{ language.flag }}</span>
-              <span class="language-name">{{ language.name }}</span>
-              <el-icon v-if="language.code === currentLocale" class="check-icon">
-                <Check />
-              </el-icon>
-            </div>
-          </el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
-  </div>
-</template>
-
 <script setup lang="ts">
   import { computed } from 'vue';
   import { useI18n } from 'vue-i18n';
@@ -49,7 +16,7 @@
   // 当前语言设置
   const currentLocale = computed(() => getCurrentLocale());
 
-  // 可用语言列表  
+  // 可用语言列表
   const availableLanguages = computed(() => supportedLocales);
 
   // 当前语言信息
@@ -71,13 +38,13 @@
     try {
       // 切换语言
       switchLocale(languageCode);
-      
+
       // 显示成功消息
       const language = availableLanguages.value.find(lang => lang.code === languageCode);
       if (language) {
         ElMessage.success({
-          message: languageCode === 'zh-CN' ? 
-            `已切换到${language.name}` : 
+          message: languageCode === 'zh-CN' ?
+            `已切换到${language.name}` :
             `Switched to ${language.name}`,
           duration: 2000
         });
@@ -95,8 +62,8 @@
     } catch (error) {
       console.error('Language switch failed:', error);
       ElMessage.error({
-        message: currentLocale.value === 'zh-CN' ? 
-          '语言切换失败' : 
+        message: currentLocale.value === 'zh-CN' ?
+          '语言切换失败' :
           'Language switch failed',
         duration: 3000
       });
@@ -110,6 +77,48 @@
     getAvailableLanguages: () => availableLanguages.value
   });
 </script>
+
+<template>
+  <div class="language-switcher">
+    <el-dropdown
+      trigger="click"
+      @command="handleLanguageChange"
+    >
+      <el-button
+        type="text"
+        class="language-button"
+      >
+        <span class="language-flag">{{ currentLanguage.flag }}</span>
+        <span class="language-name">{{ currentLanguage.name }}</span>
+        <el-icon class="el-icon--right">
+          <ArrowDown />
+        </el-icon>
+      </el-button>
+
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item
+            v-for="language in availableLanguages"
+            :key="language.code"
+            :command="language.code"
+            :class="{ active: language.code === currentLocale }"
+          >
+            <div class="language-option">
+              <span class="language-flag">{{ language.flag }}</span>
+              <span class="language-name">{{ language.name }}</span>
+              <el-icon
+                v-if="language.code === currentLocale"
+                class="check-icon"
+              >
+                <Check />
+              </el-icon>
+            </div>
+          </el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
+  </div>
+</template>
 
 <style scoped>
   .language-switcher {
@@ -178,7 +187,7 @@
     .language-name {
       display: none;
     }
-    
+
     .language-option .language-name {
       display: block;
     }

@@ -119,6 +119,7 @@ export class AnalyzerChannel {
   public channelName: string = '';
   public channelColor?: number; // uint? 对应TypeScript的number | undefined
   public hidden: boolean = false;
+  public minimized?: boolean = false; // 最小化显示状态
   public samples?: Uint8Array; // byte[] 对应TypeScript的Uint8Array
 
   constructor(channelNumber: number = 0, channelName: string = '') {
@@ -427,3 +428,17 @@ export class CaptureEventArgs {
  * 采集完成处理器类型
  */
 export type CaptureCompletedHandler = (args: CaptureEventArgs) => void;
+
+/**
+ * 样本区域定义 - 用于数据导出和分析
+ */
+export interface SampleRegion {
+  /** 起始样本索引 */
+  startSample: number;
+  /** 结束样本索引 */
+  endSample: number;
+  /** 区域名称 */
+  name?: string;
+  /** 区域描述 */
+  description?: string;
+}

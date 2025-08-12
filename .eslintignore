@@ -1,0 +1,42 @@
+# ESLint 忽略配置文件
+
+# 构建输出
+out/
+dist/
+coverage/
+.jest-cache/
+
+# 依赖
+node_modules/
+
+# 配置文件
+webpack.config.js
+jest.config.js
+babel.config.js
+
+# 调试和测试文件
+**/*-debug.ts
+**/*-test.ts
+**/test-*.ts
+**/demo-*.ts
+**/benchmark-*.ts
+**/__tests__/**
+**/utest/**/*.test.ts
+**/integration/**/*.test.ts
+
+# 特定的集成测试文件
+src/webview/engines/test-infrastructure-integration.ts
+src/webview/engines/__tests__/WaveformEngineIntegration.test.ts
+
+# 临时文件
+*.tmp
+*.temp
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

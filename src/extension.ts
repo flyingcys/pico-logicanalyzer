@@ -3,6 +3,7 @@ import { LACEditorProvider } from './providers/LACEditorProvider';
 import { hardwareDriverManager } from './drivers/HardwareDriverManager';
 import { WiFiDeviceDiscovery } from './services/WiFiDeviceDiscovery';
 import { NetworkStabilityService } from './services/NetworkStabilityService';
+import { AnalyzerDriverType } from './models/AnalyzerTypes';
 
 // 服务依赖接口
 export interface ExtensionServices {
@@ -87,8 +88,10 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
             device: {
               id: 'autodetect',
               name: '自动检测',
-              type: 'Auto' as any,
+              type: 'usb' as any,
+              connectionString: 'auto',
               connectionPath: '',
+              driverType: AnalyzerDriverType.Multi,
               confidence: 1
             }
           },
@@ -99,8 +102,10 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
             device: {
               id: 'network',
               name: '网络设备',
-              type: 'Network' as any,
+              type: 'network',
+              connectionString: 'tcp://auto',
               connectionPath: '',
+              driverType: AnalyzerDriverType.Network,
               confidence: 0.5
             }
           }

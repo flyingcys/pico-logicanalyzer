@@ -82,6 +82,8 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
       longname: 'Inter-Integrated Circuit (Streaming)',
       description: 'I²C two-wire serial bus decoder with streaming support for large datasets',
       license: 'MIT',
+      inputs: ['logic'],
+      outputs: ['i2c'],
       tags: ['Embedded', 'Protocol', 'Serial', 'Streaming'],
       channels: [
         {
@@ -385,7 +387,7 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
       state.state = I2CState.ACK_NACK;
       state.bitCount = 0;
 
-      const addressFormat = this.getOptionValue(options, 'address-format', 'shifted');
+      const addressFormat = this.getOptionValue(options, 0, 'shifted');
       const displayAddress = addressFormat === 'shifted' ? state.currentByte : state.address;
 
       return {
@@ -453,8 +455,8 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
   /**
    * 获取选项值
    */
-  private getOptionValue(options: DecoderOptionValue[], optionId: string, defaultValue: any): any {
-    const option = options.find(opt => opt.id === optionId);
+  private getOptionValue(options: DecoderOptionValue[], optionIndex: number, defaultValue: any): any {
+    const option = options.find(opt => opt.optionIndex === optionIndex);
     return option ? option.value : defaultValue;
   }
 }

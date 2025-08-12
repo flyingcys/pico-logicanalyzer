@@ -78,10 +78,10 @@ export interface DecodingTree {
  */
 export class DecoderManager {
   /** 注册的解码器映射 */
-  private decoders = new Map<string, typeof DecoderBase>();
+  private decoders = new Map<string, new () => DecoderBase>();
 
   /** 注册的流式解码器映射 */
-  private streamingDecoders = new Map<string, typeof StreamingDecoderBase>();
+  private streamingDecoders = new Map<string, new () => StreamingDecoderBase>();
 
   /** 解码器实例缓存 */
   private decoderInstances = new Map<string, DecoderBase>();
@@ -130,7 +130,7 @@ export class DecoderManager {
    * @param id 解码器标识符
    * @param decoderClass 解码器类
    */
-  public registerDecoder(id: string, decoderClass: typeof DecoderBase): void {
+  public registerDecoder(id: string, decoderClass: new () => DecoderBase): void {
     // 如果已存在，清除缓存
     if (this.decoders.has(id)) {
       this.decoderInstances.delete(id);
@@ -145,7 +145,7 @@ export class DecoderManager {
    * @param id 解码器标识符
    * @param decoderClass 流式解码器类
    */
-  public registerStreamingDecoder(id: string, decoderClass: typeof StreamingDecoderBase): void {
+  public registerStreamingDecoder(id: string, decoderClass: new () => StreamingDecoderBase): void {
     this.streamingDecoders.set(id, decoderClass);
     console.log(`Streaming decoder registered: ${id}`);
   }
@@ -191,12 +191,7 @@ export class DecoderManager {
     if (!instance) {
       throw new Error(`Unknown decoder: ${decoderId}`);
     }
-    // 每次都创建新实例，不使用缓存
-    const DecoderClass = this.decoders.get(decoderId);
-    if (DecoderClass) {
-      return new DecoderClass();
-    }
-    throw new Error(`Unknown decoder: ${decoderId}`);
+    return instance;
   }
 
   /**

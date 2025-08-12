@@ -82,14 +82,15 @@ export interface AnalyzerColors {
   triggerLineColor: string; // 触发线颜色
   burstLineColor: string; // 突发线颜色
   userLineColor: string; // 用户标记线颜色
+  gridLineColor: string; // 网格线颜色
   errorColor: string;
   textColor: string;
 }
 
 export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarkerDisplay {
   // 基于原版的核心属性
-  private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
+  protected canvas: HTMLCanvasElement;
+  protected ctx: CanvasRenderingContext2D;
 
   // 基于原版的数据属性
   private channels: AnalyzerChannel[] | null = null;
@@ -127,6 +128,7 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     triggerLineColor: '#ffffff',
     burstLineColor: '#f0ffff',
     userLineColor: '#00ffff',
+    gridLineColor: '#333333',
     errorColor: '#ff0000',
     textColor: '#ffffff'
   };

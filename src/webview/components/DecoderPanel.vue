@@ -4,431 +4,6 @@
 提供解码器列表、搜索、配置和结果显示
 -->
 
-<template>
-  <div class="decoder-panel">
-    <!-- 解码器面板头部 -->
-    <div class="decoder-header">
-      <h3 class="decoder-title">
-        <el-icon><DataAnalysis /></el-icon>
-        协议解码器
-      </h3>
-      <div class="decoder-actions">
-        <el-button
-          type="success"
-          :icon="Refresh"
-          @click="executeAllDecoders"
-          size="small"
-          :disabled="activeDecoders.length === 0 || currentChannels.length === 0"
-          title="执行所有解码器"
-        >
-          执行全部
-        </el-button>
-        <el-button type="primary" :icon="Plus" @click="showAddDecoderDialog = true" size="small">
-          添加解码器
-        </el-button>
-        <el-button :icon="Setting" @click="showDecoderSettings = true" size="small">
-          设置
-        </el-button>
-      </div>
-    </div>
-
-    <!-- 搜索和筛选 -->
-    <div class="decoder-filters">
-      <el-input
-        v-model="searchQuery"
-        placeholder="搜索解码器..."
-        :prefix-icon="Search"
-        size="small"
-        class="search-input"
-        clearable
-      />
-      <el-select
-        v-model="selectedCategory"
-        placeholder="选择分类"
-        size="small"
-        class="category-select"
-        clearable
-      >
-        <el-option
-          v-for="category in categories"
-          :key="category"
-          :label="category"
-          :value="category"
-        />
-      </el-select>
-    </div>
-
-    <!-- 活跃解码器列表 -->
-    <div v-if="activeDecoders.length > 0" class="active-decoders">
-      <div class="section-header">
-        <h4>活跃解码器 ({{ activeDecoders.length }})</h4>
-        <el-button type="danger" size="small" @click="clearAllDecoders"> 清空全部 </el-button>
-      </div>
-
-      <div class="decoder-list active">
-        <el-card
-          v-for="decoder in activeDecoders"
-          :key="decoder.id"
-          class="decoder-card active-decoder"
-          shadow="never"
-        >
-          <template #header>
-            <div class="decoder-card-header">
-              <div class="decoder-info">
-                <span class="decoder-name">{{ decoder.name }}</span>
-                <el-tag
-                  :type="getDecoderStatusType(decoder.status)"
-                  size="small"
-                >
-                  {{ getDecoderStatusText(decoder.status) }}
-                </el-tag>
-              </div>
-              <div class="decoder-controls">
-                <el-button :icon="Setting" size="small" @click="configureDecoder(decoder)" title="配置" />
-                <el-button
-                  :icon="Refresh"
-                  size="small"
-                  @click="executeDecoder(decoder)"
-                  :loading="decoder.status === 'running'"
-                  :disabled="currentChannels.length === 0"
-                  title="重新执行"
-                />
-                <el-button
-                  :icon="Delete"
-                  size="small"
-                  type="danger"
-                  @click="removeDecoder(decoder.id)"
-                />
-              </div>
-            </div>
-          </template>
-
-          <div class="decoder-content">
-            <div class="decoder-description">
-              {{ decoder.description }}
-            </div>
-
-            <div class="decoder-stats">
-              <div class="stat-item">
-                <span class="stat-label">通道映射:</span>
-                <span class="stat-value">{{ getChannelMappingText(decoder) }}</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">结果数量:</span>
-                <span class="stat-value">{{ decoder.resultCount || 0 }}</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">状态:</span>
-                <el-tag
-                  :type="getDecoderStatusType(decoder.status)"
-                  size="small"
-                >
-                  {{ getDecoderStatusText(decoder.status) }}
-                </el-tag>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">执行时间:</span>
-                <span class="stat-value">{{ decoder.executionTime || 0 }}ms</span>
-              </div>
-            </div>
-
-            <div v-if="decoder.errorMessage" class="decoder-error">
-              <el-alert
-                :title="decoder.errorMessage"
-                type="error"
-                :closable="false"
-                show-icon
-                size="small"
-              />
-            </div>
-            
-            <div
-              v-if="decoder.results && decoder.results.length > 0"
-              class="decoder-results-preview"
-            >
-              <div class="results-header">
-                <span>最近结果:</span>
-                <el-button size="small" type="primary" text @click="showDecoderResults(decoder)">
-                  查看全部
-                </el-button>
-              </div>
-              <div class="results-list">
-                <div
-                  v-for="(result, index) in decoder.results.slice(0, 3)"
-                  :key="index"
-                  class="result-item"
-                >
-                  <span class="result-type">{{ getResultTypeText(result.annotationType) }}</span>
-                  <span class="result-value">{{ result.values[0] }}</span>
-                  <span class="result-samples">@ {{ result.startSample }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </el-card>
-      </div>
-    </div>
-
-    <!-- 可用解码器列表 -->
-    <div class="available-decoders">
-      <div class="section-header">
-        <h4>可用解码器 ({{ filteredDecoders.length }})</h4>
-      </div>
-
-      <div v-if="filteredDecoders.length === 0" class="no-decoders">
-        <el-empty :image-size="60" description="未找到匹配的解码器" />
-      </div>
-
-      <div v-else class="decoder-grid">
-        <el-card
-          v-for="decoder in filteredDecoders"
-          :key="decoder.id"
-          class="decoder-card available-decoder"
-          shadow="hover"
-          @click="selectDecoder(decoder)"
-        >
-          <div class="decoder-card-content">
-            <div class="decoder-header-info">
-              <h4 class="decoder-name">{{ decoder.name }}</h4>
-              <div class="decoder-badges">
-                <el-tag v-for="tag in decoder.tags.slice(0, 2)" :key="tag" size="small" type="info">
-                  {{ tag }}
-                </el-tag>
-              </div>
-            </div>
-
-            <p class="decoder-description">{{ decoder.description }}</p>
-
-            <div class="decoder-details">
-              <div class="detail-item">
-                <span class="detail-label">输入:</span>
-                <span class="detail-value">{{ decoder.inputs.join(', ') }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">输出:</span>
-                <span class="detail-value">{{ decoder.outputs.join(', ') }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">通道:</span>
-                <span class="detail-value">{{ decoder.channels.length }}个</span>
-              </div>
-            </div>
-
-            <div class="decoder-actions-row">
-              <el-button type="primary" size="small" @click.stop="addDecoder(decoder)">
-                添加
-              </el-button>
-              <el-button size="small" @click.stop="showDecoderInfo(decoder)"> 详情 </el-button>
-            </div>
-          </div>
-        </el-card>
-      </div>
-    </div>
-
-    <!-- 添加解码器对话框 -->
-    <el-dialog v-model="showAddDecoderDialog" title="添加解码器" width="600px">
-      <div v-if="selectedDecoderForAdd" class="add-decoder-form">
-        <div class="decoder-info-section">
-          <h4>{{ selectedDecoderForAdd.name }}</h4>
-          <p>{{ selectedDecoderForAdd.description }}</p>
-        </div>
-
-        <el-form :model="decoderConfig" label-width="100px">
-          <el-form-item label="实例名称">
-            <el-input v-model="decoderConfig.instanceName" placeholder="输入解码器实例名称" />
-          </el-form-item>
-
-          <!-- 通道映射 -->
-          <div class="channel-mapping-section">
-            <h5>通道映射</h5>
-            <div class="channel-mappings">
-              <div
-                v-for="channel in selectedDecoderForAdd.channels"
-                :key="channel.id"
-                class="channel-mapping"
-              >
-                <label class="channel-label">
-                  {{ channel.name }}
-                  <span v-if="channel.required" class="required">*</span>
-                  <span class="channel-desc">{{ channel.desc }}</span>
-                </label>
-                <el-select
-                  v-model="decoderConfig.channelMapping[channel.id]"
-                  placeholder="选择通道"
-                  size="small"
-                >
-                  <el-option v-for="i in 24" :key="i" :label="`Channel ${i}`" :value="i - 1" />
-                </el-select>
-              </div>
-            </div>
-          </div>
-
-          <!-- 解码器选项 -->
-          <div v-if="selectedDecoderForAdd.options.length > 0" class="decoder-options-section">
-            <h5>解码器选项</h5>
-            <div class="decoder-options">
-              <el-form-item
-                v-for="(option, index) in selectedDecoderForAdd.options"
-                :key="option.id"
-                :label="option.desc"
-              >
-                <el-input
-                  v-if="option.type === 'string'"
-                  :model-value="getOptionValue(option.id)"
-                  @update:model-value="(value) => setOptionValue(option.id, value)"
-                  :placeholder="option.default?.toString()"
-                  size="small"
-                />
-                <el-input-number
-                  v-else-if="option.type === 'int' || option.type === 'float'"
-                  :model-value="getOptionValue(option.id)"
-                  @update:model-value="(value) => setOptionValue(option.id, value)"
-                  :placeholder="option.default?.toString()"
-                  size="small"
-                />
-                <el-switch
-                  v-else-if="option.type === 'bool'"
-                  :model-value="getOptionValue(option.id)"
-                  @update:model-value="(value) => setOptionValue(option.id, value)"
-                  size="small"
-                />
-                <el-select
-                  v-else-if="option.type === 'list'"
-                  :model-value="getOptionValue(option.id)"
-                  @update:model-value="(value) => setOptionValue(option.id, value)"
-                  :placeholder="option.default?.toString()"
-                  size="small"
-                >
-                  <el-option
-                    v-for="value in option.values"
-                    :key="value"
-                    :label="value"
-                    :value="value"
-                  />
-                </el-select>
-              </el-form-item>
-            </div>
-          </div>
-        </el-form>
-      </div>
-
-      <template #footer>
-        <el-button @click="cancelAddDecoder">取消</el-button>
-        <el-button type="primary" @click="confirmAddDecoder" :disabled="!isDecoderConfigValid">
-          {{ editingDecoderId ? '更新' : '添加' }}
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 解码器详情对话框 -->
-    <el-dialog
-      v-model="showDecoderInfoDialog"
-      :title="selectedDecoderForInfo?.name || '解码器详情'"
-      width="700px"
-    >
-      <div v-if="selectedDecoderForInfo" class="decoder-detail">
-        <el-tabs>
-          <el-tab-pane label="基本信息" name="basic">
-            <el-descriptions :column="2" border>
-              <el-descriptions-item label="解码器名称">
-                {{ selectedDecoderForInfo.name }}
-              </el-descriptions-item>
-              <el-descriptions-item label="完整名称">
-                {{ selectedDecoderForInfo.longname }}
-              </el-descriptions-item>
-              <el-descriptions-item label="许可证">
-                {{ selectedDecoderForInfo.license }}
-              </el-descriptions-item>
-              <el-descriptions-item label="标签">
-                <el-tag
-                  v-for="tag in selectedDecoderForInfo.tags"
-                  :key="tag"
-                  size="small"
-                  class="tag-item"
-                >
-                  {{ tag }}
-                </el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="输入类型" span="2">
-                {{ selectedDecoderForInfo.inputs.join(', ') }}
-              </el-descriptions-item>
-              <el-descriptions-item label="输出类型" span="2">
-                {{ selectedDecoderForInfo.outputs.join(', ') }}
-              </el-descriptions-item>
-            </el-descriptions>
-          </el-tab-pane>
-
-          <el-tab-pane label="通道定义" name="channels">
-            <el-table :data="selectedDecoderForInfo.channels" border>
-              <el-table-column prop="name" label="通道名称" width="120" />
-              <el-table-column prop="id" label="标识符" width="100" />
-              <el-table-column label="是否必需" width="100">
-                <template #default="{ row }">
-                  <el-tag :type="row.required ? 'danger' : 'info'" size="small">
-                    {{ row.required ? '必需' : '可选' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="desc" label="描述" />
-            </el-table>
-          </el-tab-pane>
-
-          <el-tab-pane label="配置选项" name="options">
-            <el-table :data="selectedDecoderForInfo.options" border>
-              <el-table-column prop="id" label="选项ID" width="120" />
-              <el-table-column prop="desc" label="描述" />
-              <el-table-column prop="type" label="类型" width="80" />
-              <el-table-column label="默认值" width="120">
-                <template #default="{ row }">
-                  {{ row.default?.toString() || '-' }}
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-tab-pane>
-        </el-tabs>
-      </div>
-    </el-dialog>
-
-    <!-- 解码器结果对话框 -->
-    <el-dialog
-      v-model="showResultsDialog"
-      :title="`${selectedDecoderForResults?.name || ''} - 解码结果`"
-      width="800px"
-    >
-      <div v-if="selectedDecoderForResults?.results" class="decoder-results">
-        <div class="results-stats">
-          <el-statistic title="总结果数" :value="selectedDecoderForResults.results.length" />
-          <el-statistic
-            title="执行时间"
-            :value="selectedDecoderForResults.executionTime"
-            suffix="ms"
-          />
-        </div>
-
-        <el-table :data="selectedDecoderForResults.results" border max-height="400" size="small">
-          <el-table-column prop="startSample" label="开始样本" width="100" />
-          <el-table-column prop="endSample" label="结束样本" width="100" />
-          <el-table-column label="类型" width="120">
-            <template #default="{ row }">
-              {{ getResultTypeText(row.annotationType) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="值" min-width="200">
-            <template #default="{ row }">
-              {{ row.values.join(' | ') }}
-            </template>
-          </el-table-column>
-          <el-table-column label="原始数据" width="100">
-            <template #default="{ row }">
-              {{ row.rawData !== undefined ? `0x${row.rawData.toString(16).toUpperCase()}` : '-' }}
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-    </el-dialog>
-  </div>
-</template>
-
 <script setup lang="ts">
   import { ref, computed, onMounted, onUnmounted } from 'vue';
   import { DataAnalysis, Plus, Setting, Search, Delete, Refresh } from '@element-plus/icons-vue';
@@ -585,7 +160,7 @@
       showAddDecoderDialog.value = false;
 
       ElMessage.success(`解码器 "${newDecoder.instanceName}" 已添加`);
-      
+
       // 如果有当前通道数据，自动执行解码
       if (currentChannels.value.length > 0) {
         executeDecoder(newDecoder);
@@ -642,22 +217,22 @@
       ElMessage.error('找不到解码器信息');
       return;
     }
-    
+
     // 设置为编辑模式
     selectedDecoderForAdd.value = decoderInfo;
-    
+
     // 填充当前配置
     decoderConfig.value = {
       instanceName: decoder.instanceName,
       channelMapping: { ...decoder.channelMapping },
       options: [...decoder.options]
     };
-    
+
     // 标记为编辑模式
     editingDecoderId.value = decoder.id;
     showAddDecoderDialog.value = true;
   };
-  
+
   // 添加编辑状态
   const editingDecoderId = ref<string | null>(null);
 
@@ -675,7 +250,7 @@
     const mappings = Object.entries(decoder.channelMapping);
     return mappings.map(([channel, index]) => `${channel}→CH${index + 1}`).join(', ') || '未配置';
   };
-  
+
   // 获取解码器状态文本
   const getDecoderStatusText = (status: string): string => {
     switch (status) {
@@ -686,7 +261,7 @@
       default: return '未知';
     }
   };
-  
+
   // 获取解码器状态类型
   const getDecoderStatusType = (status: string): string => {
     switch (status) {
@@ -715,13 +290,13 @@
     ];
     return i2cTypes[annotationType] || `Type ${annotationType}`;
   };
-  
+
   // 获取选项值的辅助函数
   const getOptionValue = (optionId: string) => {
     const option = decoderConfig.value.options.find(opt => opt.id === optionId);
     return option ? option.value : undefined;
   };
-  
+
   // 设置选项值的辅助函数
   const setOptionValue = (optionId: string, value: any) => {
     const option = decoderConfig.value.options.find(opt => opt.id === optionId);
@@ -729,36 +304,36 @@
       option.value = value;
     }
   };
-  
+
   // 取消添加解码器
   const cancelAddDecoder = () => {
     showAddDecoderDialog.value = false;
     editingDecoderId.value = null;
     selectedDecoderForAdd.value = null;
   };
-  
+
   // 执行解码器
   const executeDecoder = async (decoder: ActiveDecoder) => {
     if (currentChannels.value.length === 0) {
       ElMessage.warning('没有可用的通道数据');
       return;
     }
-    
+
     decoder.status = 'running';
-    
+
     try {
       // 创建通道映射
       const channelMapping: DecoderSelectedChannel[] = Object.entries(decoder.channelMapping).map(([channelId, channelIndex]) => ({
         name: channelId,
         channel: channelIndex
       }));
-      
+
       // 转换通道数据格式
       const channelData: ChannelData[] = currentChannels.value.map((channel, index) => ({
         channelNumber: index,
         samples: channel.samples || new Uint8Array()
       }));
-      
+
       // 执行解码
       const result = await decoderManager.executeDecoder(
         decoder.decoderId,
@@ -767,7 +342,7 @@
         decoder.options,
         channelMapping
       );
-      
+
       if (result.success) {
         decoder.results = result.results.map(r => ({
           startSample: r.startSample,
@@ -779,7 +354,7 @@
         decoder.resultCount = result.results.length;
         decoder.executionTime = result.executionTime;
         decoder.status = 'completed';
-        
+
         ElMessage.success(`解码器 "${decoder.instanceName}" 执行完成，产生 ${result.results.length} 个结果`);
       } else {
         decoder.status = 'error';
@@ -792,37 +367,37 @@
       ElMessage.error(`解码器执行异常: ${decoder.errorMessage}`);
     }
   };
-  
+
   // 执行所有活跃解码器
   const executeAllDecoders = async () => {
     for (const decoder of activeDecoders.value) {
       await executeDecoder(decoder);
     }
   };
-  
+
   // 更新解码器配置
   const updateDecoderConfig = () => {
     if (!editingDecoderId.value) {
       confirmAddDecoder();
       return;
     }
-    
+
     const decoder = activeDecoders.value.find(d => d.id === editingDecoderId.value);
     if (!decoder) {
       ElMessage.error('找不到要更新的解码器');
       return;
     }
-    
+
     // 更新配置
     decoder.instanceName = decoderConfig.value.instanceName;
     decoder.channelMapping = { ...decoderConfig.value.channelMapping };
     decoder.options = [...decoderConfig.value.options];
-    
+
     showAddDecoderDialog.value = false;
     editingDecoderId.value = null;
-    
+
     ElMessage.success(`解码器 "${decoder.instanceName}" 配置已更新`);
-    
+
     // 重新执行解码
     if (currentChannels.value.length > 0) {
       executeDecoder(decoder);
@@ -830,18 +405,18 @@
   };
 
   // confirmAddDecoder 已在上方定义，这里不需要重复声明
-  
+
   // 暴露给父组件的方法
   const updateChannelData = (channels: AnalyzerChannel[], sampleRate: number) => {
     currentChannels.value = channels;
     currentSampleRate.value = sampleRate;
-    
+
     // 自动执行所有活跃解码器
     if (activeDecoders.value.length > 0) {
       executeAllDecoders();
     }
   };
-  
+
   // 暴露方法给父组件
   defineExpose({
     updateChannelData,
@@ -857,17 +432,616 @@
       return results;
     }
   });
-  
+
   // 生命周期
   onMounted(() => {
     loadAvailableDecoders();
   });
-  
+
   onUnmounted(() => {
     // 清理资源
     activeDecoders.value = [];
   });
 </script>
+
+<template>
+  <div class="decoder-panel">
+    <!-- 解码器面板头部 -->
+    <div class="decoder-header">
+      <h3 class="decoder-title">
+        <el-icon><DataAnalysis /></el-icon>
+        协议解码器
+      </h3>
+      <div class="decoder-actions">
+        <el-button
+          type="success"
+          :icon="Refresh"
+          size="small"
+          :disabled="activeDecoders.length === 0 || currentChannels.length === 0"
+          title="执行所有解码器"
+          @click="executeAllDecoders"
+        >
+          执行全部
+        </el-button>
+        <el-button
+          type="primary"
+          :icon="Plus"
+          size="small"
+          @click="showAddDecoderDialog = true"
+        >
+          添加解码器
+        </el-button>
+        <el-button
+          :icon="Setting"
+          size="small"
+          @click="showDecoderSettings = true"
+        >
+          设置
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 搜索和筛选 -->
+    <div class="decoder-filters">
+      <el-input
+        v-model="searchQuery"
+        placeholder="搜索解码器..."
+        :prefix-icon="Search"
+        size="small"
+        class="search-input"
+        clearable
+      />
+      <el-select
+        v-model="selectedCategory"
+        placeholder="选择分类"
+        size="small"
+        class="category-select"
+        clearable
+      >
+        <el-option
+          v-for="category in categories"
+          :key="category"
+          :label="category"
+          :value="category"
+        />
+      </el-select>
+    </div>
+
+    <!-- 活跃解码器列表 -->
+    <div
+      v-if="activeDecoders.length > 0"
+      class="active-decoders"
+    >
+      <div class="section-header">
+        <h4>活跃解码器 ({{ activeDecoders.length }})</h4>
+        <el-button
+          type="danger"
+          size="small"
+          @click="clearAllDecoders"
+        >
+          清空全部
+        </el-button>
+      </div>
+
+      <div class="decoder-list active">
+        <el-card
+          v-for="decoder in activeDecoders"
+          :key="decoder.id"
+          class="decoder-card active-decoder"
+          shadow="never"
+        >
+          <template #header>
+            <div class="decoder-card-header">
+              <div class="decoder-info">
+                <span class="decoder-name">{{ decoder.name }}</span>
+                <el-tag
+                  :type="getDecoderStatusType(decoder.status)"
+                  size="small"
+                >
+                  {{ getDecoderStatusText(decoder.status) }}
+                </el-tag>
+              </div>
+              <div class="decoder-controls">
+                <el-button
+                  :icon="Setting"
+                  size="small"
+                  title="配置"
+                  @click="configureDecoder(decoder)"
+                />
+                <el-button
+                  :icon="Refresh"
+                  size="small"
+                  :loading="decoder.status === 'running'"
+                  :disabled="currentChannels.length === 0"
+                  title="重新执行"
+                  @click="executeDecoder(decoder)"
+                />
+                <el-button
+                  :icon="Delete"
+                  size="small"
+                  type="danger"
+                  @click="removeDecoder(decoder.id)"
+                />
+              </div>
+            </div>
+          </template>
+
+          <div class="decoder-content">
+            <div class="decoder-description">
+              {{ decoder.description }}
+            </div>
+
+            <div class="decoder-stats">
+              <div class="stat-item">
+                <span class="stat-label">通道映射:</span>
+                <span class="stat-value">{{ getChannelMappingText(decoder) }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">结果数量:</span>
+                <span class="stat-value">{{ decoder.resultCount || 0 }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">状态:</span>
+                <el-tag
+                  :type="getDecoderStatusType(decoder.status)"
+                  size="small"
+                >
+                  {{ getDecoderStatusText(decoder.status) }}
+                </el-tag>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">执行时间:</span>
+                <span class="stat-value">{{ decoder.executionTime || 0 }}ms</span>
+              </div>
+            </div>
+
+            <div
+              v-if="decoder.errorMessage"
+              class="decoder-error"
+            >
+              <el-alert
+                :title="decoder.errorMessage"
+                type="error"
+                :closable="false"
+                show-icon
+                size="small"
+              />
+            </div>
+
+            <div
+              v-if="decoder.results && decoder.results.length > 0"
+              class="decoder-results-preview"
+            >
+              <div class="results-header">
+                <span>最近结果:</span>
+                <el-button
+                  size="small"
+                  type="primary"
+                  text
+                  @click="showDecoderResults(decoder)"
+                >
+                  查看全部
+                </el-button>
+              </div>
+              <div class="results-list">
+                <div
+                  v-for="(result, index) in decoder.results.slice(0, 3)"
+                  :key="index"
+                  class="result-item"
+                >
+                  <span class="result-type">{{ getResultTypeText(result.annotationType) }}</span>
+                  <span class="result-value">{{ result.values[0] }}</span>
+                  <span class="result-samples">@ {{ result.startSample }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-card>
+      </div>
+    </div>
+
+    <!-- 可用解码器列表 -->
+    <div class="available-decoders">
+      <div class="section-header">
+        <h4>可用解码器 ({{ filteredDecoders.length }})</h4>
+      </div>
+
+      <div
+        v-if="filteredDecoders.length === 0"
+        class="no-decoders"
+      >
+        <el-empty
+          :image-size="60"
+          description="未找到匹配的解码器"
+        />
+      </div>
+
+      <div
+        v-else
+        class="decoder-grid"
+      >
+        <el-card
+          v-for="decoder in filteredDecoders"
+          :key="decoder.id"
+          class="decoder-card available-decoder"
+          shadow="hover"
+          @click="selectDecoder(decoder)"
+        >
+          <div class="decoder-card-content">
+            <div class="decoder-header-info">
+              <h4 class="decoder-name">
+                {{ decoder.name }}
+              </h4>
+              <div class="decoder-badges">
+                <el-tag
+                  v-for="tag in decoder.tags.slice(0, 2)"
+                  :key="tag"
+                  size="small"
+                  type="info"
+                >
+                  {{ tag }}
+                </el-tag>
+              </div>
+            </div>
+
+            <p class="decoder-description">
+              {{ decoder.description }}
+            </p>
+
+            <div class="decoder-details">
+              <div class="detail-item">
+                <span class="detail-label">输入:</span>
+                <span class="detail-value">{{ decoder.inputs.join(', ') }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">输出:</span>
+                <span class="detail-value">{{ decoder.outputs.join(', ') }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">通道:</span>
+                <span class="detail-value">{{ decoder.channels.length }}个</span>
+              </div>
+            </div>
+
+            <div class="decoder-actions-row">
+              <el-button
+                type="primary"
+                size="small"
+                @click.stop="addDecoder(decoder)"
+              >
+                添加
+              </el-button>
+              <el-button
+                size="small"
+                @click.stop="showDecoderInfo(decoder)"
+              >
+                详情
+              </el-button>
+            </div>
+          </div>
+        </el-card>
+      </div>
+    </div>
+
+    <!-- 添加解码器对话框 -->
+    <el-dialog
+      v-model="showAddDecoderDialog"
+      title="添加解码器"
+      width="600px"
+    >
+      <div
+        v-if="selectedDecoderForAdd"
+        class="add-decoder-form"
+      >
+        <div class="decoder-info-section">
+          <h4>{{ selectedDecoderForAdd.name }}</h4>
+          <p>{{ selectedDecoderForAdd.description }}</p>
+        </div>
+
+        <el-form
+          :model="decoderConfig"
+          label-width="100px"
+        >
+          <el-form-item label="实例名称">
+            <el-input
+              v-model="decoderConfig.instanceName"
+              placeholder="输入解码器实例名称"
+            />
+          </el-form-item>
+
+          <!-- 通道映射 -->
+          <div class="channel-mapping-section">
+            <h5>通道映射</h5>
+            <div class="channel-mappings">
+              <div
+                v-for="channel in selectedDecoderForAdd.channels"
+                :key="channel.id"
+                class="channel-mapping"
+              >
+                <label class="channel-label">
+                  {{ channel.name }}
+                  <span
+                    v-if="channel.required"
+                    class="required"
+                  >*</span>
+                  <span class="channel-desc">{{ channel.desc }}</span>
+                </label>
+                <el-select
+                  v-model="decoderConfig.channelMapping[channel.id]"
+                  placeholder="选择通道"
+                  size="small"
+                >
+                  <el-option
+                    v-for="i in 24"
+                    :key="i"
+                    :label="`Channel ${i}`"
+                    :value="i - 1"
+                  />
+                </el-select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 解码器选项 -->
+          <div
+            v-if="selectedDecoderForAdd.options.length > 0"
+            class="decoder-options-section"
+          >
+            <h5>解码器选项</h5>
+            <div class="decoder-options">
+              <el-form-item
+                v-for="option in selectedDecoderForAdd.options"
+                :key="option.id"
+                :label="option.desc"
+              >
+                <el-input
+                  v-if="option.type === 'string'"
+                  :model-value="getOptionValue(option.id)"
+                  :placeholder="option.default?.toString()"
+                  size="small"
+                  @update:model-value="(value) => setOptionValue(option.id, value)"
+                />
+                <el-input-number
+                  v-else-if="option.type === 'int' || option.type === 'float'"
+                  :model-value="getOptionValue(option.id)"
+                  :placeholder="option.default?.toString()"
+                  size="small"
+                  @update:model-value="(value) => setOptionValue(option.id, value)"
+                />
+                <el-switch
+                  v-else-if="option.type === 'bool'"
+                  :model-value="getOptionValue(option.id)"
+                  size="small"
+                  @update:model-value="(value) => setOptionValue(option.id, value)"
+                />
+                <el-select
+                  v-else-if="option.type === 'list'"
+                  :model-value="getOptionValue(option.id)"
+                  :placeholder="option.default?.toString()"
+                  size="small"
+                  @update:model-value="(value) => setOptionValue(option.id, value)"
+                >
+                  <el-option
+                    v-for="value in option.values"
+                    :key="value"
+                    :label="value"
+                    :value="value"
+                  />
+                </el-select>
+              </el-form-item>
+            </div>
+          </div>
+        </el-form>
+      </div>
+
+      <template #footer>
+        <el-button @click="cancelAddDecoder">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :disabled="!isDecoderConfigValid"
+          @click="confirmAddDecoder"
+        >
+          {{ editingDecoderId ? '更新' : '添加' }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 解码器详情对话框 -->
+    <el-dialog
+      v-model="showDecoderInfoDialog"
+      :title="selectedDecoderForInfo?.name || '解码器详情'"
+      width="700px"
+    >
+      <div
+        v-if="selectedDecoderForInfo"
+        class="decoder-detail"
+      >
+        <el-tabs>
+          <el-tab-pane
+            label="基本信息"
+            name="basic"
+          >
+            <el-descriptions
+              :column="2"
+              border
+            >
+              <el-descriptions-item label="解码器名称">
+                {{ selectedDecoderForInfo.name }}
+              </el-descriptions-item>
+              <el-descriptions-item label="完整名称">
+                {{ selectedDecoderForInfo.longname }}
+              </el-descriptions-item>
+              <el-descriptions-item label="许可证">
+                {{ selectedDecoderForInfo.license }}
+              </el-descriptions-item>
+              <el-descriptions-item label="标签">
+                <el-tag
+                  v-for="tag in selectedDecoderForInfo.tags"
+                  :key="tag"
+                  size="small"
+                  class="tag-item"
+                >
+                  {{ tag }}
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item
+                label="输入类型"
+                span="2"
+              >
+                {{ selectedDecoderForInfo.inputs.join(', ') }}
+              </el-descriptions-item>
+              <el-descriptions-item
+                label="输出类型"
+                span="2"
+              >
+                {{ selectedDecoderForInfo.outputs.join(', ') }}
+              </el-descriptions-item>
+            </el-descriptions>
+          </el-tab-pane>
+
+          <el-tab-pane
+            label="通道定义"
+            name="channels"
+          >
+            <el-table
+              :data="selectedDecoderForInfo.channels"
+              border
+            >
+              <el-table-column
+                prop="name"
+                label="通道名称"
+                width="120"
+              />
+              <el-table-column
+                prop="id"
+                label="标识符"
+                width="100"
+              />
+              <el-table-column
+                label="是否必需"
+                width="100"
+              >
+                <template #default="{ row }">
+                  <el-tag
+                    :type="row.required ? 'danger' : 'info'"
+                    size="small"
+                  >
+                    {{ row.required ? '必需' : '可选' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column
+                prop="desc"
+                label="描述"
+              />
+            </el-table>
+          </el-tab-pane>
+
+          <el-tab-pane
+            label="配置选项"
+            name="options"
+          >
+            <el-table
+              :data="selectedDecoderForInfo.options"
+              border
+            >
+              <el-table-column
+                prop="id"
+                label="选项ID"
+                width="120"
+              />
+              <el-table-column
+                prop="desc"
+                label="描述"
+              />
+              <el-table-column
+                prop="type"
+                label="类型"
+                width="80"
+              />
+              <el-table-column
+                label="默认值"
+                width="120"
+              >
+                <template #default="{ row }">
+                  {{ row.default?.toString() || '-' }}
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+    </el-dialog>
+
+    <!-- 解码器结果对话框 -->
+    <el-dialog
+      v-model="showResultsDialog"
+      :title="`${selectedDecoderForResults?.name || ''} - 解码结果`"
+      width="800px"
+    >
+      <div
+        v-if="selectedDecoderForResults?.results"
+        class="decoder-results"
+      >
+        <div class="results-stats">
+          <el-statistic
+            title="总结果数"
+            :value="selectedDecoderForResults.results.length"
+          />
+          <el-statistic
+            title="执行时间"
+            :value="selectedDecoderForResults.executionTime"
+            suffix="ms"
+          />
+        </div>
+
+        <el-table
+          :data="selectedDecoderForResults.results"
+          border
+          max-height="400"
+          size="small"
+        >
+          <el-table-column
+            prop="startSample"
+            label="开始样本"
+            width="100"
+          />
+          <el-table-column
+            prop="endSample"
+            label="结束样本"
+            width="100"
+          />
+          <el-table-column
+            label="类型"
+            width="120"
+          >
+            <template #default="{ row }">
+              {{ getResultTypeText(row.annotationType) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="值"
+            min-width="200"
+          >
+            <template #default="{ row }">
+              {{ row.values.join(' | ') }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="原始数据"
+            width="100"
+          >
+            <template #default="{ row }">
+              {{ row.rawData !== undefined ? `0x${row.rawData.toString(16).toUpperCase()}` : '-' }}
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-dialog>
+  </div>
+</template>
 
 <style scoped>
   .decoder-panel {
@@ -1187,7 +1361,7 @@
     padding-bottom: 16px;
     border-bottom: 1px solid #ebeef5;
   }
-  
+
   .decoder-error {
     margin-bottom: 12px;
   }

@@ -499,7 +499,12 @@ export class HardwareDescriptorParser {
             supported: [1000, 10000, 100000, 1000000, 10000000, 100000000],
             continuous: false
           },
-          modes: ['single', 'continuous']
+          modes: ['single', 'continuous'],
+          precision: {
+            timebase: 50, // 50 ppm时基精度
+            jitter: 100, // 100 ps时钟抖动
+            stability: 2.5 // 2.5 ppm/°C稳定性
+          }
         },
         triggers: {
           types: [TriggerType.Edge, TriggerType.Complex],
@@ -516,7 +521,8 @@ export class HardwareDescriptorParser {
         timing: {
           resolution: 10, // 10ps
           accuracy: 50, // 50ppm
-          range: [1e-9, 1000] // 1ns to 1000s
+          range: [1e-9, 1000], // 1ns to 1000s
+          referenceClocks: ['internal', 'external', 'auto'] // 支持的参考时钟源
         },
         buffers: {
           memory: {

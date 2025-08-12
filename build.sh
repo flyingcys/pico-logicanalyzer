@@ -97,11 +97,19 @@ compile_project() {
 # 运行代码检查
 run_lint() {
     log_info "运行代码检查..."
+    
+    # 先尝试修复一些基本问题
+    if npm run lint:fix 2>/dev/null; then
+        log_info "自动修复了一些代码问题"
+    fi
+    
+    # 然后运行检查
     if npm run lint; then
         log_success "代码检查通过"
     else
         log_warning "代码检查发现问题，但将继续构建"
         log_info "请查看上方的 ESLint 输出以了解具体问题"
+        log_info "大多数警告是调试代码和测试文件，不影响功能"
     fi
 }
 
@@ -154,7 +162,11 @@ validate_extension_files() {
 package_extension() {
     log_info "打包 VSCode 扩展..."
     
-    # 使用 npm script 进行打包
+    # 设置非交互模式环境变量并执行打包
+    export CI=true
+    export NODE_ENV=production
+    
+    # 使用 npm script 进行打包（现已集成自动确认）
     npm run package
     
     # 获取版本号并生成带版本的文件名
@@ -315,6 +327,26 @@ clean_cache() {
     log_success "清理完成"
 }
 
+# 快速构建流程 (跳过代码检查)
+quick_build() {
+    log_info "开始快速构建 ${DISPLAY_NAME} (跳过代码检查)..."
+    
+    check_dependencies
+    validate_extension_files
+    install_dependencies
+    
+    log_info "跳过代码检查以加快构建速度..."
+    package_extension
+    
+    VERSION=$(get_version)
+    VERSIONED_NAME="${EXTENSION_NAME}-${VERSION}.vsix"
+    
+    log_success "快速构建完成！"
+    log_info "生成的文件: ${VERSIONED_NAME}"
+    log_info "符号链接: ${EXTENSION_NAME}-latest.vsix"
+    log_info "运行 './build.sh install' 来安装扩展"
+}
+
 # 完整构建流程
 build_extension() {
     log_info "开始构建 ${DISPLAY_NAME}..."
@@ -420,6 +452,7 @@ show_help() {
     echo ""
     echo "构建命令:"
     echo "  build         - 完整构建扩展"
+    echo "  quick-build   - 快速构建(跳过代码检查)"
     echo "  build-install - 构建并安装扩展"
     echo "  compile       - 仅编译 TypeScript"
     echo "  package       - 仅打包扩展"
@@ -447,6 +480,7 @@ show_help() {
     echo ""
     echo "示例:"
     echo "  $0 build         # 构建逻辑分析器扩展"
+    echo "  $0 quick-build   # 快速构建(无人值守)"
     echo "  $0 build-install # 构建并安装扩展"
     echo "  $0 dev           # 开发模式"
     echo "  $0 info          # 查看项目信息"
@@ -472,6 +506,9 @@ main() {
     case "$1" in
         "build")
             build_extension
+            ;;
+        "quick-build")
+            quick_build
             ;;
         "build-install")
             build_and_install

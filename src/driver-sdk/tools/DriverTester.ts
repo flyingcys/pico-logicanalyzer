@@ -192,15 +192,25 @@ export class DriverTester {
           // 创建测试采集会话
           const testSession: CaptureSession = {
             captureChannels: [
-              { channelNumber: 0, channelName: 'Test CH0', hidden: false }
+              {
+                channelNumber: 0,
+                channelName: 'Test CH0',
+                textualChannelNumber: 'CH0',
+                hidden: false,
+                clone() { return { ...this }; }
+              }
             ],
             frequency: 1000000, // 1MHz
             preTriggerSamples: 1000,
             postTriggerSamples: 1000,
+            get totalSamples() { return this.preTriggerSamples + this.postTriggerSamples; },
             triggerType: TriggerType.Edge,
             triggerChannel: 0,
+            triggerInverted: false,
             loopCount: 1,
-            measureBursts: false
+            measureBursts: false,
+            clone() { return { ...this }; },
+            cloneSettings() { return { ...this }; }
           };
 
           // 启动采集

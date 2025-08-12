@@ -4,299 +4,6 @@
 提供信号测量、频率分析和统计功能
 -->
 
-<template>
-  <div class="measurement-tools">
-    <!-- 测量工具头部 -->
-    <div class="measurement-header">
-      <h3 class="measurement-title">
-        <el-icon><DataAnalysis /></el-icon>
-        测量工具
-      </h3>
-      <div class="measurement-actions">
-        <el-button-group size="small">
-          <el-button :icon="VideoPlay" @click="startMeasurement" :disabled="!hasData">
-            开始测量
-          </el-button>
-          <el-button :icon="VideoPause" @click="stopMeasurement" :disabled="!isMeasuring">
-            停止测量
-          </el-button>
-          <el-button :icon="RefreshRight" @click="refreshMeasurement" :disabled="!hasData">
-            刷新
-          </el-button>
-        </el-button-group>
-        <el-dropdown @command="handleMeasurementAction">
-          <el-button size="small" :icon="More">
-            更多
-            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="export-results">导出结果</el-dropdown-item>
-              <el-dropdown-item command="save-report">保存报告</el-dropdown-item>
-              <el-dropdown-item command="reset-measurements">重置测量</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </div>
-    </div>
-
-    <!-- 全局统计信息 -->
-    <el-card shadow="never" class="global-stats">
-      <template #header>
-        <div class="card-header">
-          <span>全局统计</span>
-          <el-tag v-if="isMeasuring" type="success" size="small">测量中</el-tag>
-        </div>
-      </template>
-
-      <div class="stats-grid">
-        <div class="stat-item">
-          <div class="stat-label">总样本数</div>
-          <div class="stat-value">{{ formatNumber(globalStats.totalSamples) }}</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">采样周期</div>
-          <div class="stat-value">{{ formatTime(globalStats.samplePeriod) }}</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">总持续时间</div>
-          <div class="stat-value">{{ formatTime(globalStats.totalDuration) }}</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">采样频率</div>
-          <div class="stat-value">{{ formatFrequency(globalStats.sampleRate) }}</div>
-        </div>
-      </div>
-    </el-card>
-
-    <!-- 通道测量结果 -->
-    <div class="channel-measurements">
-      <div class="measurements-header">
-        <h4>通道测量结果</h4>
-        <div class="filter-controls">
-          <el-select
-            v-model="channelFilter"
-            placeholder="筛选通道"
-            size="small"
-            multiple
-            collapse-tags
-            collapse-tags-tooltip
-            class="channel-filter"
-          >
-            <el-option
-              v-for="channel in availableChannels"
-              :key="channel.number"
-              :label="channel.name"
-              :value="channel.number"
-            />
-          </el-select>
-          <el-select
-            v-model="measurementMode"
-            size="small"
-            class="mode-select"
-            @change="onMeasurementModeChange"
-          >
-            <el-option label="标准测量" value="standard" />
-            <el-option label="高精度测量" value="precision" />
-            <el-option label="快速测量" value="fast" />
-          </el-select>
-        </div>
-      </div>
-
-      <div v-if="filteredChannelMeasurements.length === 0" class="no-measurements">
-        <el-empty :image-size="80" description="暂无测量数据">
-          <el-button v-if="hasData" type="primary" @click="startMeasurement">
-            开始测量
-          </el-button>
-        </el-empty>
-      </div>
-
-      <div v-else class="measurements-list">
-        <el-card
-          v-for="measurement in filteredChannelMeasurements"
-          :key="measurement.channelNumber"
-          class="measurement-card"
-          shadow="hover"
-        >
-          <template #header>
-            <div class="measurement-card-header">
-              <div class="channel-info">
-                <div
-                  class="channel-color"
-                  :style="{ backgroundColor: measurement.channelColor }"
-                />
-                <span class="channel-name">{{ measurement.channelName }}</span>
-                <el-tag size="small" type="info">CH{{ measurement.channelNumber }}</el-tag>
-              </div>
-              <div class="measurement-status">
-                <el-tag
-                  :type="measurement.isActive ? 'success' : 'info'"
-                  size="small"
-                >
-                  {{ measurement.isActive ? '活跃' : '静止' }}
-                </el-tag>
-              </div>
-            </div>
-          </template>
-
-          <div class="measurement-content">
-            <!-- 脉冲统计 -->
-            <div class="pulse-stats">
-              <div class="stat-section">
-                <h5>正脉冲</h5>
-                <div class="pulse-info">
-                  <div class="pulse-item">
-                    <span class="pulse-label">数量:</span>
-                    <span class="pulse-value">{{ measurement.positivePulses.count }}</span>
-                  </div>
-                  <div class="pulse-item">
-                    <span class="pulse-label">平均持续:</span>
-                    <span class="pulse-value">{{ formatTime(measurement.positivePulses.avgDuration) }}</span>
-                  </div>
-                  <div class="pulse-item">
-                    <span class="pulse-label">预测持续:</span>
-                    <span class="pulse-value">{{ formatTime(measurement.positivePulses.predictedDuration) }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="stat-section">
-                <h5>负脉冲</h5>
-                <div class="pulse-info">
-                  <div class="pulse-item">
-                    <span class="pulse-label">数量:</span>
-                    <span class="pulse-value">{{ measurement.negativePulses.count }}</span>
-                  </div>
-                  <div class="pulse-item">
-                    <span class="pulse-label">平均持续:</span>
-                    <span class="pulse-value">{{ formatTime(measurement.negativePulses.avgDuration) }}</span>
-                  </div>
-                  <div class="pulse-item">
-                    <span class="pulse-label">预测持续:</span>
-                    <span class="pulse-value">{{ formatTime(measurement.negativePulses.predictedDuration) }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 频率统计 -->
-            <div class="frequency-stats">
-              <div class="freq-item">
-                <div class="freq-label">平均频率</div>
-                <div class="freq-value">{{ formatFrequency(measurement.avgFrequency) }}</div>
-              </div>
-              <div class="freq-item">
-                <div class="freq-label">预测频率</div>
-                <div class="freq-value">{{ formatFrequency(measurement.predictedFrequency) }}</div>
-              </div>
-              <div class="freq-item">
-                <div class="freq-label">占空比</div>
-                <div class="freq-value">{{ (measurement.dutyCycle * 100).toFixed(1) }}%</div>
-              </div>
-            </div>
-
-            <!-- 高级统计 -->
-            <el-collapse v-model="expandedMeasurements" accordion>
-              <el-collapse-item
-                :title="`高级统计 - CH${measurement.channelNumber}`"
-                :name="measurement.channelNumber"
-              >
-                <div class="advanced-stats">
-                  <div class="stats-row">
-                    <div class="advanced-stat">
-                      <span class="stat-label">最小脉冲宽度:</span>
-                      <span class="stat-value">{{ formatTime(measurement.advanced.minPulseWidth) }}</span>
-                    </div>
-                    <div class="advanced-stat">
-                      <span class="stat-label">最大脉冲宽度:</span>
-                      <span class="stat-value">{{ formatTime(measurement.advanced.maxPulseWidth) }}</span>
-                    </div>
-                  </div>
-                  <div class="stats-row">
-                    <div class="advanced-stat">
-                      <span class="stat-label">上升沿计数:</span>
-                      <span class="stat-value">{{ measurement.advanced.risingEdges }}</span>
-                    </div>
-                    <div class="advanced-stat">
-                      <span class="stat-label">下降沿计数:</span>
-                      <span class="stat-value">{{ measurement.advanced.fallingEdges }}</span>
-                    </div>
-                  </div>
-                  <div class="stats-row">
-                    <div class="advanced-stat">
-                      <span class="stat-label">抖动(RMS):</span>
-                      <span class="stat-value">{{ formatTime(measurement.advanced.jitterRms) }}</span>
-                    </div>
-                    <div class="advanced-stat">
-                      <span class="stat-label">噪声水平:</span>
-                      <span class="stat-value">{{ (measurement.advanced.noiseLevel * 100).toFixed(2) }}%</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 脉冲宽度分布图 -->
-                <div class="pulse-distribution">
-                  <h6>脉冲宽度分布</h6>
-                  <div class="distribution-chart">
-                    <div
-                      v-for="(bin, index) in measurement.advanced.pulseWidthDistribution"
-                      :key="index"
-                      class="distribution-bar"
-                      :style="{
-                        height: `${(bin.count / measurement.advanced.maxBinCount) * 100}%`,
-                        backgroundColor: getDistributionColor(bin.count, measurement.advanced.maxBinCount)
-                      }"
-                      :title="`宽度: ${formatTime(bin.width)}, 数量: ${bin.count}`"
-                    />
-                  </div>
-                </div>
-              </el-collapse-item>
-            </el-collapse>
-          </div>
-        </el-card>
-      </div>
-    </div>
-
-    <!-- 比较分析工具 -->
-    <el-card v-if="channelMeasurements.length > 1" shadow="never" class="comparison-tools">
-      <template #header>
-        <span>比较分析</span>
-      </template>
-
-      <div class="comparison-content">
-        <div class="comparison-selector">
-          <el-select
-            v-model="comparisonChannels"
-            placeholder="选择要比较的通道"
-            multiple
-            size="small"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="measurement in channelMeasurements"
-              :key="measurement.channelNumber"
-              :label="measurement.channelName"
-              :value="measurement.channelNumber"
-            />
-          </el-select>
-        </div>
-
-        <div v-if="comparisonChannels.length >= 2" class="comparison-results">
-          <el-table :data="comparisonData" size="small" border>
-            <el-table-column prop="metric" label="指标" width="120" />
-            <el-table-column
-              v-for="channelNum in comparisonChannels"
-              :key="channelNum"
-              :label="getChannelName(channelNum)"
-              :prop="`channel_${channelNum}`"
-            />
-          </el-table>
-        </div>
-      </div>
-    </el-card>
-  </div>
-</template>
-
 <script setup lang="ts">
   import { ref, computed, onMounted, watch } from 'vue';
   import {
@@ -405,7 +112,7 @@
     if (channelFilter.value.length === 0) {
       return channelMeasurements.value;
     }
-    return channelMeasurements.value.filter(m => 
+    return channelMeasurements.value.filter(m =>
       channelFilter.value.includes(m.channelNumber)
     );
   });
@@ -423,7 +130,7 @@
 
     return metrics.map(metric => {
       const row: any = { metric: metric.label };
-      
+
       comparisonChannels.value.forEach(channelNum => {
         const measurement = channelMeasurements.value.find(m => m.channelNumber === channelNum);
         if (measurement) {
@@ -502,14 +209,14 @@
 
   const measureChannel = async (channel: ChannelInfo): Promise<ChannelMeasurement> => {
     const samples = channel.samples!;
-    const sampleRate = props.sampleRate;
-    
+    const { sampleRate } = props;
+
     // 分析脉冲
     const pulseAnalysis = analyzePulses(samples);
-    
+
     // 计算频率
     const frequencies = calculateFrequencies(pulseAnalysis, sampleRate);
-    
+
     // 高级分析
     const advancedStats = performAdvancedAnalysis(samples, sampleRate);
 
@@ -520,7 +227,7 @@
       isActive: pulseAnalysis.totalTransitions > 0,
       positivePulses: {
         count: pulseAnalysis.positivePulses.length,
-        avgDuration: pulseAnalysis.positivePulses.length > 0 
+        avgDuration: pulseAnalysis.positivePulses.length > 0
           ? (pulseAnalysis.positivePulses.reduce((sum, p) => sum + p, 0) / pulseAnalysis.positivePulses.length) / sampleRate
           : 0,
         predictedDuration: pulseAnalysis.predictedPosDuration / sampleRate
@@ -549,14 +256,14 @@
 
     for (let i = 0; i < samples.length; i++) {
       const sample = samples[i];
-      
+
       if (sample !== currentPulse) {
         if (currentPulse === 1) {
           positivePulses.push(currentCount);
         } else if (currentPulse === 0) {
           negativePulses.push(currentCount);
         }
-        
+
         currentPulse = sample;
         currentCount = 1;
         totalTransitions++;
@@ -602,7 +309,7 @@
     const fivePercent = Math.floor(sortedByCount.length * 0.95);
     const filteredPulses = sortedByCount.slice(fivePercent);
 
-    return filteredPulses.length > 0 
+    return filteredPulses.length > 0
       ? filteredPulses.reduce((sum, p) => sum + p, 0) / filteredPulses.length
       : 0;
   };
@@ -611,7 +318,7 @@
     const { positivePulses, negativePulses, predictedPosDuration, predictedNegDuration } = pulseAnalysis;
 
     // 平均频率
-    const avgPosDuration = positivePulses.length > 0 
+    const avgPosDuration = positivePulses.length > 0
       ? (positivePulses.reduce((sum: number, p: number) => sum + p, 0) / positivePulses.length) / sampleRate
       : 0;
     const avgNegDuration = negativePulses.length > 0
@@ -647,18 +354,18 @@
     // 边沿检测和脉冲宽度分析
     for (let i = 0; i < samples.length; i++) {
       const sample = samples[i];
-      
+
       if (sample !== currentPulse) {
         if (currentPulse !== -1) {
           pulseWidths.push(currentCount / sampleRate);
         }
-        
+
         if (currentPulse === 0 && sample === 1) {
           risingEdges++;
         } else if (currentPulse === 1 && sample === 0) {
           fallingEdges++;
         }
-        
+
         currentPulse = sample;
         currentCount = 1;
       } else {
@@ -671,8 +378,8 @@
     const maxPulseWidth = pulseWidths.length > 0 ? Math.max(...pulseWidths) : 0;
 
     // 抖动计算(RMS)
-    const avgPulseWidth = pulseWidths.length > 0 
-      ? pulseWidths.reduce((sum, w) => sum + w, 0) / pulseWidths.length 
+    const avgPulseWidth = pulseWidths.length > 0
+      ? pulseWidths.reduce((sum, w) => sum + w, 0) / pulseWidths.length
       : 0;
     const jitterRms = pulseWidths.length > 0
       ? Math.sqrt(pulseWidths.reduce((sum, w) => sum + Math.pow(w - avgPulseWidth, 2), 0) / pulseWidths.length)
@@ -714,7 +421,7 @@
       const binStart = minWidth + i * binSize;
       const binEnd = binStart + binSize;
       const count = pulseWidths.filter(w => w >= binStart && w < binEnd).length;
-      
+
       bins.push({
         width: (binStart + binEnd) / 2,
         count
@@ -846,6 +553,404 @@
     }
   });
 </script>
+
+<template>
+  <div class="measurement-tools">
+    <!-- 测量工具头部 -->
+    <div class="measurement-header">
+      <h3 class="measurement-title">
+        <el-icon><DataAnalysis /></el-icon>
+        测量工具
+      </h3>
+      <div class="measurement-actions">
+        <el-button-group size="small">
+          <el-button
+            :icon="VideoPlay"
+            :disabled="!hasData"
+            @click="startMeasurement"
+          >
+            开始测量
+          </el-button>
+          <el-button
+            :icon="VideoPause"
+            :disabled="!isMeasuring"
+            @click="stopMeasurement"
+          >
+            停止测量
+          </el-button>
+          <el-button
+            :icon="RefreshRight"
+            :disabled="!hasData"
+            @click="refreshMeasurement"
+          >
+            刷新
+          </el-button>
+        </el-button-group>
+        <el-dropdown @command="handleMeasurementAction">
+          <el-button
+            size="small"
+            :icon="More"
+          >
+            更多
+            <el-icon class="el-icon--right">
+              <ArrowDown />
+            </el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="export-results">
+                导出结果
+              </el-dropdown-item>
+              <el-dropdown-item command="save-report">
+                保存报告
+              </el-dropdown-item>
+              <el-dropdown-item command="reset-measurements">
+                重置测量
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
+    </div>
+
+    <!-- 全局统计信息 -->
+    <el-card
+      shadow="never"
+      class="global-stats"
+    >
+      <template #header>
+        <div class="card-header">
+          <span>全局统计</span>
+          <el-tag
+            v-if="isMeasuring"
+            type="success"
+            size="small"
+          >
+            测量中
+          </el-tag>
+        </div>
+      </template>
+
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-label">
+            总样本数
+          </div>
+          <div class="stat-value">
+            {{ formatNumber(globalStats.totalSamples) }}
+          </div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">
+            采样周期
+          </div>
+          <div class="stat-value">
+            {{ formatTime(globalStats.samplePeriod) }}
+          </div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">
+            总持续时间
+          </div>
+          <div class="stat-value">
+            {{ formatTime(globalStats.totalDuration) }}
+          </div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">
+            采样频率
+          </div>
+          <div class="stat-value">
+            {{ formatFrequency(globalStats.sampleRate) }}
+          </div>
+        </div>
+      </div>
+    </el-card>
+
+    <!-- 通道测量结果 -->
+    <div class="channel-measurements">
+      <div class="measurements-header">
+        <h4>通道测量结果</h4>
+        <div class="filter-controls">
+          <el-select
+            v-model="channelFilter"
+            placeholder="筛选通道"
+            size="small"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            class="channel-filter"
+          >
+            <el-option
+              v-for="channel in availableChannels"
+              :key="channel.number"
+              :label="channel.name"
+              :value="channel.number"
+            />
+          </el-select>
+          <el-select
+            v-model="measurementMode"
+            size="small"
+            class="mode-select"
+            @change="onMeasurementModeChange"
+          >
+            <el-option
+              label="标准测量"
+              value="standard"
+            />
+            <el-option
+              label="高精度测量"
+              value="precision"
+            />
+            <el-option
+              label="快速测量"
+              value="fast"
+            />
+          </el-select>
+        </div>
+      </div>
+
+      <div
+        v-if="filteredChannelMeasurements.length === 0"
+        class="no-measurements"
+      >
+        <el-empty
+          :image-size="80"
+          description="暂无测量数据"
+        >
+          <el-button
+            v-if="hasData"
+            type="primary"
+            @click="startMeasurement"
+          >
+            开始测量
+          </el-button>
+        </el-empty>
+      </div>
+
+      <div
+        v-else
+        class="measurements-list"
+      >
+        <el-card
+          v-for="measurement in filteredChannelMeasurements"
+          :key="measurement.channelNumber"
+          class="measurement-card"
+          shadow="hover"
+        >
+          <template #header>
+            <div class="measurement-card-header">
+              <div class="channel-info">
+                <div
+                  class="channel-color"
+                  :style="{ backgroundColor: measurement.channelColor }"
+                />
+                <span class="channel-name">{{ measurement.channelName }}</span>
+                <el-tag
+                  size="small"
+                  type="info"
+                >
+                  CH{{ measurement.channelNumber }}
+                </el-tag>
+              </div>
+              <div class="measurement-status">
+                <el-tag
+                  :type="measurement.isActive ? 'success' : 'info'"
+                  size="small"
+                >
+                  {{ measurement.isActive ? '活跃' : '静止' }}
+                </el-tag>
+              </div>
+            </div>
+          </template>
+
+          <div class="measurement-content">
+            <!-- 脉冲统计 -->
+            <div class="pulse-stats">
+              <div class="stat-section">
+                <h5>正脉冲</h5>
+                <div class="pulse-info">
+                  <div class="pulse-item">
+                    <span class="pulse-label">数量:</span>
+                    <span class="pulse-value">{{ measurement.positivePulses.count }}</span>
+                  </div>
+                  <div class="pulse-item">
+                    <span class="pulse-label">平均持续:</span>
+                    <span class="pulse-value">{{ formatTime(measurement.positivePulses.avgDuration) }}</span>
+                  </div>
+                  <div class="pulse-item">
+                    <span class="pulse-label">预测持续:</span>
+                    <span class="pulse-value">{{ formatTime(measurement.positivePulses.predictedDuration) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="stat-section">
+                <h5>负脉冲</h5>
+                <div class="pulse-info">
+                  <div class="pulse-item">
+                    <span class="pulse-label">数量:</span>
+                    <span class="pulse-value">{{ measurement.negativePulses.count }}</span>
+                  </div>
+                  <div class="pulse-item">
+                    <span class="pulse-label">平均持续:</span>
+                    <span class="pulse-value">{{ formatTime(measurement.negativePulses.avgDuration) }}</span>
+                  </div>
+                  <div class="pulse-item">
+                    <span class="pulse-label">预测持续:</span>
+                    <span class="pulse-value">{{ formatTime(measurement.negativePulses.predictedDuration) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 频率统计 -->
+            <div class="frequency-stats">
+              <div class="freq-item">
+                <div class="freq-label">
+                  平均频率
+                </div>
+                <div class="freq-value">
+                  {{ formatFrequency(measurement.avgFrequency) }}
+                </div>
+              </div>
+              <div class="freq-item">
+                <div class="freq-label">
+                  预测频率
+                </div>
+                <div class="freq-value">
+                  {{ formatFrequency(measurement.predictedFrequency) }}
+                </div>
+              </div>
+              <div class="freq-item">
+                <div class="freq-label">
+                  占空比
+                </div>
+                <div class="freq-value">
+                  {{ (measurement.dutyCycle * 100).toFixed(1) }}%
+                </div>
+              </div>
+            </div>
+
+            <!-- 高级统计 -->
+            <el-collapse
+              v-model="expandedMeasurements"
+              accordion
+            >
+              <el-collapse-item
+                :title="`高级统计 - CH${measurement.channelNumber}`"
+                :name="measurement.channelNumber"
+              >
+                <div class="advanced-stats">
+                  <div class="stats-row">
+                    <div class="advanced-stat">
+                      <span class="stat-label">最小脉冲宽度:</span>
+                      <span class="stat-value">{{ formatTime(measurement.advanced.minPulseWidth) }}</span>
+                    </div>
+                    <div class="advanced-stat">
+                      <span class="stat-label">最大脉冲宽度:</span>
+                      <span class="stat-value">{{ formatTime(measurement.advanced.maxPulseWidth) }}</span>
+                    </div>
+                  </div>
+                  <div class="stats-row">
+                    <div class="advanced-stat">
+                      <span class="stat-label">上升沿计数:</span>
+                      <span class="stat-value">{{ measurement.advanced.risingEdges }}</span>
+                    </div>
+                    <div class="advanced-stat">
+                      <span class="stat-label">下降沿计数:</span>
+                      <span class="stat-value">{{ measurement.advanced.fallingEdges }}</span>
+                    </div>
+                  </div>
+                  <div class="stats-row">
+                    <div class="advanced-stat">
+                      <span class="stat-label">抖动(RMS):</span>
+                      <span class="stat-value">{{ formatTime(measurement.advanced.jitterRms) }}</span>
+                    </div>
+                    <div class="advanced-stat">
+                      <span class="stat-label">噪声水平:</span>
+                      <span class="stat-value">{{ (measurement.advanced.noiseLevel * 100).toFixed(2) }}%</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 脉冲宽度分布图 -->
+                <div class="pulse-distribution">
+                  <h6>脉冲宽度分布</h6>
+                  <div class="distribution-chart">
+                    <div
+                      v-for="(bin, index) in measurement.advanced.pulseWidthDistribution"
+                      :key="index"
+                      class="distribution-bar"
+                      :style="{
+                        height: `${(bin.count / measurement.advanced.maxBinCount) * 100}%`,
+                        backgroundColor: getDistributionColor(bin.count, measurement.advanced.maxBinCount)
+                      }"
+                      :title="`宽度: ${formatTime(bin.width)}, 数量: ${bin.count}`"
+                    />
+                  </div>
+                </div>
+              </el-collapse-item>
+            </el-collapse>
+          </div>
+        </el-card>
+      </div>
+    </div>
+
+    <!-- 比较分析工具 -->
+    <el-card
+      v-if="channelMeasurements.length > 1"
+      shadow="never"
+      class="comparison-tools"
+    >
+      <template #header>
+        <span>比较分析</span>
+      </template>
+
+      <div class="comparison-content">
+        <div class="comparison-selector">
+          <el-select
+            v-model="comparisonChannels"
+            placeholder="选择要比较的通道"
+            multiple
+            size="small"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="measurement in channelMeasurements"
+              :key="measurement.channelNumber"
+              :label="measurement.channelName"
+              :value="measurement.channelNumber"
+            />
+          </el-select>
+        </div>
+
+        <div
+          v-if="comparisonChannels.length >= 2"
+          class="comparison-results"
+        >
+          <el-table
+            :data="comparisonData"
+            size="small"
+            border
+          >
+            <el-table-column
+              prop="metric"
+              label="指标"
+              width="120"
+            />
+            <el-table-column
+              v-for="channelNum in comparisonChannels"
+              :key="channelNum"
+              :label="getChannelName(channelNum)"
+              :prop="`channel_${channelNum}`"
+            />
+          </el-table>
+        </div>
+      </div>
+    </el-card>
+  </div>
+</template>
 
 <style scoped>
   .measurement-tools {

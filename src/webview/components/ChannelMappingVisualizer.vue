@@ -4,252 +4,6 @@
 提供直观的通道映射管理和冲突检测
 -->
 
-<template>
-  <div class="channel-mapping-visualizer">
-    <!-- 通道映射概览 -->
-    <div class="mapping-overview">
-      <h4 class="section-title">
-        <el-icon><Connection /></el-icon>
-        通道映射概览
-      </h4>
-      
-      <div class="channel-grid">
-        <div
-          v-for="channelIndex in maxChannels"
-          :key="channelIndex - 1"
-          :class="[
-            'channel-slot',
-            getChannelSlotClass(channelIndex - 1)
-          ]"
-          @click="selectChannel(channelIndex - 1)"
-        >
-          <div class="channel-number">CH{{ channelIndex }}</div>
-          <div class="channel-usage">
-            <div
-              v-for="usage in getChannelUsage(channelIndex - 1)"
-              :key="usage.decoderId"
-              :class="['usage-indicator', usage.type]"
-              :title="`${usage.decoderName}: ${usage.channelName}`"
-            >
-              {{ usage.channelName }}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 解码器映射详情 -->
-    <div v-if="decoderMappings.length > 0" class="decoder-mappings">
-      <h4 class="section-title">
-        <el-icon><Grid /></el-icon>
-        解码器映射详情
-      </h4>
-      
-      <div class="decoder-list">
-        <div
-          v-for="decoder in decoderMappings"
-          :key="decoder.id"
-          class="decoder-item"
-        >
-          <div class="decoder-header">
-            <div class="decoder-info">
-              <span class="decoder-name">{{ decoder.name }}</span>
-              <el-tag
-                v-if="decoder.hasConflicts"
-                type="danger"
-                size="small"
-              >
-                冲突
-              </el-tag>
-              <el-tag
-                v-if="decoder.hasWarnings"
-                type="warning"
-                size="small"
-              >
-                警告
-              </el-tag>
-            </div>
-            <div class="decoder-actions">
-              <el-button
-                size="small"
-                :icon="RefreshRight"
-                @click="autoAssignChannels(decoder.id)"
-                title="自动分配通道"
-              />
-              <el-button
-                size="small"
-                :icon="Download"
-                @click="exportMapping(decoder.id)"
-                title="导出映射"
-              />
-            </div>
-          </div>
-          
-          <div class="channel-mappings">
-            <div
-              v-for="channel in decoder.channels"
-              :key="channel.id"
-              class="channel-mapping-row"
-            >
-              <div class="channel-info">
-                <span class="channel-name">{{ channel.name }}</span>
-                <span v-if="channel.required" class="required-indicator">*</span>
-                <span class="channel-desc">{{ channel.desc }}</span>
-              </div>
-              
-              <div class="channel-assignment">
-                <el-select
-                  v-model="decoder.mapping[channel.id]"
-                  placeholder="选择通道"
-                  size="small"
-                  :class="getChannelSelectClass(decoder.id, channel.id)"
-                  @change="onMappingChange(decoder.id, channel.id, $event)"
-                >
-                  <el-option
-                    v-for="i in maxChannels"
-                    :key="i - 1"
-                    :label="`CH${i}`"
-                    :value="i - 1"
-                    :disabled="isChannelConflicted(decoder.id, i - 1)"
-                  >
-                    <div class="channel-option">
-                      <span>CH{{ i }}</span>
-                      <span
-                        v-if="getChannelConflictInfo(i - 1).length > 0"
-                        class="conflict-info"
-                      >
-                        ({{ getChannelConflictInfo(i - 1).join(', ') }})
-                      </span>
-                    </div>
-                  </el-option>
-                </el-select>
-                
-                <div
-                  v-if="getMappingError(decoder.id, channel.id)"
-                  class="mapping-error"
-                >
-                  <el-icon><WarningFilled /></el-icon>
-                  {{ getMappingError(decoder.id, channel.id) }}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 冲突和警告信息 -->
-    <div v-if="conflicts.length > 0 || warnings.length > 0" class="issues-panel">
-      <div v-if="conflicts.length > 0" class="conflicts-section">
-        <h5 class="issue-title">
-          <el-icon class="error-icon"><CircleCloseFilled /></el-icon>
-          通道冲突 ({{ conflicts.length }})
-        </h5>
-        <div class="issue-list">
-          <div
-            v-for="conflict in conflicts"
-            :key="conflict.channelNumber"
-            class="issue-item conflict"
-          >
-            <div class="issue-channel">CH{{ conflict.channelNumber + 1 }}</div>
-            <div class="issue-description">
-              被多个解码器使用：
-              <span
-                v-for="(usage, index) in conflict.conflicts"
-                :key="usage.decoderId"
-                class="conflict-usage"
-              >
-                {{ usage.decoderName }}({{ usage.channelName }}){{ index < conflict.conflicts.length - 1 ? ', ' : '' }}
-              </span>
-            </div>
-            <div class="issue-actions">
-              <el-button
-                size="small"
-                type="primary"
-                @click="resolveConflict(conflict.channelNumber)"
-              >
-                解决冲突
-              </el-button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="warnings.length > 0" class="warnings-section">
-        <h5 class="issue-title">
-          <el-icon class="warning-icon"><WarningFilled /></el-icon>
-          警告信息 ({{ warnings.length }})
-        </h5>
-        <div class="issue-list">
-          <div
-            v-for="warning in warnings"
-            :key="warning.id"
-            class="issue-item warning"
-          >
-            <div class="issue-description">{{ warning.message }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 操作工具栏 -->
-    <div class="toolbar">
-      <div class="toolbar-section">
-        <el-button :icon="RefreshRight" @click="autoAssignAll">
-          自动分配全部
-        </el-button>
-        <el-button :icon="Delete" @click="clearAllMappings" type="danger">
-          清空映射
-        </el-button>
-      </div>
-      
-      <div class="toolbar-section">
-        <el-button :icon="Download" @click="exportAllMappings">
-          导出配置
-        </el-button>
-        <el-button :icon="Upload" @click="showImportDialog = true">
-          导入配置
-        </el-button>
-      </div>
-    </div>
-
-    <!-- 导入配置对话框 -->
-    <el-dialog v-model="showImportDialog" title="导入通道映射配置" width="600px">
-      <div class="import-dialog">
-        <el-upload
-          ref="uploadRef"
-          :before-upload="handleImport"
-          :show-file-list="false"
-          accept=".json"
-          drag
-        >
-          <div class="upload-content">
-            <el-icon class="upload-icon"><UploadFilled /></el-icon>
-            <div class="upload-text">点击或拖拽文件到此处上传</div>
-            <div class="upload-hint">支持 .json 格式的配置文件</div>
-          </div>
-        </el-upload>
-        
-        <div class="import-textarea">
-          <el-input
-            v-model="importText"
-            type="textarea"
-            placeholder="或者直接粘贴配置JSON数据..."
-            :rows="8"
-          />
-        </div>
-      </div>
-      
-      <template #footer>
-        <el-button @click="showImportDialog = false">取消</el-button>
-        <el-button type="primary" @click="confirmImport" :disabled="!importText.trim()">
-          导入
-        </el-button>
-      </template>
-    </el-dialog>
-  </div>
-</template>
-
 <script setup lang="ts">
   import { ref, computed, watch, onMounted } from 'vue';
   import {
@@ -308,7 +62,7 @@
         decoder.mapping,
         [] // 这里需要从父组件传入实际的通道数据
       );
-      
+
       return {
         ...decoder,
         hasConflicts: !validation.isValid,
@@ -340,7 +94,7 @@
   const warnings = computed(() => {
     const allWarnings: Array<{ id: string; message: string }> = [];
     let warningId = 0;
-    
+
     for (const decoder of decoderMappings.value) {
       for (const warning of decoder.validation.warnings) {
         allWarnings.push({
@@ -349,7 +103,7 @@
         });
       }
     }
-    
+
     return allWarnings;
   });
 
@@ -365,7 +119,7 @@
   const getChannelSlotClass = (channelIndex: number) => {
     const usage = channelUsage.value[channelIndex];
     const hasConflict = conflicts.value.some(c => c.channelNumber === channelIndex);
-    
+
     return {
       'used': usage?.isUsed || false,
       'conflict': hasConflict,
@@ -376,22 +130,22 @@
   const getChannelSelectClass = (decoderId: string, channelId: string) => {
     const decoder = decoderMappings.value.find(d => d.id === decoderId);
     const channelIndex = decoder?.mapping[channelId];
-    
+
     if (channelIndex !== undefined) {
       const hasConflict = conflicts.value.some(c => c.channelNumber === channelIndex);
       return hasConflict ? 'conflict-select' : '';
     }
-    
+
     return '';
   };
 
   const getMappingError = (decoderId: string, channelId: string) => {
     const decoder = decoderMappings.value.find(d => d.id === decoderId);
     if (!decoder) return null;
-    
+
     const channelIndex = decoder.mapping[channelId];
     if (channelIndex === undefined) return null;
-    
+
     const conflict = conflicts.value.find(c => c.channelNumber === channelIndex);
     if (conflict) {
       const otherUsages = conflict.conflicts.filter(c => c.decoderId !== decoderId);
@@ -399,7 +153,7 @@
         return `与 ${otherUsages.map(u => u.decoderName).join(', ')} 冲突`;
       }
     }
-    
+
     return null;
   };
 
@@ -423,7 +177,7 @@
       const newMapping = { ...decoder.mapping };
       newMapping[channelId] = channelIndex;
       emit('mappingChange', decoderId, newMapping);
-      
+
       // 保存映射
       channelMappingManager.saveChannelMapping(decoderId, decoder.name, newMapping);
     }
@@ -432,7 +186,7 @@
   const autoAssignChannels = (decoderId: string) => {
     const decoder = props.decoders.find(d => d.id === decoderId);
     if (!decoder) return;
-    
+
     // 获取其他解码器已使用的通道
     const usedChannels = new Set<number>();
     for (const otherDecoder of props.decoders) {
@@ -442,38 +196,38 @@
         }
       }
     }
-    
+
     const newMapping = channelMappingManager.autoAssignChannels(
       decoder as DecoderInfo,
       usedChannels,
       props.maxChannels
     );
-    
+
     emit('mappingChange', decoderId, newMapping);
     channelMappingManager.saveChannelMapping(decoderId, decoder.name, newMapping);
-    
+
     ElMessage.success(`${decoder.name} 通道已自动分配`);
   };
 
   const autoAssignAll = () => {
-    let usedChannels = new Set<number>();
-    
+    const usedChannels = new Set<number>();
+
     for (const decoder of props.decoders) {
       const newMapping = channelMappingManager.autoAssignChannels(
         decoder as DecoderInfo,
         usedChannels,
         props.maxChannels
       );
-      
+
       // 更新已使用的通道
       for (const channelIndex of Object.values(newMapping)) {
         usedChannels.add(channelIndex);
       }
-      
+
       emit('mappingChange', decoder.id, newMapping);
       channelMappingManager.saveChannelMapping(decoder.id, decoder.name, newMapping);
     }
-    
+
     ElMessage.success('所有解码器通道已自动分配');
   };
 
@@ -488,11 +242,11 @@
           type: 'warning'
         }
       );
-      
+
       for (const decoder of props.decoders) {
         emit('mappingChange', decoder.id, {});
       }
-      
+
       ElMessage.success('所有通道映射已清空');
     } catch {
       // 用户取消
@@ -502,10 +256,10 @@
   const resolveConflict = (channelNumber: number) => {
     const conflict = conflicts.value.find(c => c.channelNumber === channelNumber);
     if (!conflict) return;
-    
+
     // 简单解决方案：为冲突的解码器重新分配通道
     const usedChannels = new Set<number>();
-    
+
     // 收集所有已使用的通道（除了冲突的那个）
     for (const decoder of props.decoders) {
       for (const [channelId, channelIndex] of Object.entries(decoder.mapping)) {
@@ -514,7 +268,7 @@
         }
       }
     }
-    
+
     // 为每个冲突的解码器重新分配
     for (const conflictInfo of conflict.conflicts.slice(1)) { // 保留第一个，重新分配其他的
       const decoder = props.decoders.find(d => d.id === conflictInfo.decoderId);
@@ -524,35 +278,35 @@
           usedChannels,
           props.maxChannels
         );
-        
+
         // 更新已使用的通道
         for (const channelIndex of Object.values(newMapping)) {
           usedChannels.add(channelIndex);
         }
-        
+
         emit('mappingChange', decoder.id, newMapping);
         channelMappingManager.saveChannelMapping(decoder.id, decoder.name, newMapping);
       }
     }
-    
+
     ElMessage.success(`CH${channelNumber + 1} 冲突已解决`);
   };
 
   const exportMapping = (decoderId: string) => {
     const decoder = props.decoders.find(d => d.id === decoderId);
     if (!decoder) return;
-    
+
     const config = {
       decoderId: decoder.decoderId,
       decoderName: decoder.name,
       mapping: decoder.mapping,
       exportDate: new Date().toISOString()
     };
-    
+
     const jsonData = JSON.stringify(config, null, 2);
     const blob = new Blob([jsonData], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
+
     const a = document.createElement('a');
     a.href = url;
     a.download = `${decoder.name}-channel-mapping.json`;
@@ -560,7 +314,7 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     ElMessage.success(`${decoder.name} 通道映射已导出`);
   };
 
@@ -568,7 +322,7 @@
     const jsonData = channelMappingManager.exportMappings();
     const blob = new Blob([jsonData], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
+
     const a = document.createElement('a');
     a.href = url;
     a.download = `channel-mappings-${new Date().toISOString().split('T')[0]}.json`;
@@ -576,7 +330,7 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     ElMessage.success('所有通道映射配置已导出');
   };
 
@@ -594,14 +348,14 @@
       ElMessage.error('请选择文件或输入配置数据');
       return;
     }
-    
+
     const result = channelMappingManager.importMappings(importText.value);
-    
+
     if (result.success) {
       ElMessage.success(`成功导入 ${result.imported} 个通道映射配置`);
       showImportDialog.value = false;
       importText.value = '';
-      
+
       // 触发重新加载
       for (const decoder of props.decoders) {
         const savedMapping = channelMappingManager.loadChannelMapping(decoder.decoderId);
@@ -630,6 +384,306 @@
     }
   });
 </script>
+
+<template>
+  <div class="channel-mapping-visualizer">
+    <!-- 通道映射概览 -->
+    <div class="mapping-overview">
+      <h4 class="section-title">
+        <el-icon><Connection /></el-icon>
+        通道映射概览
+      </h4>
+
+      <div class="channel-grid">
+        <div
+          v-for="channelIndex in maxChannels"
+          :key="channelIndex - 1"
+          :class="[
+            'channel-slot',
+            getChannelSlotClass(channelIndex - 1)
+          ]"
+          @click="selectChannel(channelIndex - 1)"
+        >
+          <div class="channel-number">
+            CH{{ channelIndex }}
+          </div>
+          <div class="channel-usage">
+            <div
+              v-for="usage in getChannelUsage(channelIndex - 1)"
+              :key="usage.decoderId"
+              :class="['usage-indicator', usage.type]"
+              :title="`${usage.decoderName}: ${usage.channelName}`"
+            >
+              {{ usage.channelName }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 解码器映射详情 -->
+    <div
+      v-if="decoderMappings.length > 0"
+      class="decoder-mappings"
+    >
+      <h4 class="section-title">
+        <el-icon><Grid /></el-icon>
+        解码器映射详情
+      </h4>
+
+      <div class="decoder-list">
+        <div
+          v-for="decoder in decoderMappings"
+          :key="decoder.id"
+          class="decoder-item"
+        >
+          <div class="decoder-header">
+            <div class="decoder-info">
+              <span class="decoder-name">{{ decoder.name }}</span>
+              <el-tag
+                v-if="decoder.hasConflicts"
+                type="danger"
+                size="small"
+              >
+                冲突
+              </el-tag>
+              <el-tag
+                v-if="decoder.hasWarnings"
+                type="warning"
+                size="small"
+              >
+                警告
+              </el-tag>
+            </div>
+            <div class="decoder-actions">
+              <el-button
+                size="small"
+                :icon="RefreshRight"
+                title="自动分配通道"
+                @click="autoAssignChannels(decoder.id)"
+              />
+              <el-button
+                size="small"
+                :icon="Download"
+                title="导出映射"
+                @click="exportMapping(decoder.id)"
+              />
+            </div>
+          </div>
+
+          <div class="channel-mappings">
+            <div
+              v-for="channel in decoder.channels"
+              :key="channel.id"
+              class="channel-mapping-row"
+            >
+              <div class="channel-info">
+                <span class="channel-name">{{ channel.name }}</span>
+                <span
+                  v-if="channel.required"
+                  class="required-indicator"
+                >*</span>
+                <span class="channel-desc">{{ channel.desc }}</span>
+              </div>
+
+              <div class="channel-assignment">
+                <el-select
+                  v-model="decoder.mapping[channel.id]"
+                  placeholder="选择通道"
+                  size="small"
+                  :class="getChannelSelectClass(decoder.id, channel.id)"
+                  @change="onMappingChange(decoder.id, channel.id, $event)"
+                >
+                  <el-option
+                    v-for="i in maxChannels"
+                    :key="i - 1"
+                    :label="`CH${i}`"
+                    :value="i - 1"
+                    :disabled="isChannelConflicted(decoder.id, i - 1)"
+                  >
+                    <div class="channel-option">
+                      <span>CH{{ i }}</span>
+                      <span
+                        v-if="getChannelConflictInfo(i - 1).length > 0"
+                        class="conflict-info"
+                      >
+                        ({{ getChannelConflictInfo(i - 1).join(', ') }})
+                      </span>
+                    </div>
+                  </el-option>
+                </el-select>
+
+                <div
+                  v-if="getMappingError(decoder.id, channel.id)"
+                  class="mapping-error"
+                >
+                  <el-icon><WarningFilled /></el-icon>
+                  {{ getMappingError(decoder.id, channel.id) }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 冲突和警告信息 -->
+    <div
+      v-if="conflicts.length > 0 || warnings.length > 0"
+      class="issues-panel"
+    >
+      <div
+        v-if="conflicts.length > 0"
+        class="conflicts-section"
+      >
+        <h5 class="issue-title">
+          <el-icon class="error-icon">
+            <CircleCloseFilled />
+          </el-icon>
+          通道冲突 ({{ conflicts.length }})
+        </h5>
+        <div class="issue-list">
+          <div
+            v-for="conflict in conflicts"
+            :key="conflict.channelNumber"
+            class="issue-item conflict"
+          >
+            <div class="issue-channel">
+              CH{{ conflict.channelNumber + 1 }}
+            </div>
+            <div class="issue-description">
+              被多个解码器使用：
+              <span
+                v-for="(usage, index) in conflict.conflicts"
+                :key="usage.decoderId"
+                class="conflict-usage"
+              >
+                {{ usage.decoderName }}({{ usage.channelName }}){{ index < conflict.conflicts.length - 1 ? ', ' : '' }}
+              </span>
+            </div>
+            <div class="issue-actions">
+              <el-button
+                size="small"
+                type="primary"
+                @click="resolveConflict(conflict.channelNumber)"
+              >
+                解决冲突
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="warnings.length > 0"
+        class="warnings-section"
+      >
+        <h5 class="issue-title">
+          <el-icon class="warning-icon">
+            <WarningFilled />
+          </el-icon>
+          警告信息 ({{ warnings.length }})
+        </h5>
+        <div class="issue-list">
+          <div
+            v-for="warning in warnings"
+            :key="warning.id"
+            class="issue-item warning"
+          >
+            <div class="issue-description">
+              {{ warning.message }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 操作工具栏 -->
+    <div class="toolbar">
+      <div class="toolbar-section">
+        <el-button
+          :icon="RefreshRight"
+          @click="autoAssignAll"
+        >
+          自动分配全部
+        </el-button>
+        <el-button
+          :icon="Delete"
+          type="danger"
+          @click="clearAllMappings"
+        >
+          清空映射
+        </el-button>
+      </div>
+
+      <div class="toolbar-section">
+        <el-button
+          :icon="Download"
+          @click="exportAllMappings"
+        >
+          导出配置
+        </el-button>
+        <el-button
+          :icon="Upload"
+          @click="showImportDialog = true"
+        >
+          导入配置
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 导入配置对话框 -->
+    <el-dialog
+      v-model="showImportDialog"
+      title="导入通道映射配置"
+      width="600px"
+    >
+      <div class="import-dialog">
+        <ElUpload
+          ref="uploadRef"
+          :before-upload="handleImport"
+          :show-file-list="false"
+          accept=".json"
+          drag
+        >
+          <div class="upload-content">
+            <el-icon class="upload-icon">
+              <UploadFilled />
+            </el-icon>
+            <div class="upload-text">
+              点击或拖拽文件到此处上传
+            </div>
+            <div class="upload-hint">
+              支持 .json 格式的配置文件
+            </div>
+          </div>
+        </ElUpload>
+
+        <div class="import-textarea">
+          <el-input
+            v-model="importText"
+            type="textarea"
+            placeholder="或者直接粘贴配置JSON数据..."
+            :rows="8"
+          />
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="showImportDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :disabled="!importText.trim()"
+          @click="confirmImport"
+        >
+          导入
+        </el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
 
 <style scoped>
   .channel-mapping-visualizer {

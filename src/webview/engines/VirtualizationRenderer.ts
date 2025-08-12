@@ -1,4 +1,50 @@
-import type { VirtualizationConfig, LODLevel, RenderTile, ChannelDisplayInfo } from '../types/CanvasTypes';
+import type { ChannelDisplayInfo } from './ChannelLayoutManager';
+
+// 虚拟化配置接口
+interface VirtualizationConfig {
+  enableVirtualization: boolean;
+  tileSize: number;
+  maxCachedTiles: number;
+  lodThresholds: number[];
+  workerCount: number;
+  lodLevels: number[];
+  chunkSize: number;
+  maxConcurrentChunks: number;
+  enableTileCache: boolean;
+  enableWebWorker: boolean;
+  adaptiveLOD: boolean;
+  frameTimeTarget: number;
+  enableViewportCulling: boolean;
+  renderMargin: number;
+  tileCacheSize: number;
+}
+
+// LOD级别接口
+interface LODLevel {
+  level: number;
+  samplesPerPixel: number;
+  minZoom: number;
+  maxZoom: number;
+  renderStrategy?: string;
+}
+
+// 渲染瓦片接口
+interface RenderTile {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  data: ImageData | null;
+  isDirty: boolean;
+  imageData?: ImageData;
+  startSample?: number;
+  endSample?: number;
+  lodLevel?: number;
+  channelIndex?: number;
+  lastUsed?: number;
+  renderTime?: number;
+}
 
 /**
  * 虚拟化渲染器
@@ -68,8 +114,9 @@ export class VirtualizationRenderer {
     this.lodLevels = this.config.lodLevels.map((samplesPerPixel, index) => ({
       level: index,
       samplesPerPixel,
-      renderStrategy: this.selectRenderStrategy(samplesPerPixel),
-      compressionRatio: Math.min(samplesPerPixel / 10, 1.0)
+      minZoom: index === 0 ? 1 : this.config.lodLevels[index - 1],
+      maxZoom: index === this.config.lodLevels.length - 1 ? Infinity : samplesPerPixel * 2,
+      renderStrategy: this.selectRenderStrategy(samplesPerPixel)
     }));
   }
 
@@ -566,6 +613,12 @@ export class VirtualizationRenderer {
 
     return {
       id: task.id,
+      x: 0,
+      y: task.channelInfo.yPosition,
+      width: tileWidth,
+      height: tileHeight,
+      data: tileCtx.getImageData(0, 0, tileWidth, tileHeight),
+      isDirty: false,
       startSample: task.startSample,
       endSample: task.endSample,
       lodLevel: task.lodLevel,

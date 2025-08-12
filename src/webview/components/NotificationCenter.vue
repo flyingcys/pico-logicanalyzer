@@ -3,157 +3,6 @@
 提供统一的错误处理、消息提示和操作指导
 -->
 
-<template>
-  <div class="notification-center">
-    <!-- 全局加载指示器 -->
-    <div v-if="globalLoading.show" class="global-loading-overlay">
-      <div class="loading-content">
-        <el-loading
-          :text="globalLoading.text"
-          :spinner="Eleme"
-          background="rgba(0, 0, 0, 0.7)"
-          element-loading-text="Loading..."
-        />
-        <div v-if="globalLoading.progress >= 0" class="loading-progress">
-          <el-progress
-            :percentage="globalLoading.progress"
-            :status="globalLoading.status"
-            :stroke-width="6"
-          />
-          <div class="progress-details">
-            <span class="progress-text">{{ globalLoading.detail }}</span>
-            <span class="progress-percent">{{ globalLoading.progress }}%</span>
-          </div>
-        </div>
-        <el-button
-          v-if="globalLoading.cancellable"
-          type="danger"
-          size="small"
-          @click="cancelGlobalOperation"
-          class="cancel-button"
-        >
-          取消操作
-        </el-button>
-      </div>
-    </div>
-
-    <!-- 操作提示 -->
-    <transition-group name="tooltip" tag="div" class="tooltips-container">
-      <div
-        v-for="tooltip in activeTooltips"
-        :key="tooltip.id"
-        class="operation-tooltip"
-        :class="tooltip.type"
-        :style="getTooltipStyle(tooltip)"
-      >
-        <div class="tooltip-content">
-          <el-icon class="tooltip-icon">
-            <component :is="tooltip.icon" />
-          </el-icon>
-          <div class="tooltip-text">
-            <div class="tooltip-title">{{ tooltip.title }}</div>
-            <div v-if="tooltip.description" class="tooltip-description">
-              {{ tooltip.description }}
-            </div>
-          </div>
-          <el-button
-            type="text"
-            :icon="Close"
-            @click="dismissTooltip(tooltip.id)"
-            class="tooltip-close"
-          />
-        </div>
-        <div v-if="tooltip.actions" class="tooltip-actions">
-          <el-button
-            v-for="action in tooltip.actions"
-            :key="action.id"
-            :type="action.type"
-            :size="action.size || 'small'"
-            @click="executeTooltipAction(tooltip.id, action)"
-          >
-            {{ action.label }}
-          </el-button>
-        </div>
-      </div>
-    </transition-group>
-
-    <!-- 状态指示器 -->
-    <div class="status-indicators">
-      <!-- 连接状态 -->
-      <div
-        v-if="connectionStatus.show"
-        class="status-indicator connection-status"
-        :class="connectionStatus.status"
-        @click="showConnectionDetails"
-      >
-        <el-icon class="status-icon">
-          <component :is="connectionStatus.icon" />
-        </el-icon>
-        <span class="status-text">{{ connectionStatus.text }}</span>
-        <div v-if="connectionStatus.progress >= 0" class="status-progress">
-          <div
-            class="progress-bar"
-            :style="{ width: `${connectionStatus.progress}%` }"
-          />
-        </div>
-      </div>
-
-      <!-- 性能警告 -->
-      <div
-        v-if="performanceWarning.show"
-        class="status-indicator performance-warning"
-        @click="showPerformanceDetails"
-      >
-        <el-icon class="status-icon">
-          <Warning />
-        </el-icon>
-        <span class="status-text">性能</span>
-        <div class="warning-badge">{{ performanceWarning.level }}</div>
-      </div>
-
-      <!-- 内存使用 -->
-      <div
-        v-if="memoryUsage.show"
-        class="status-indicator memory-usage"
-        :class="{ warning: memoryUsage.isHigh }"
-        @click="showMemoryDetails"
-      >
-        <el-icon class="status-icon">
-          <MemoryCard />
-        </el-icon>
-        <span class="status-text">{{ formatBytes(memoryUsage.used) }}</span>
-      </div>
-    </div>
-
-    <!-- 帮助气泡 -->
-    <div
-      v-if="helpBubble.show"
-      class="help-bubble"
-      :style="getHelpBubbleStyle()"
-    >
-      <div class="bubble-content">
-        <div class="bubble-title">
-          <el-icon><QuestionFilled /></el-icon>
-          {{ helpBubble.title }}
-        </div>
-        <div class="bubble-text">{{ helpBubble.text }}</div>
-        <div v-if="helpBubble.actions" class="bubble-actions">
-          <el-button
-            v-for="action in helpBubble.actions"
-            :key="action.id"
-            :type="action.type"
-            size="small"
-            @click="executeHelpAction(action)"
-          >
-            {{ action.label }}
-          </el-button>
-        </div>
-      </div>
-      <div class="bubble-arrow" />
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
   import { ref, reactive, onMounted, onUnmounted } from 'vue';
   import {
@@ -297,7 +146,7 @@
   const showTooltip = (tooltip: Omit<OperationTooltip, 'id'>) => {
     const id = `tooltip-${++tooltipIdCounter.value}`;
     const fullTooltip: OperationTooltip = { ...tooltip, id };
-    
+
     activeTooltips.value.push(fullTooltip);
 
     // 自动消失
@@ -540,9 +389,9 @@
       setInterval(() => {
         const cpuUsage = Math.random() * 100;
         const memUsage = Math.random() * 200 * 1024 * 1024; // 0-200MB
-        
+
         updateMemoryUsage(memUsage, 512 * 1024 * 1024); // 总内存512MB
-        
+
         if (cpuUsage > 80) {
           updatePerformanceWarning('high', 'CPU使用率过高');
         } else if (cpuUsage > 60) {
@@ -573,6 +422,185 @@
     hideHelpBubble
   });
 </script>
+
+<template>
+  <div class="notification-center">
+    <!-- 全局加载指示器 -->
+    <div
+      v-if="globalLoading.show"
+      class="global-loading-overlay"
+    >
+      <div class="loading-content">
+        <el-loading
+          :text="globalLoading.text"
+          :spinner="Eleme"
+          background="rgba(0, 0, 0, 0.7)"
+          element-loading-text="Loading..."
+        />
+        <div
+          v-if="globalLoading.progress >= 0"
+          class="loading-progress"
+        >
+          <el-progress
+            :percentage="globalLoading.progress"
+            :status="globalLoading.status"
+            :stroke-width="6"
+          />
+          <div class="progress-details">
+            <span class="progress-text">{{ globalLoading.detail }}</span>
+            <span class="progress-percent">{{ globalLoading.progress }}%</span>
+          </div>
+        </div>
+        <el-button
+          v-if="globalLoading.cancellable"
+          type="danger"
+          size="small"
+          class="cancel-button"
+          @click="cancelGlobalOperation"
+        >
+          取消操作
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 操作提示 -->
+    <transition-group
+      name="tooltip"
+      tag="div"
+      class="tooltips-container"
+    >
+      <div
+        v-for="tooltip in activeTooltips"
+        :key="tooltip.id"
+        class="operation-tooltip"
+        :class="tooltip.type"
+        :style="getTooltipStyle(tooltip)"
+      >
+        <div class="tooltip-content">
+          <el-icon class="tooltip-icon">
+            <component :is="tooltip.icon" />
+          </el-icon>
+          <div class="tooltip-text">
+            <div class="tooltip-title">
+              {{ tooltip.title }}
+            </div>
+            <div
+              v-if="tooltip.description"
+              class="tooltip-description"
+            >
+              {{ tooltip.description }}
+            </div>
+          </div>
+          <el-button
+            type="text"
+            :icon="Close"
+            class="tooltip-close"
+            @click="dismissTooltip(tooltip.id)"
+          />
+        </div>
+        <div
+          v-if="tooltip.actions"
+          class="tooltip-actions"
+        >
+          <el-button
+            v-for="action in tooltip.actions"
+            :key="action.id"
+            :type="action.type"
+            :size="action.size || 'small'"
+            @click="executeTooltipAction(tooltip.id, action)"
+          >
+            {{ action.label }}
+          </el-button>
+        </div>
+      </div>
+    </transition-group>
+
+    <!-- 状态指示器 -->
+    <div class="status-indicators">
+      <!-- 连接状态 -->
+      <div
+        v-if="connectionStatus.show"
+        class="status-indicator connection-status"
+        :class="connectionStatus.status"
+        @click="showConnectionDetails"
+      >
+        <el-icon class="status-icon">
+          <component :is="connectionStatus.icon" />
+        </el-icon>
+        <span class="status-text">{{ connectionStatus.text }}</span>
+        <div
+          v-if="connectionStatus.progress >= 0"
+          class="status-progress"
+        >
+          <div
+            class="progress-bar"
+            :style="{ width: `${connectionStatus.progress}%` }"
+          />
+        </div>
+      </div>
+
+      <!-- 性能警告 -->
+      <div
+        v-if="performanceWarning.show"
+        class="status-indicator performance-warning"
+        @click="showPerformanceDetails"
+      >
+        <el-icon class="status-icon">
+          <Warning />
+        </el-icon>
+        <span class="status-text">性能</span>
+        <div class="warning-badge">
+          {{ performanceWarning.level }}
+        </div>
+      </div>
+
+      <!-- 内存使用 -->
+      <div
+        v-if="memoryUsage.show"
+        class="status-indicator memory-usage"
+        :class="{ warning: memoryUsage.isHigh }"
+        @click="showMemoryDetails"
+      >
+        <el-icon class="status-icon">
+          <MemoryCard />
+        </el-icon>
+        <span class="status-text">{{ formatBytes(memoryUsage.used) }}</span>
+      </div>
+    </div>
+
+    <!-- 帮助气泡 -->
+    <div
+      v-if="helpBubble.show"
+      class="help-bubble"
+      :style="getHelpBubbleStyle()"
+    >
+      <div class="bubble-content">
+        <div class="bubble-title">
+          <el-icon><QuestionFilled /></el-icon>
+          {{ helpBubble.title }}
+        </div>
+        <div class="bubble-text">
+          {{ helpBubble.text }}
+        </div>
+        <div
+          v-if="helpBubble.actions"
+          class="bubble-actions"
+        >
+          <el-button
+            v-for="action in helpBubble.actions"
+            :key="action.id"
+            :type="action.type"
+            size="small"
+            @click="executeHelpAction(action)"
+          >
+            {{ action.label }}
+          </el-button>
+        </div>
+      </div>
+      <div class="bubble-arrow" />
+    </div>
+  </div>
+</template>
 
 <style scoped>
   .notification-center {

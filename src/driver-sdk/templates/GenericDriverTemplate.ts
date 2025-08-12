@@ -516,10 +516,13 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
   override async getVoltageStatus(): Promise<string> {
     try {
       // TODO: 查询设备电压状态
+      // 当实现具体设备查询时，取消注释以下代码：
       // const voltage = await this.sendCommand('VOLTAGE?');
       // return voltage;
 
-      return 'N/A'; // 默认不支持
+      // 默认返回不支持
+      return 'N/A';
+    // eslint-disable-next-line no-unreachable
     } catch (error) {
       console.error('电压状态查询失败:', error);
       return 'ERROR';

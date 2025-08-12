@@ -110,7 +110,7 @@ export class Stage7SelfTest {
 
       // 测试波形数据导出
       const csvResult = await dataExportService.exportWaveformData(
-        testSession, 'csv', { filename: 'test_waveform' }
+        testSession, 'csv', { filename: 'test_waveform', timeRange: 'all' }
       );
 
       if (!csvResult.success || !csvResult.data) {
@@ -119,7 +119,7 @@ export class Stage7SelfTest {
 
       // 测试解码结果导出
       const jsonResult = await dataExportService.exportDecoderResults(
-        testDecoderResults, 'json', { filename: 'test_decoder', selectedDecoders: ['i2c'] }
+        testDecoderResults, 'json', { filename: 'test_decoder', selectedDecoders: ['i2c'], timeRange: 'all' }
       );
 
       if (!jsonResult.success || !jsonResult.data) {
@@ -128,7 +128,7 @@ export class Stage7SelfTest {
 
       // 验证LAC格式导出
       const lacResult = await dataExportService.exportWaveformData(
-        testSession, 'lac', { filename: 'test_lac' }
+        testSession, 'lac', { filename: 'test_lac', timeRange: 'all' }
       );
 
       if (!lacResult.success || !lacResult.data) {
@@ -137,7 +137,7 @@ export class Stage7SelfTest {
 
       // 验证VCD格式导出
       const vcdResult = await dataExportService.exportWaveformData(
-        testSession, 'vcd', { filename: 'test_vcd', selectedChannels: [0, 1, 2] }
+        testSession, 'vcd', { filename: 'test_vcd', selectedChannels: [0, 1, 2], timeRange: 'all' }
       );
 
       if (!vcdResult.success || !vcdResult.data) {
@@ -436,7 +436,7 @@ export class Stage7SelfTest {
       // 3. 数据导出
       const testSession = this.createTestCaptureSession();
       const exportResult = await dataExportService.exportWaveformData(
-        testSession, 'csv', { filename: 'integration_test' }
+        testSession, 'csv', { filename: 'integration_test', timeRange: 'all' }
       );
 
       if (!measurementResult.channels || measurementResult.channels.length === 0) {
@@ -507,29 +507,41 @@ export class Stage7SelfTest {
       frequency: 1000000,
       preTriggerSamples: 1000,
       postTriggerSamples: 9000,
+      totalSamples: 10000,
       triggerType: TriggerType.Edge,
       triggerChannel: 0,
       triggerInverted: false,
       loopCount: 0,
       measureBursts: false,
+      clone: function() { return { ...this }; },
+      cloneSettings: function() { 
+        const { captureChannels, ...settings } = this; 
+        return settings; 
+      },
       captureChannels: [
         {
           channelNumber: 0,
           channelName: 'CH0',
+          textualChannelNumber: 'CH0',
           hidden: false,
-          samples: this.createTestSampleData(10000)
+          samples: this.createTestSampleData(10000),
+          clone: function() { return { ...this }; }
         },
         {
           channelNumber: 1,
           channelName: 'CH1',
+          textualChannelNumber: 'CH1',
           hidden: false,
-          samples: this.createTestSampleData(10000)
+          samples: this.createTestSampleData(10000),
+          clone: function() { return { ...this }; }
         },
         {
           channelNumber: 2,
           channelName: 'CH2',
+          textualChannelNumber: 'CH2',
           hidden: false,
-          samples: this.createTestSampleData(10000)
+          samples: this.createTestSampleData(10000),
+          clone: function() { return { ...this }; }
         }
       ]
     };
@@ -543,20 +555,26 @@ export class Stage7SelfTest {
       {
         channelNumber: 0,
         channelName: 'SCL',
+        textualChannelNumber: 'CH0',
         hidden: false,
-        samples: this.createTestSampleData(10000)
+        samples: this.createTestSampleData(10000),
+        clone: function() { return { ...this }; }
       },
       {
         channelNumber: 1,
         channelName: 'SDA',
+        textualChannelNumber: 'CH1',
         hidden: false,
-        samples: this.createTestSampleData(10000)
+        samples: this.createTestSampleData(10000),
+        clone: function() { return { ...this }; }
       },
       {
         channelNumber: 2,
         channelName: 'CS',
+        textualChannelNumber: 'CH2',
         hidden: false,
-        samples: this.createTestSampleData(10000)
+        samples: this.createTestSampleData(10000),
+        clone: function() { return { ...this }; }
       }
     ];
   }
@@ -593,21 +611,21 @@ export class Stage7SelfTest {
 
     results.set('i2c', [
       {
-        annotationType: 'start',
+        annotationType: 0, // start
         startSample: 100,
         endSample: 101,
         values: ['Start'],
         rawData: null
       },
       {
-        annotationType: 'address-write',
+        annotationType: 1, // address-write
         startSample: 102,
         endSample: 110,
         values: ['Address: 0x50'],
         rawData: 0x50
       },
       {
-        annotationType: 'data-write',
+        annotationType: 2, // data-write
         startSample: 120,
         endSample: 128,
         values: ['Data: 0xFF'],

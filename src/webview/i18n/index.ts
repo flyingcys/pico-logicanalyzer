@@ -45,7 +45,7 @@ const i18n = createI18n({
 export default i18n;
 
 // 切换语言的辅助函数
-export const switchLocale = (locale: string) => {
+export const switchLocale = (locale: 'zh-CN' | 'en-US') => {
   i18n.global.locale.value = locale;
 
   try {

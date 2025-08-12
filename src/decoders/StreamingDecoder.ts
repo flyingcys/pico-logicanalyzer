@@ -259,6 +259,7 @@ export abstract class StreamingDecoderBase {
       // 为每个数据块创建通道数据切片
       const chunkChannelData: ChannelData[] = channels.map(channel => ({
         channelNumber: channel.channelNumber,
+        channelName: channel.channelName || `Channel ${channel.channelNumber}`,
         samples: channel.samples?.slice(actualStart, end) || new Uint8Array()
       }));
 

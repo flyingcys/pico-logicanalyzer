@@ -19,6 +19,7 @@ export interface DetectedDevice {
   name: string; // 设备名称
   type: 'serial' | 'network' | 'usb'; // 连接类型
   connectionString: string; // 连接字符串
+  connectionPath?: string; // 连接路径（兼容属性）
   driverType: AnalyzerDriverType; // 驱动类型
   capabilities?: AnalyzerDeviceInfo; // 设备能力描述
   confidence: number; // 检测置信度 (0-100)
@@ -281,25 +282,27 @@ export class HardwareDriverManager extends EventEmitter {
    * 创建驱动实例
    */
   createDriver(device: DetectedDevice): Promise<AnalyzerDriverBase> {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const driverRegistration = await this.matchDriver(device);
+    return new Promise((resolve, reject) => {
+      (async () => {
+        try {
+          const driverRegistration = await this.matchDriver(device);
 
-        if (!driverRegistration) {
-          reject(new Error(`No suitable driver found for device: ${device.name}`));
-          return;
+          if (!driverRegistration) {
+            reject(new Error(`No suitable driver found for device: ${device.name}`));
+            return;
+          }
+
+          const driver = this.createDriverInstance(
+            driverRegistration.driverClass,
+            device.connectionString
+          );
+
+          this.emit('driverCreated', { device, driver, registration: driverRegistration });
+          resolve(driver);
+        } catch (error) {
+          reject(new Error(`Failed to create driver for device ${device.name}: ${error}`));
         }
-
-        const driver = this.createDriverInstance(
-          driverRegistration.driverClass,
-          device.connectionString
-        );
-
-        this.emit('driverCreated', { device, driver, registration: driverRegistration });
-        resolve(driver);
-      } catch (error) {
-        reject(new Error(`Failed to create driver for device ${device.name}: ${error}`));
-      }
+      })();
     });
   }
 

@@ -89,6 +89,7 @@ export interface HardwareCapability {
     manufacturer?: string;      // 制造商
     model?: string;            // 型号
     revision?: string;         // 硬件版本
+    description?: string;      // 设备描述
     calibrationDate?: Date;    // 校准日期
     certifications?: string[]; // 认证信息
   };
@@ -824,7 +825,18 @@ export class HardwareCapabilityBuilder {
   }
 
   // 便捷的触发配置方法
-  addTriggerType(type: string, options: any): this {
+  addTriggerType(type: string, options?: any): this {
+    // 更新测试格式
+    if (!this.testCapability.triggers) {
+      this.testCapability.triggers = {
+        supportedTypes: [],
+        maxChannels: 0
+      };
+    }
+    if (!this.testCapability.triggers.supportedTypes.includes(type)) {
+      this.testCapability.triggers.supportedTypes.push(type);
+    }
+
     if (!this.capability.triggers) {
       this.capability.triggers = {} as TriggerCapability;
     }
@@ -841,7 +853,7 @@ export class HardwareCapabilityBuilder {
         if (!this.capability.triggers.types.includes(0)) {
           this.capability.triggers.types.push(0);
         }
-        if (options.supportedEdges) {
+        if (options?.supportedEdges) {
           this.capability.triggers.conditions = [
             ...this.capability.triggers.conditions,
             ...options.supportedEdges
@@ -849,10 +861,11 @@ export class HardwareCapabilityBuilder {
         }
         break;
       case 'level':
+      case 'complex':
         if (!this.capability.triggers.types.includes(1)) {
           this.capability.triggers.types.push(1);
         }
-        if (options.supportedLevels) {
+        if (options?.supportedLevels) {
           this.capability.triggers.conditions = [
             ...this.capability.triggers.conditions,
             ...options.supportedLevels
@@ -860,6 +873,7 @@ export class HardwareCapabilityBuilder {
         }
         break;
       case 'pulse':
+      case 'pattern':
         if (!this.capability.triggers.types.includes(2)) {
           this.capability.triggers.types.push(2);
         }
@@ -886,60 +900,6 @@ export class HardwareCapabilityBuilder {
       };
     }
     this.testCapability.triggers.maxChannels = count;
-    return this;
-  }
-
-  // 测试期望的触发类型添加方法
-  addTriggerType(type: string): this {
-    // 更新测试格式
-    if (!this.testCapability.triggers) {
-      this.testCapability.triggers = {
-        supportedTypes: [],
-        maxChannels: 0
-      };
-    }
-    if (!this.testCapability.triggers.supportedTypes.includes(type)) {
-      this.testCapability.triggers.supportedTypes.push(type);
-    }
-
-    // 也更新原始格式以保持兼容性
-    if (!this.capability.triggers) {
-      this.capability.triggers = {} as TriggerCapability;
-    }
-    if (!this.capability.triggers.types) {
-      this.capability.triggers.types = [];
-    }
-    if (!this.capability.triggers.conditions) {
-      this.capability.triggers.conditions = [];
-    }
-
-    // 根据类型添加相应的触发能力
-    switch (type) {
-      case 'edge':
-        if (!this.capability.triggers.types.includes(0)) {
-          this.capability.triggers.types.push(0);
-        }
-        break;
-      case 'complex':
-        if (!this.capability.triggers.types.includes(1)) {
-          this.capability.triggers.types.push(1);
-        }
-        break;
-      case 'pattern':
-        if (!this.capability.triggers.types.includes(2)) {
-          this.capability.triggers.types.push(2);
-        }
-        break;
-      case 'pulse':
-        if (!this.capability.triggers.types.includes(2)) {
-          this.capability.triggers.types.push(2);
-        }
-        if (!this.capability.triggers.advancedTriggers) {
-          this.capability.triggers.advancedTriggers = {};
-        }
-        this.capability.triggers.advancedTriggers.pulseWidth = true;
-        break;
-    }
     return this;
   }
 
@@ -1323,68 +1283,9 @@ export class HardwareCapabilityBuilder {
     return this;
   }
 
-  // 验证方法
-  validate(capabilities: TestHardwareCapabilities): {
-    isValid: boolean;
-    errors: string[];
-    warnings: string[];
-  } {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    // 检查通道数量
-    if (!capabilities.channels || capabilities.channels.digital.count <= 0) {
-      errors.push('数字通道数量必须大于0');
-    }
-
-    // 检查采样率
-    if (!capabilities.sampling || capabilities.sampling.maxSampleRate <= 0) {
-      errors.push('最大采样率必须大于0');
-    }
-
-    // 检查缓冲区大小
-    if (!capabilities.sampling || capabilities.sampling.bufferSize <= 0) {
-      errors.push('缓冲区大小必须大于0');
-    }
-
-    // 性能警告
-    if (capabilities.channels && capabilities.channels.digital.count > 128) {
-      warnings.push('通道数量过多，可能影响性能');
-    }
-
-    if (capabilities.sampling && capabilities.sampling.maxSampleRate > 10000000000) {
-      warnings.push('采样率过高，可能不现实');
-    }
-
-    if (capabilities.sampling && capabilities.sampling.bufferSize > 10000000000) {
-      warnings.push('缓冲区过大，可能导致内存问题');
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings
-    };
-  }
-
   // 导出和导入方法
   exportToJSON(capabilities: TestHardwareCapabilities): string {
     return JSON.stringify(capabilities, null, 2);
-  }
-
-  importFromJSON(json: string): TestHardwareCapabilities {
-    try {
-      const parsed = JSON.parse(json);
-
-      // 验证基本结构
-      if (!parsed.basicInfo || !parsed.channels || !parsed.sampling) {
-        throw new Error('JSON结构无效');
-      }
-
-      return parsed as TestHardwareCapabilities;
-    } catch (error) {
-      throw new Error(`导入JSON失败: ${error}`);
-    }
   }
 
   /**

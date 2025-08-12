@@ -3,89 +3,6 @@
 显示所有可用的键盘快捷键和操作提示
 -->
 
-<template>
-  <el-dialog
-    v-model="visible"
-    title="键盘快捷键帮助"
-    :width="800"
-    :modal="true"
-    :close-on-click-modal="true"
-    :close-on-press-escape="true"
-    class="shortcut-help-dialog"
-  >
-    <div class="help-content">
-      <!-- 搜索框 -->
-      <div class="search-section">
-        <el-input
-          v-model="searchText"
-          placeholder="搜索快捷键..."
-          :prefix-icon="Search"
-          clearable
-          class="search-input"
-        />
-      </div>
-
-      <!-- 快捷键分类 -->
-      <div class="shortcuts-container">
-        <div
-          v-for="category in filteredCategories"
-          :key="category.name"
-          class="category-section"
-        >
-          <h3 class="category-title">
-            <el-icon class="category-icon">
-              <component :is="getCategoryIcon(category.name)" />
-            </el-icon>
-            {{ category.name }}
-            <span class="shortcut-count">({{ category.shortcuts.length }})</span>
-          </h3>
-          
-          <div class="shortcuts-grid">
-            <div
-              v-for="shortcut in category.shortcuts"
-              :key="shortcut.id"
-              class="shortcut-item"
-              :class="{ disabled: !shortcut.enabled }"
-            >
-              <div class="shortcut-keys">
-                <span
-                  v-for="(key, index) in shortcut.keys"
-                  :key="index"
-                  class="key-badge"
-                >
-                  {{ formatKey(key) }}
-                </span>
-              </div>
-              <div class="shortcut-description">
-                {{ shortcut.description }}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 没有搜索结果 -->
-      <div v-if="filteredCategories.length === 0" class="no-results">
-        <el-empty description="未找到匹配的快捷键" :image-size="80" />
-      </div>
-    </div>
-
-    <template #footer>
-      <div class="dialog-footer">
-        <div class="footer-info">
-          <el-icon><InfoFilled /></el-icon>
-          <span>提示：在输入框中输入时，快捷键会被暂时禁用</span>
-        </div>
-        <div class="footer-actions">
-          <el-button @click="resetToDefaults">恢复默认</el-button>
-          <el-button @click="exportShortcuts">导出配置</el-button>
-          <el-button type="primary" @click="closeDialog">关闭</el-button>
-        </div>
-      </div>
-    </template>
-  </el-dialog>
-</template>
-
 <script setup lang="ts">
   import { ref, computed, watch } from 'vue';
   import { Search, InfoFilled, Monitor, Connection, VideoPlay, Document, Grid, Cpu, Setting, QuestionFilled } from '@element-plus/icons-vue';
@@ -147,7 +64,7 @@
       '面板控制': Setting,
       '帮助': QuestionFilled
     };
-    
+
     return iconMap[categoryName] || Cpu;
   };
 
@@ -179,13 +96,13 @@
       const exportData = {
         version: '1.0',
         timestamp: new Date().toISOString(),
-        shortcuts: shortcuts
+        shortcuts
       };
-      
+
       const blob = new Blob([JSON.stringify(exportData, null, 2)], {
         type: 'application/json'
       });
-      
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -194,7 +111,7 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
+
       ElMessage.success('快捷键配置已导出');
     } catch (error) {
       console.error('导出快捷键配置失败:', error);
@@ -214,6 +131,104 @@
     }
   });
 </script>
+
+<template>
+  <el-dialog
+    v-model="visible"
+    title="键盘快捷键帮助"
+    :width="800"
+    :modal="true"
+    :close-on-click-modal="true"
+    :close-on-press-escape="true"
+    class="shortcut-help-dialog"
+  >
+    <div class="help-content">
+      <!-- 搜索框 -->
+      <div class="search-section">
+        <el-input
+          v-model="searchText"
+          placeholder="搜索快捷键..."
+          :prefix-icon="Search"
+          clearable
+          class="search-input"
+        />
+      </div>
+
+      <!-- 快捷键分类 -->
+      <div class="shortcuts-container">
+        <div
+          v-for="category in filteredCategories"
+          :key="category.name"
+          class="category-section"
+        >
+          <h3 class="category-title">
+            <el-icon class="category-icon">
+              <component :is="getCategoryIcon(category.name)" />
+            </el-icon>
+            {{ category.name }}
+            <span class="shortcut-count">({{ category.shortcuts.length }})</span>
+          </h3>
+
+          <div class="shortcuts-grid">
+            <div
+              v-for="shortcut in category.shortcuts"
+              :key="shortcut.id"
+              class="shortcut-item"
+              :class="{ disabled: !shortcut.enabled }"
+            >
+              <div class="shortcut-keys">
+                <span
+                  v-for="(key, index) in shortcut.keys"
+                  :key="index"
+                  class="key-badge"
+                >
+                  {{ formatKey(key) }}
+                </span>
+              </div>
+              <div class="shortcut-description">
+                {{ shortcut.description }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 没有搜索结果 -->
+      <div
+        v-if="filteredCategories.length === 0"
+        class="no-results"
+      >
+        <el-empty
+          description="未找到匹配的快捷键"
+          :image-size="80"
+        />
+      </div>
+    </div>
+
+    <template #footer>
+      <div class="dialog-footer">
+        <div class="footer-info">
+          <el-icon><InfoFilled /></el-icon>
+          <span>提示：在输入框中输入时，快捷键会被暂时禁用</span>
+        </div>
+        <div class="footer-actions">
+          <el-button @click="resetToDefaults">
+            恢复默认
+          </el-button>
+          <el-button @click="exportShortcuts">
+            导出配置
+          </el-button>
+          <el-button
+            type="primary"
+            @click="closeDialog"
+          >
+            关闭
+          </el-button>
+        </div>
+      </div>
+    </template>
+  </el-dialog>
+</template>
 
 <style scoped>
   .shortcut-help-dialog {

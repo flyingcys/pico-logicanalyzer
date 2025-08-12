@@ -965,50 +965,46 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    * 基于C# StopCapture中的重连逻辑
    */
   private async reconnectDevice(): Promise<void> {
-    try {
-      if (this._isNetwork && this._tcpSocket && this._devAddr && this._devPort) {
-        // 网络连接重连
-        this._tcpSocket.destroy();
-        await new Promise(resolve => setTimeout(resolve, 1)); // 短暂等待
+    if (this._isNetwork && this._tcpSocket && this._devAddr && this._devPort) {
+      // 网络连接重连
+      this._tcpSocket.destroy();
+      await new Promise(resolve => setTimeout(resolve, 1)); // 短暂等待
 
-        this._tcpSocket = new Socket();
-        await new Promise<void>((resolve, reject) => {
-          this._tcpSocket!.connect(this._devPort!, this._devAddr!, () => {
-            this._currentStream = this._tcpSocket as NodeJS.ReadWriteStream;
-            this._lineParser = new ReadlineParser({ delimiter: '\n' });
-            this._tcpSocket!.pipe(this._lineParser);
-            resolve();
-          });
-
-          this._tcpSocket!.on('error', error => {
-            reject(new Error(`网络重连失败: ${error.message}`));
-          });
+      this._tcpSocket = new Socket();
+      await new Promise<void>((resolve, reject) => {
+        this._tcpSocket!.connect(this._devPort!, this._devAddr!, () => {
+          this._currentStream = this._tcpSocket as NodeJS.ReadWriteStream;
+          this._lineParser = new ReadlineParser({ delimiter: '\n' });
+          this._tcpSocket!.pipe(this._lineParser);
+          resolve();
         });
 
-      } else if (!this._isNetwork && this._serialPort) {
-        // 串口连接重连
-        if (this._serialPort.isOpen) {
-          this._serialPort.close();
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 1)); // 短暂等待
-
-        await new Promise<void>((resolve, reject) => {
-          this._serialPort!.open(error => {
-            if (error) {
-              reject(new Error(`串口重连失败: ${error.message}`));
-              return;
-            }
-
-            this._currentStream = this._serialPort as NodeJS.ReadWriteStream;
-            this._lineParser = new ReadlineParser({ delimiter: '\n' });
-            this._serialPort!.pipe(this._lineParser);
-            resolve();
-          });
+        this._tcpSocket!.on('error', error => {
+          reject(new Error(`网络重连失败: ${error.message}`));
         });
+      });
+
+    } else if (!this._isNetwork && this._serialPort) {
+      // 串口连接重连
+      if (this._serialPort.isOpen) {
+        this._serialPort.close();
       }
-    } catch (error) {
-      throw error;
+
+      await new Promise(resolve => setTimeout(resolve, 1)); // 短暂等待
+
+      await new Promise<void>((resolve, reject) => {
+        this._serialPort!.open(error => {
+          if (error) {
+            reject(new Error(`串口重连失败: ${error.message}`));
+            return;
+          }
+
+          this._currentStream = this._serialPort as NodeJS.ReadWriteStream;
+          this._lineParser = new ReadlineParser({ delimiter: '\n' });
+          this._serialPort!.pipe(this._lineParser);
+          resolve();
+        });
+      });
     }
   }
 
@@ -1134,7 +1130,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    * 计算采集限制
    * 基于C# GetLimits方法
    */
-  private getLimits(channels: number[]): {
+  public getLimits(channels: number[]): {
     minPreSamples: number;
     maxPreSamples: number;
     minPostSamples: number;

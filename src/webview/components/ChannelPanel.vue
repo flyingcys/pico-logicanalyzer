@@ -4,254 +4,6 @@
 提供通道显示、命名、颜色和可见性控制
 -->
 
-<template>
-  <div class="channel-panel">
-    <!-- 通道面板头部 -->
-    <div class="channel-header">
-      <h3 class="channel-title">
-        <el-icon><DataLine /></el-icon>
-        通道控制
-      </h3>
-      <div class="channel-actions">
-        <el-button-group size="small">
-          <el-button :icon="View" @click="showAllChannels" title="显示全部">
-            显示全部
-          </el-button>
-          <el-button :icon="Hide" @click="hideAllChannels" title="隐藏全部">
-            隐藏全部
-          </el-button>
-        </el-button-group>
-        <el-dropdown @command="handleChannelAction">
-          <el-button size="small" :icon="More">
-            更多
-            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="rename-batch">批量重命名</el-dropdown-item>
-              <el-dropdown-item command="reset-colors">重置颜色</el-dropdown-item>
-              <el-dropdown-item command="export-config">导出配置</el-dropdown-item>
-              <el-dropdown-item command="import-config">导入配置</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </div>
-    </div>
-
-    <!-- 通道过滤器 -->
-    <div class="channel-filters">
-      <el-input
-        v-model="searchQuery"
-        placeholder="搜索通道..."
-        :prefix-icon="Search"
-        size="small"
-        clearable
-        class="search-input"
-      />
-      <el-select
-        v-model="visibilityFilter"
-        placeholder="显示状态"
-        size="small"
-        class="filter-select"
-        clearable
-      >
-        <el-option label="全部" value="" />
-        <el-option label="显示中" value="visible" />
-        <el-option label="隐藏中" value="hidden" />
-      </el-select>
-    </div>
-
-    <!-- 通道列表 -->
-    <div class="channels-container">
-      <div v-if="filteredChannels.length === 0" class="no-channels">
-        <el-empty :image-size="60" description="没有找到匹配的通道" />
-      </div>
-
-      <div v-else class="channels-list">
-        <div
-          v-for="(channel, index) in filteredChannels"
-          :key="channel.number"
-          class="channel-item"
-          :class="{
-            hidden: channel.hidden,
-            selected: selectedChannel?.number === channel.number,
-            'even-row': index % 2 === 0,
-            'odd-row': index % 2 === 1
-          }"
-        >
-          <!-- 通道头部 -->
-          <div class="channel-header-row" @click="selectChannel(channel)">
-            <div class="channel-info">
-              <div class="channel-visibility">
-                <el-button
-                  :icon="channel.hidden ? Hide : View"
-                  size="small"
-                  text
-                  @click.stop="toggleChannelVisibility(channel)"
-                  :class="{ hidden: channel.hidden }"
-                  :title="channel.hidden ? '显示通道' : '隐藏通道'"
-                />
-              </div>
-
-              <div class="channel-number">
-                <span
-                  class="channel-label"
-                  :style="{ color: channel.color }"
-                  :title="`通道 ${channel.number}`"
-                >
-                  CH{{ channel.number }}
-                </span>
-              </div>
-
-              <div class="channel-color-indicator">
-                <div
-                  class="color-dot"
-                  :style="{ backgroundColor: channel.color }"
-                  @click.stop="showChannelColorPicker(channel)"
-                  :title="'点击更改颜色'"
-                />
-              </div>
-
-              <div class="channel-status">
-                <el-tag v-if="channel.hasData" size="small" type="success">有数据</el-tag>
-                <el-tag v-if="channel.hasAnnotations" size="small" type="info">有注释</el-tag>
-              </div>
-            </div>
-
-            <div class="channel-controls">
-              <el-dropdown @command="(cmd) => handleChannelCommand(cmd, channel)">
-                <el-button :icon="More" size="small" text />
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="goto-start">跳转到开始</el-dropdown-item>
-                    <el-dropdown-item command="goto-end">跳转到结束</el-dropdown-item>
-                    <el-dropdown-item command="measure-frequency">测量频率</el-dropdown-item>
-                    <el-dropdown-item command="add-marker">添加标记</el-dropdown-item>
-                    <el-dropdown-item divided command="export-data">导出数据</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </div>
-          </div>
-
-          <!-- 通道名称编辑 -->
-          <div class="channel-name-row">
-            <el-input
-              v-model="channel.name"
-              size="small"
-              placeholder="输入通道名称..."
-              @blur="updateChannelName(channel)"
-              @keyup.enter="updateChannelName(channel)"
-              class="channel-name-input"
-            />
-          </div>
-
-          <!-- 通道详细信息（展开时显示） -->
-          <div v-if="selectedChannel?.number === channel.number" class="channel-details">
-            <div class="detail-item">
-              <span class="detail-label">样本数:</span>
-              <span class="detail-value">{{ formatSampleCount(channel.sampleCount) }}</span>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">数据率:</span>
-              <span class="detail-value">{{ formatDataRate(channel.dataRate) }}</span>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">电平:</span>
-              <span class="detail-value">{{ channel.logicLevel || 'TTL' }}</span>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">阈值:</span>
-              <span class="detail-value">{{ channel.threshold || '1.65V' }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 通道统计信息 -->
-    <div class="channel-stats">
-      <div class="stats-row">
-        <div class="stat-item">
-          <span class="stat-label">总通道:</span>
-          <span class="stat-value">{{ channels.length }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">显示:</span>
-          <span class="stat-value">{{ visibleChannelCount }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">有数据:</span>
-          <span class="stat-value">{{ channelsWithData }}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 颜色选择器对话框 -->
-    <el-dialog v-model="showColorPicker" title="选择通道颜色" width="400px">
-      <div class="color-picker">
-        <div class="preset-colors">
-          <div
-            v-for="color in presetChannelColors"
-            :key="color"
-            class="color-item"
-            :style="{ backgroundColor: color }"
-            @click="selectChannelColor(color)"
-            :class="{ selected: currentChannelColor === color }"
-          />
-        </div>
-        <div class="custom-color">
-          <el-input
-            v-model="currentChannelColor"
-            placeholder="#RRGGBB"
-            class="color-input"
-          />
-          <el-button @click="generateRandomColor">随机</el-button>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="showColorPicker = false">取消</el-button>
-        <el-button type="primary" @click="confirmChannelColorSelection">确定</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 批量重命名对话框 -->
-    <el-dialog v-model="showBatchRename" title="批量重命名通道" width="500px">
-      <div class="batch-rename">
-        <el-form :model="batchRenameForm" label-width="100px">
-          <el-form-item label="命名模式">
-            <el-select v-model="batchRenameForm.pattern">
-              <el-option label="CH{N}" value="CH{N}" />
-              <el-option label="Channel {N}" value="Channel {N}" />
-              <el-option label="D{N}" value="D{N}" />
-              <el-option label="自定义前缀" value="custom" />
-            </el-select>
-          </el-form-item>
-          <el-form-item v-if="batchRenameForm.pattern === 'custom'" label="自定义前缀">
-            <el-input
-              v-model="batchRenameForm.customPrefix"
-              placeholder="输入前缀，如: GPIO"
-            />
-          </el-form-item>
-          <el-form-item label="起始编号">
-            <el-input-number v-model="batchRenameForm.startNumber" :min="0" />
-          </el-form-item>
-          <el-form-item label="应用范围">
-            <el-checkbox-group v-model="batchRenameForm.scope">
-              <el-checkbox label="visible">仅显示的通道</el-checkbox>
-              <el-checkbox label="all">所有通道</el-checkbox>
-            </el-checkbox-group>
-          </el-form-item>
-        </el-form>
-      </div>
-      <template #footer>
-        <el-button @click="showBatchRename = false">取消</el-button>
-        <el-button type="primary" @click="applyBatchRename">应用</el-button>
-      </template>
-    </el-dialog>
-  </div>
-</template>
-
 <script setup lang="ts">
   import { ref, computed, onMounted, watch } from 'vue';
   import {
@@ -300,7 +52,7 @@
   }>();
 
   // 响应式数据
-  const channels = ref<ChannelData[]>([]);
+  const localChannels = ref<ChannelData[]>([]);
   const selectedChannel = ref<ChannelData | null>(null);
   const searchQuery = ref('');
   const visibilityFilter = ref('');
@@ -329,7 +81,7 @@
 
   // 计算属性
   const filteredChannels = computed(() => {
-    let filtered = channels.value;
+    let filtered = localChannels.value;
 
     // 搜索过滤
     if (searchQuery.value) {
@@ -353,22 +105,22 @@
   });
 
   const visibleChannelCount = computed(() => {
-    return channels.value.filter(ch => !ch.hidden).length;
+    return localChannels.value.filter(ch => !ch.hidden).length;
   });
 
   const channelsWithData = computed(() => {
-    return channels.value.filter(ch => ch.hasData).length;
+    return localChannels.value.filter(ch => ch.hasData).length;
   });
 
   // 方法
   const initializeChannels = () => {
     if (props.channels && props.channels.length > 0) {
-      channels.value = [...props.channels];
+      localChannels.value = [...props.channels];
     } else {
       // 创建默认通道
-      channels.value = [];
+      localChannels.value = [];
       for (let i = 0; i < 24; i++) {
-        channels.value.push({
+        localChannels.value.push({
           number: i,
           name: `CH${i}`,
           color: getDefaultChannelColor(i),
@@ -396,7 +148,7 @@
   const toggleChannelVisibility = (channel: ChannelData) => {
     channel.hidden = !channel.hidden;
     emit('channel-visibility-changed', channel);
-    emit('channels-updated', channels.value);
+    emit('channels-updated', localChannels.value);
   };
 
   const updateChannelName = (channel: ChannelData) => {
@@ -404,7 +156,7 @@
       channel.name = `CH${channel.number}`;
     }
     emit('channel-name-changed', channel);
-    emit('channels-updated', channels.value);
+    emit('channels-updated', localChannels.value);
   };
 
   const showChannelColorPicker = (channel: ChannelData) => {
@@ -430,20 +182,20 @@
     if (selectedChannelForColor.value) {
       selectedChannelForColor.value.color = currentChannelColor.value;
       emit('channel-color-changed', selectedChannelForColor.value);
-      emit('channels-updated', channels.value);
+      emit('channels-updated', localChannels.value);
     }
     showColorPicker.value = false;
   };
 
   const showAllChannels = () => {
-    channels.value.forEach(ch => (ch.hidden = false));
-    emit('channels-updated', channels.value);
+    localChannels.value.forEach(ch => (ch.hidden = false));
+    emit('channels-updated', localChannels.value);
     ElMessage.success('已显示所有通道');
   };
 
   const hideAllChannels = () => {
-    channels.value.forEach(ch => (ch.hidden = true));
-    emit('channels-updated', channels.value);
+    localChannels.value.forEach(ch => (ch.hidden = true));
+    emit('channels-updated', localChannels.value);
     ElMessage.success('已隐藏所有通道');
   };
 
@@ -492,11 +244,11 @@
         type: 'warning'
       });
 
-      channels.value.forEach((ch, index) => {
+      localChannels.value.forEach((ch, index) => {
         ch.color = getDefaultChannelColor(index);
       });
 
-      emit('channels-updated', channels.value);
+      emit('channels-updated', localChannels.value);
       ElMessage.success('通道颜色已重置');
     } catch {
       // 用户取消
@@ -505,10 +257,10 @@
 
   const applyBatchRename = () => {
     const form = batchRenameForm.value;
-    let targetChannels = channels.value;
+    let targetChannels = localChannels.value;
 
     if (form.scope.includes('visible') && !form.scope.includes('all')) {
-      targetChannels = channels.value.filter(ch => !ch.hidden);
+      targetChannels = localChannels.value.filter(ch => !ch.hidden);
     }
 
     targetChannels.forEach((channel, index) => {
@@ -533,7 +285,7 @@
       channel.name = newName;
     });
 
-    emit('channels-updated', channels.value);
+    emit('channels-updated', localChannels.value);
     showBatchRename.value = false;
     ElMessage.success(`已重命名 ${targetChannels.length} 个通道`);
   };
@@ -541,7 +293,7 @@
   const exportChannelConfig = () => {
     const config = {
       timestamp: new Date().toISOString(),
-      channels: channels.value.map(ch => ({
+      channels: localChannels.value.map(ch => ({
         number: ch.number,
         name: ch.name,
         color: ch.color,
@@ -575,14 +327,14 @@
           const config = JSON.parse(e.target?.result as string);
           if (config.channels && Array.isArray(config.channels)) {
             config.channels.forEach((ch: any) => {
-              const existingChannel = channels.value.find(c => c.number === ch.number);
+              const existingChannel = localChannels.value.find(c => c.number === ch.number);
               if (existingChannel) {
                 existingChannel.name = ch.name || existingChannel.name;
                 existingChannel.color = ch.color || existingChannel.color;
                 existingChannel.hidden = ch.hidden !== undefined ? ch.hidden : existingChannel.hidden;
               }
             });
-            emit('channels-updated', channels.value);
+            emit('channels-updated', localChannels.value);
             ElMessage.success('通道配置已导入');
           }
         } catch (error) {
@@ -628,7 +380,7 @@
     () => props.selectedChannelNumber,
     (newNumber) => {
       if (newNumber >= 0) {
-        selectedChannel.value = channels.value.find(ch => ch.number === newNumber) || null;
+        selectedChannel.value = localChannels.value.find(ch => ch.number === newNumber) || null;
       } else {
         selectedChannel.value = null;
       }
@@ -640,6 +392,377 @@
     initializeChannels();
   });
 </script>
+
+<template>
+  <div class="channel-panel">
+    <!-- 通道面板头部 -->
+    <div class="channel-header">
+      <h3 class="channel-title">
+        <el-icon><DataLine /></el-icon>
+        通道控制
+      </h3>
+      <div class="channel-actions">
+        <el-button-group size="small">
+          <el-button
+            :icon="View"
+            title="显示全部"
+            @click="showAllChannels"
+          >
+            显示全部
+          </el-button>
+          <el-button
+            :icon="Hide"
+            title="隐藏全部"
+            @click="hideAllChannels"
+          >
+            隐藏全部
+          </el-button>
+        </el-button-group>
+        <el-dropdown @command="handleChannelAction">
+          <el-button
+            size="small"
+            :icon="More"
+          >
+            更多
+            <el-icon class="el-icon--right">
+              <ArrowDown />
+            </el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="rename-batch">
+                批量重命名
+              </el-dropdown-item>
+              <el-dropdown-item command="reset-colors">
+                重置颜色
+              </el-dropdown-item>
+              <el-dropdown-item command="export-config">
+                导出配置
+              </el-dropdown-item>
+              <el-dropdown-item command="import-config">
+                导入配置
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
+    </div>
+
+    <!-- 通道过滤器 -->
+    <div class="channel-filters">
+      <el-input
+        v-model="searchQuery"
+        placeholder="搜索通道..."
+        :prefix-icon="Search"
+        size="small"
+        clearable
+        class="search-input"
+      />
+      <el-select
+        v-model="visibilityFilter"
+        placeholder="显示状态"
+        size="small"
+        class="filter-select"
+        clearable
+      >
+        <el-option
+          label="全部"
+          value=""
+        />
+        <el-option
+          label="显示中"
+          value="visible"
+        />
+        <el-option
+          label="隐藏中"
+          value="hidden"
+        />
+      </el-select>
+    </div>
+
+    <!-- 通道列表 -->
+    <div class="channels-container">
+      <div
+        v-if="filteredChannels.length === 0"
+        class="no-channels"
+      >
+        <el-empty
+          :image-size="60"
+          description="没有找到匹配的通道"
+        />
+      </div>
+
+      <div
+        v-else
+        class="channels-list"
+      >
+        <div
+          v-for="(channel, index) in filteredChannels"
+          :key="channel.number"
+          class="channel-item"
+          :class="{
+            hidden: channel.hidden,
+            selected: selectedChannel?.number === channel.number,
+            'even-row': index % 2 === 0,
+            'odd-row': index % 2 === 1
+          }"
+        >
+          <!-- 通道头部 -->
+          <div
+            class="channel-header-row"
+            @click="selectChannel(channel)"
+          >
+            <div class="channel-info">
+              <div class="channel-visibility">
+                <el-button
+                  :icon="channel.hidden ? Hide : View"
+                  size="small"
+                  text
+                  :class="{ hidden: channel.hidden }"
+                  :title="channel.hidden ? '显示通道' : '隐藏通道'"
+                  @click.stop="toggleChannelVisibility(channel)"
+                />
+              </div>
+
+              <div class="channel-number">
+                <span
+                  class="channel-label"
+                  :style="{ color: channel.color }"
+                  :title="`通道 ${channel.number}`"
+                >
+                  CH{{ channel.number }}
+                </span>
+              </div>
+
+              <div class="channel-color-indicator">
+                <div
+                  class="color-dot"
+                  :style="{ backgroundColor: channel.color }"
+                  :title="'点击更改颜色'"
+                  @click.stop="showChannelColorPicker(channel)"
+                />
+              </div>
+
+              <div class="channel-status">
+                <el-tag
+                  v-if="channel.hasData"
+                  size="small"
+                  type="success"
+                >
+                  有数据
+                </el-tag>
+                <el-tag
+                  v-if="channel.hasAnnotations"
+                  size="small"
+                  type="info"
+                >
+                  有注释
+                </el-tag>
+              </div>
+            </div>
+
+            <div class="channel-controls">
+              <el-dropdown @command="(cmd) => handleChannelCommand(cmd, channel)">
+                <el-button
+                  :icon="More"
+                  size="small"
+                  text
+                />
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="goto-start">
+                      跳转到开始
+                    </el-dropdown-item>
+                    <el-dropdown-item command="goto-end">
+                      跳转到结束
+                    </el-dropdown-item>
+                    <el-dropdown-item command="measure-frequency">
+                      测量频率
+                    </el-dropdown-item>
+                    <el-dropdown-item command="add-marker">
+                      添加标记
+                    </el-dropdown-item>
+                    <el-dropdown-item
+                      divided
+                      command="export-data"
+                    >
+                      导出数据
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </div>
+
+          <!-- 通道名称编辑 -->
+          <div class="channel-name-row">
+            <el-input
+              v-model="channel.name"
+              size="small"
+              placeholder="输入通道名称..."
+              class="channel-name-input"
+              @blur="updateChannelName(channel)"
+              @keyup.enter="updateChannelName(channel)"
+            />
+          </div>
+
+          <!-- 通道详细信息（展开时显示） -->
+          <div
+            v-if="selectedChannel?.number === channel.number"
+            class="channel-details"
+          >
+            <div class="detail-item">
+              <span class="detail-label">样本数:</span>
+              <span class="detail-value">{{ formatSampleCount(channel.sampleCount) }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">数据率:</span>
+              <span class="detail-value">{{ formatDataRate(channel.dataRate) }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">电平:</span>
+              <span class="detail-value">{{ channel.logicLevel || 'TTL' }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">阈值:</span>
+              <span class="detail-value">{{ channel.threshold || '1.65V' }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 通道统计信息 -->
+    <div class="channel-stats">
+      <div class="stats-row">
+        <div class="stat-item">
+          <span class="stat-label">总通道:</span>
+          <span class="stat-value">{{ channels.length }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">显示:</span>
+          <span class="stat-value">{{ visibleChannelCount }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">有数据:</span>
+          <span class="stat-value">{{ channelsWithData }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 颜色选择器对话框 -->
+    <el-dialog
+      v-model="showColorPicker"
+      title="选择通道颜色"
+      width="400px"
+    >
+      <div class="color-picker">
+        <div class="preset-colors">
+          <div
+            v-for="color in presetChannelColors"
+            :key="color"
+            class="color-item"
+            :style="{ backgroundColor: color }"
+            :class="{ selected: currentChannelColor === color }"
+            @click="selectChannelColor(color)"
+          />
+        </div>
+        <div class="custom-color">
+          <el-input
+            v-model="currentChannelColor"
+            placeholder="#RRGGBB"
+            class="color-input"
+          />
+          <el-button @click="generateRandomColor">
+            随机
+          </el-button>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showColorPicker = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          @click="confirmChannelColorSelection"
+        >
+          确定
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 批量重命名对话框 -->
+    <el-dialog
+      v-model="showBatchRename"
+      title="批量重命名通道"
+      width="500px"
+    >
+      <div class="batch-rename">
+        <el-form
+          :model="batchRenameForm"
+          label-width="100px"
+        >
+          <el-form-item label="命名模式">
+            <el-select v-model="batchRenameForm.pattern">
+              <el-option
+                label="CH{N}"
+                value="CH{N}"
+              />
+              <el-option
+                label="Channel {N}"
+                value="Channel {N}"
+              />
+              <el-option
+                label="D{N}"
+                value="D{N}"
+              />
+              <el-option
+                label="自定义前缀"
+                value="custom"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item
+            v-if="batchRenameForm.pattern === 'custom'"
+            label="自定义前缀"
+          >
+            <el-input
+              v-model="batchRenameForm.customPrefix"
+              placeholder="输入前缀，如: GPIO"
+            />
+          </el-form-item>
+          <el-form-item label="起始编号">
+            <el-input-number
+              v-model="batchRenameForm.startNumber"
+              :min="0"
+            />
+          </el-form-item>
+          <el-form-item label="应用范围">
+            <el-checkbox-group v-model="batchRenameForm.scope">
+              <el-checkbox label="visible">
+                仅显示的通道
+              </el-checkbox>
+              <el-checkbox label="all">
+                所有通道
+              </el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="showBatchRename = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          @click="applyBatchRename"
+        >
+          应用
+        </el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
 
 <style scoped>
   .channel-panel {

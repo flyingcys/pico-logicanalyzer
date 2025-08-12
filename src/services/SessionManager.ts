@@ -159,7 +159,7 @@ export class SessionManager extends ServiceLifecycleBase {
     // 如果有未保存的更改，可选择保存
     if (this.unsavedChanges && this.currentSession) {
       try {
-        await this.saveCurrentSession();
+        await this.saveSession(this.currentSession);
       } catch (error) {
         if (!options.force) {
           throw error;
@@ -219,7 +219,7 @@ export class SessionManager extends ServiceLifecycleBase {
 
     // 保存当前会话（如果有未保存的更改）
     if (this.unsavedChanges && this.currentSession) {
-      await this.saveCurrentSession();
+      await this.saveSession(this.currentSession);
     }
 
     // 加载新会话（这里是模拟实现）
@@ -648,11 +648,12 @@ export class SessionManager extends ServiceLifecycleBase {
   /**
    * 清理资源
    */
-  dispose(): void {
+  async dispose(options?: ServiceDisposeOptions): Promise<boolean> {
     if (this.autoSaveTimer) {
       clearInterval(this.autoSaveTimer);
       this.autoSaveTimer = undefined;
     }
+    return true;
   }
 
   // 私有方法

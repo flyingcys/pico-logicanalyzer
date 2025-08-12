@@ -11,7 +11,8 @@ import {
   DecoderOptionValue,
   DecoderResult,
   DecoderOutputType,
-  ChannelData
+  ChannelData,
+  WaitConditions
 } from '../types';
 
 /**
@@ -116,10 +117,10 @@ export class I2CDecoder extends DecoderBase {
     if (channels.length < 2) {
       throw new Error('I2C decoder requires both SCL and SDA channels');
     }
-    
+
     const sclChannel = channels.find(ch => ch.channelName?.toLowerCase().includes('scl') || ch.channelNumber === 0);
     const sdaChannel = channels.find(ch => ch.channelName?.toLowerCase().includes('sda') || ch.channelNumber === 1);
-    
+
     if (!sclChannel) {
       throw new Error('I2C decoder requires SCL channel');
     }
@@ -160,10 +161,10 @@ export class I2CDecoder extends DecoderBase {
           this.handleAddressOrData(ss, es, sda);
         } else if (this.collectsByte()) {
           // 等待多种条件的组合 (lines 341-358)
-          const conditions = [
+          const conditions: WaitConditions = [
             { 0: 'rising' },              // 数据采样 - SCL上升沿
             { 0: 'high', 1: 'falling' },  // START条件 - SCL高，SDA下降沿
-            { 0: 'high', 1: 'rising' }    // STOP条件 - SCL高，SDA上升沾
+            { 0: 'high', 1: 'rising' }    // STOP条件 - SCL高，SDA上升沿
           ];
 
           const pins = this.wait(conditions);

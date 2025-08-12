@@ -1,352 +1,9 @@
-<template>
-  <div class="network-configuration-panel">
-    <!-- 标题栏 -->
-    <div class="panel-header">
-      <h3 class="panel-title">
-        <el-icon><Connection /></el-icon>
-        {{ t('network.configuration.title') }}
-      </h3>
-      <div class="header-actions">
-        <el-button 
-          v-if="!isScanning" 
-          type="primary" 
-          size="small" 
-          @click="startDeviceDiscovery"
-          :loading="isScanning"
-        >
-          <el-icon><Search /></el-icon>
-          {{ t('network.scan.start') }}
-        </el-button>
-        <el-button 
-          v-else 
-          type="danger" 
-          size="small" 
-          @click="stopDeviceDiscovery"
-        >
-          <el-icon><Close /></el-icon>
-          {{ t('network.scan.stop') }}
-        </el-button>
-        <el-button 
-          size="small" 
-          @click="refreshDeviceList"
-          :disabled="isScanning"
-        >
-          <el-icon><Refresh /></el-icon>
-          {{ t('network.refresh') }}
-        </el-button>
-      </div>
-    </div>
-
-    <!-- 扫描状态和进度 -->
-    <div v-if="isScanning" class="scan-status">
-      <el-progress 
-        :percentage="scanProgress" 
-        :status="scanStatus"
-        :format="formatProgress"
-      />
-      <div class="scan-info">
-        <span>{{ scanStatusText }}</span>
-        <span v-if="scanDuration > 0">{{ t('network.scan.duration', { duration: scanDuration }) }}</span>
-      </div>
-    </div>
-
-    <!-- 设备列表 -->
-    <div class="device-section">
-      <div class="section-header">
-        <h4>{{ t('network.devices.discovered') }} ({{ discoveredDevices.length }})</h4>
-        <el-tag v-if="onlineDevicesCount > 0" type="success" size="small">
-          {{ t('network.devices.online', { count: onlineDevicesCount }) }}
-        </el-tag>
-      </div>
-
-      <!-- 设备表格 -->
-      <el-table 
-        :data="discoveredDevices" 
-        class="device-table"
-        :empty-text="t('network.devices.empty')"
-        @row-click="selectDevice"
-      >
-        <el-table-column width="50">
-          <template #default="{ row }">
-            <el-icon 
-              :color="row.isOnline ? '#67C23A' : '#F56C6C'"
-              size="16"
-            >
-              <CircleFilled />
-            </el-icon>
-          </template>
-        </el-table-column>
-        
-        <el-table-column 
-          :label="t('network.device.name')" 
-          prop="deviceName" 
-          min-width="150"
-        >
-          <template #default="{ row }">
-            <div class="device-name">
-              <strong>{{ row.deviceName || 'Unknown Device' }}</strong>
-              <small v-if="row.version">v{{ row.version }}</small>
-            </div>
-          </template>
-        </el-table-column>
-        
-        <el-table-column 
-          :label="t('network.device.address')" 
-          prop="ipAddress" 
-          width="120"
-        />
-        
-        <el-table-column 
-          :label="t('network.device.port')" 
-          prop="port" 
-          width="80"
-        />
-        
-        <el-table-column 
-          :label="t('network.device.responseTime')" 
-          width="100"
-        >
-          <template #default="{ row }">
-            {{ row.responseTime }}ms
-          </template>
-        </el-table-column>
-        
-        <el-table-column 
-          :label="t('network.device.lastSeen')" 
-          width="120"
-        >
-          <template #default="{ row }">
-            {{ formatTime(row.lastSeen) }}
-          </template>
-        </el-table-column>
-        
-        <el-table-column 
-          :label="t('common.actions')" 
-          width="120"
-          fixed="right"
-        >
-          <template #default="{ row }">
-            <el-button 
-              type="primary" 
-              size="small" 
-              @click.stop="connectToDevice(row)"
-              :disabled="!row.isOnline"
-            >
-              {{ t('network.connect') }}
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
-
-    <!-- 手动连接区域 -->
-    <el-collapse v-model="expandedSections" class="manual-connect">
-      <el-collapse-item :title="t('network.manual.title')" name="manual">
-        <el-form 
-          :model="manualConnection" 
-          :rules="connectionRules"
-          ref="connectionForm"
-          label-width="100px"
-          size="small"
-        >
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item :label="t('network.manual.ip')" prop="ipAddress">
-                <el-input 
-                  v-model="manualConnection.ipAddress"
-                  :placeholder="t('network.manual.ipPlaceholder')"
-                />
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item :label="t('network.manual.port')" prop="port">
-                <el-input-number 
-                  v-model="manualConnection.port"
-                  :min="1"
-                  :max="65535"
-                  :step="1"
-                  controls-position="right"
-                />
-              </el-form-item>
-            </el-col>
-            <el-col :span="4">
-              <el-form-item>
-                <el-button 
-                  type="primary" 
-                  @click="connectManually"
-                  :loading="isConnecting"
-                >
-                  {{ t('network.connect') }}
-                </el-button>
-              </el-form-item>
-            </el-col>
-          </el-row>
-        </el-form>
-      </el-collapse-item>
-    </el-collapse>
-
-    <!-- WiFi配置区域 -->
-    <el-collapse v-model="expandedSections" class="wifi-config">
-      <el-collapse-item :title="t('network.wifi.configTitle')" name="wifi-config">
-        <el-alert
-          :title="t('network.wifi.configWarning')"
-          type="warning"
-          :closable="false"
-          show-icon
-          class="config-warning"
-        />
-        
-        <el-form 
-          :model="wifiConfig" 
-          :rules="wifiRules"
-          ref="wifiForm"
-          label-width="120px"
-          size="small"
-        >
-          <el-form-item :label="t('network.wifi.ssid')" prop="ssid">
-            <el-input 
-              v-model="wifiConfig.ssid"
-              :placeholder="t('network.wifi.ssidPlaceholder')"
-              maxlength="32"
-              show-word-limit
-            />
-          </el-form-item>
-          
-          <el-form-item :label="t('network.wifi.password')" prop="password">
-            <el-input 
-              v-model="wifiConfig.password"
-              type="password"
-              :placeholder="t('network.wifi.passwordPlaceholder')"
-              maxlength="63"
-              show-word-limit
-              show-password
-            />
-          </el-form-item>
-          
-          <el-form-item :label="t('network.wifi.staticIp')" prop="staticIp">
-            <el-input 
-              v-model="wifiConfig.staticIp"
-              :placeholder="t('network.wifi.staticIpPlaceholder')"
-            />
-          </el-form-item>
-          
-          <el-form-item :label="t('network.wifi.port')" prop="port">
-            <el-input-number 
-              v-model="wifiConfig.port"
-              :min="1024"
-              :max="65535"
-              :step="1"
-              controls-position="right"
-            />
-          </el-form-item>
-          
-          <el-form-item>
-            <el-button 
-              type="primary" 
-              @click="sendWifiConfig"
-              :loading="isSendingConfig"
-              :disabled="!selectedDevice"
-            >
-              {{ t('network.wifi.sendConfig') }}
-            </el-button>
-            <el-button @click="resetWifiForm">
-              {{ t('common.reset') }}
-            </el-button>
-            <small class="form-hint">
-              {{ t('network.wifi.configHint') }}
-            </small>
-          </el-form-item>
-        </el-form>
-      </el-collapse-item>
-    </el-collapse>
-
-    <!-- 连接状态显示 -->
-    <div v-if="currentConnection" class="connection-status">
-      <el-card class="status-card">
-        <template #header>
-          <div class="card-header">
-            <span>{{ t('network.connection.current') }}</span>
-            <el-button 
-              type="danger" 
-              size="small" 
-              text
-              @click="disconnectDevice"
-            >
-              {{ t('network.disconnect') }}
-            </el-button>
-          </div>
-        </template>
-        
-        <div class="connection-info">
-          <div class="info-item">
-            <strong>{{ t('network.device.name') }}:</strong>
-            {{ currentConnection.deviceName }}
-          </div>
-          <div class="info-item">
-            <strong>{{ t('network.device.address') }}:</strong>
-            {{ currentConnection.ipAddress }}:{{ currentConnection.port }}
-          </div>
-          <div class="info-item">
-            <strong>{{ t('network.device.version') }}:</strong>
-            {{ currentConnection.version }}
-          </div>
-          <div class="info-item">
-            <strong>{{ t('network.connection.status') }}:</strong>
-            <el-tag :type="connectionStatus === 'connected' ? 'success' : 'danger'" size="small">
-              {{ t(`network.connection.${connectionStatus}`) }}
-            </el-tag>
-          </div>
-        </div>
-      </el-card>
-    </div>
-
-    <!-- 网络诊断区域 -->
-    <el-collapse v-model="expandedSections" class="network-diagnostics">
-      <el-collapse-item :title="t('network.diagnostics.title')" name="diagnostics">
-        <div class="diagnostics-actions">
-          <el-button 
-            @click="runNetworkDiagnostics"
-            :loading="isDiagnosticRunning"
-            type="primary"
-            size="small"
-          >
-            <el-icon><Tools /></el-icon>
-            {{ t('network.diagnostics.run') }}
-          </el-button>
-          <el-button 
-            @click="exportDiagnostics"
-            :disabled="!diagnosticResults"
-            size="small"
-          >
-            <el-icon><Download /></el-icon>
-            {{ t('network.diagnostics.export') }}
-          </el-button>
-        </div>
-        
-        <div v-if="diagnosticResults" class="diagnostic-results">
-          <el-table :data="diagnosticResults" size="small">
-            <el-table-column :label="t('network.diagnostics.test')" prop="testName" />
-            <el-table-column :label="t('network.diagnostics.result')" width="100">
-              <template #default="{ row }">
-                <el-tag :type="row.passed ? 'success' : 'danger'" size="small">
-                  {{ row.passed ? t('common.passed') : t('common.failed') }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('network.diagnostics.details')" prop="details" />
-          </el-table>
-        </div>
-      </el-collapse-item>
-    </el-collapse>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { 
-  Connection, Search, Close, Refresh, CircleFilled, 
-  Tools, Download 
+import {
+  Connection, Search, Close, Refresh, CircleFilled,
+  Tools, Download
 } from '@element-plus/icons-vue';
 import { useI18n } from 'vue-i18n';
 import type { WiFiDeviceInfo, NetworkScanResult } from '../../services/WiFiDeviceDiscovery';
@@ -388,10 +45,10 @@ const wifiConfig = reactive({
 const connectionRules = {
   ipAddress: [
     { required: true, message: t('network.validation.ipRequired'), trigger: 'blur' },
-    { 
+    {
       pattern: /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/,
-      message: t('network.validation.ipInvalid'), 
-      trigger: 'blur' 
+      message: t('network.validation.ipInvalid'),
+      trigger: 'blur'
     }
   ],
   port: [
@@ -408,16 +65,16 @@ const wifiRules = {
     { min: 8, max: 63, message: t('network.validation.passwordLength'), trigger: 'blur' }
   ],
   staticIp: [
-    { 
+    {
       pattern: /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/,
-      message: t('network.validation.ipInvalid'), 
-      trigger: 'blur' 
+      message: t('network.validation.ipInvalid'),
+      trigger: 'blur'
     }
   ]
 };
 
 // 计算属性
-const onlineDevicesCount = computed(() => 
+const onlineDevicesCount = computed(() =>
   discoveredDevices.value.filter(device => device.isOnline).length
 );
 
@@ -476,7 +133,7 @@ const startDeviceDiscovery = async () => {
       scanDuration.value = result.data.scanDuration;
 
       ElMessage.success(
-        t('network.scan.success', { 
+        t('network.scan.success', {
           count: result.data.devices.length,
           duration: Math.round(result.data.scanDuration / 1000)
         })
@@ -488,9 +145,9 @@ const startDeviceDiscovery = async () => {
     scanProgress.value = 100;
     scanStatus.value = 'exception';
     scanStatusText.value = t('network.scan.failed');
-    
-    ElMessage.error(t('network.scan.error', { 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+
+    ElMessage.error(t('network.scan.error', {
+      error: error instanceof Error ? error.message : 'Unknown error'
     }));
   } finally {
     isScanning.value = false;
@@ -502,7 +159,7 @@ const stopDeviceDiscovery = async () => {
     await window.vscode.postMessage({
       command: 'stopScan'
     });
-    
+
     isScanning.value = false;
     scanStatusText.value = t('network.scan.stopped');
     ElMessage.info(t('network.scan.stopped'));
@@ -516,7 +173,7 @@ const refreshDeviceList = async () => {
     const result = await window.vscode.postMessage({
       command: 'getCachedDevices'
     });
-    
+
     if (result.success) {
       discoveredDevices.value = result.data;
       ElMessage.success(t('network.refresh.success'));
@@ -566,16 +223,16 @@ const connectManually = async (ip?: string, port?: number) => {
     if (result.success) {
       currentConnection.value = result.data.deviceInfo;
       connectionStatus.value = 'connected';
-      ElMessage.success(t('network.connect.success', { 
-        device: result.data.deviceInfo.name 
+      ElMessage.success(t('network.connect.success', {
+        device: result.data.deviceInfo.name
       }));
     } else {
       throw new Error(result.error || 'Connection failed');
     }
   } catch (error) {
     connectionStatus.value = 'disconnected';
-    ElMessage.error(t('network.connect.error', { 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    ElMessage.error(t('network.connect.error', {
+      error: error instanceof Error ? error.message : 'Unknown error'
     }));
   } finally {
     isConnecting.value = false;
@@ -644,8 +301,8 @@ const sendWifiConfig = async () => {
       throw new Error(result.error || 'Config send failed');
     }
   } catch (error) {
-    ElMessage.error(t('network.wifi.configError', { 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    ElMessage.error(t('network.wifi.configError', {
+      error: error instanceof Error ? error.message : 'Unknown error'
     }));
   } finally {
     isSendingConfig.value = false;
@@ -682,8 +339,8 @@ const runNetworkDiagnostics = async () => {
       throw new Error(result.error || 'Diagnostics failed');
     }
   } catch (error) {
-    ElMessage.error(t('network.diagnostics.error', { 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    ElMessage.error(t('network.diagnostics.error', {
+      error: error instanceof Error ? error.message : 'Unknown error'
     }));
   } finally {
     isDiagnosticRunning.value = false;
@@ -696,12 +353,12 @@ const exportDiagnostics = () => {
   const data = JSON.stringify(diagnosticResults.value, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
-  
+
   const a = document.createElement('a');
   a.href = url;
   a.download = `network-diagnostics-${Date.now()}.json`;
   a.click();
-  
+
   URL.revokeObjectURL(url);
   ElMessage.success(t('network.diagnostics.exported'));
 };
@@ -728,6 +385,416 @@ declare global {
   }
 }
 </script>
+
+<template>
+  <div class="network-configuration-panel">
+    <!-- 标题栏 -->
+    <div class="panel-header">
+      <h3 class="panel-title">
+        <el-icon><Connection /></el-icon>
+        {{ t('network.configuration.title') }}
+      </h3>
+      <div class="header-actions">
+        <el-button
+          v-if="!isScanning"
+          type="primary"
+          size="small"
+          :loading="isScanning"
+          @click="startDeviceDiscovery"
+        >
+          <el-icon><Search /></el-icon>
+          {{ t('network.scan.start') }}
+        </el-button>
+        <el-button
+          v-else
+          type="danger"
+          size="small"
+          @click="stopDeviceDiscovery"
+        >
+          <el-icon><Close /></el-icon>
+          {{ t('network.scan.stop') }}
+        </el-button>
+        <el-button
+          size="small"
+          :disabled="isScanning"
+          @click="refreshDeviceList"
+        >
+          <el-icon><Refresh /></el-icon>
+          {{ t('network.refresh') }}
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 扫描状态和进度 -->
+    <div
+      v-if="isScanning"
+      class="scan-status"
+    >
+      <el-progress
+        :percentage="scanProgress"
+        :status="scanStatus"
+        :format="formatProgress"
+      />
+      <div class="scan-info">
+        <span>{{ scanStatusText }}</span>
+        <span v-if="scanDuration > 0">{{ t('network.scan.duration', { duration: scanDuration }) }}</span>
+      </div>
+    </div>
+
+    <!-- 设备列表 -->
+    <div class="device-section">
+      <div class="section-header">
+        <h4>{{ t('network.devices.discovered') }} ({{ discoveredDevices.length }})</h4>
+        <el-tag
+          v-if="onlineDevicesCount > 0"
+          type="success"
+          size="small"
+        >
+          {{ t('network.devices.online', { count: onlineDevicesCount }) }}
+        </el-tag>
+      </div>
+
+      <!-- 设备表格 -->
+      <el-table
+        :data="discoveredDevices"
+        class="device-table"
+        :empty-text="t('network.devices.empty')"
+        @row-click="selectDevice"
+      >
+        <el-table-column width="50">
+          <template #default="{ row }">
+            <el-icon
+              :color="row.isOnline ? '#67C23A' : '#F56C6C'"
+              size="16"
+            >
+              <CircleFilled />
+            </el-icon>
+          </template>
+        </el-table-column>
+
+        <el-table-column
+          :label="t('network.device.name')"
+          prop="deviceName"
+          min-width="150"
+        >
+          <template #default="{ row }">
+            <div class="device-name">
+              <strong>{{ row.deviceName || 'Unknown Device' }}</strong>
+              <small v-if="row.version">v{{ row.version }}</small>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column
+          :label="t('network.device.address')"
+          prop="ipAddress"
+          width="120"
+        />
+
+        <el-table-column
+          :label="t('network.device.port')"
+          prop="port"
+          width="80"
+        />
+
+        <el-table-column
+          :label="t('network.device.responseTime')"
+          width="100"
+        >
+          <template #default="{ row }">
+            {{ row.responseTime }}ms
+          </template>
+        </el-table-column>
+
+        <el-table-column
+          :label="t('network.device.lastSeen')"
+          width="120"
+        >
+          <template #default="{ row }">
+            {{ formatTime(row.lastSeen) }}
+          </template>
+        </el-table-column>
+
+        <el-table-column
+          :label="t('common.actions')"
+          width="120"
+          fixed="right"
+        >
+          <template #default="{ row }">
+            <el-button
+              type="primary"
+              size="small"
+              :disabled="!row.isOnline"
+              @click.stop="connectToDevice(row)"
+            >
+              {{ t('network.connect') }}
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
+    <!-- 手动连接区域 -->
+    <el-collapse
+      v-model="expandedSections"
+      class="manual-connect"
+    >
+      <el-collapse-item
+        :title="t('network.manual.title')"
+        name="manual"
+      >
+        <el-form
+          ref="connectionForm"
+          :model="manualConnection"
+          :rules="connectionRules"
+          label-width="100px"
+          size="small"
+        >
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item
+                :label="t('network.manual.ip')"
+                prop="ipAddress"
+              >
+                <el-input
+                  v-model="manualConnection.ipAddress"
+                  :placeholder="t('network.manual.ipPlaceholder')"
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item
+                :label="t('network.manual.port')"
+                prop="port"
+              >
+                <el-input-number
+                  v-model="manualConnection.port"
+                  :min="1"
+                  :max="65535"
+                  :step="1"
+                  controls-position="right"
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :span="4">
+              <el-form-item>
+                <el-button
+                  type="primary"
+                  :loading="isConnecting"
+                  @click="connectManually"
+                >
+                  {{ t('network.connect') }}
+                </el-button>
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </el-form>
+      </el-collapse-item>
+    </el-collapse>
+
+    <!-- WiFi配置区域 -->
+    <el-collapse
+      v-model="expandedSections"
+      class="wifi-config"
+    >
+      <el-collapse-item
+        :title="t('network.wifi.configTitle')"
+        name="wifi-config"
+      >
+        <el-alert
+          :title="t('network.wifi.configWarning')"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="config-warning"
+        />
+
+        <el-form
+          ref="wifiForm"
+          :model="wifiConfig"
+          :rules="wifiRules"
+          label-width="120px"
+          size="small"
+        >
+          <el-form-item
+            :label="t('network.wifi.ssid')"
+            prop="ssid"
+          >
+            <el-input
+              v-model="wifiConfig.ssid"
+              :placeholder="t('network.wifi.ssidPlaceholder')"
+              maxlength="32"
+              show-word-limit
+            />
+          </el-form-item>
+
+          <el-form-item
+            :label="t('network.wifi.password')"
+            prop="password"
+          >
+            <el-input
+              v-model="wifiConfig.password"
+              type="password"
+              :placeholder="t('network.wifi.passwordPlaceholder')"
+              maxlength="63"
+              show-word-limit
+              show-password
+            />
+          </el-form-item>
+
+          <el-form-item
+            :label="t('network.wifi.staticIp')"
+            prop="staticIp"
+          >
+            <el-input
+              v-model="wifiConfig.staticIp"
+              :placeholder="t('network.wifi.staticIpPlaceholder')"
+            />
+          </el-form-item>
+
+          <el-form-item
+            :label="t('network.wifi.port')"
+            prop="port"
+          >
+            <el-input-number
+              v-model="wifiConfig.port"
+              :min="1024"
+              :max="65535"
+              :step="1"
+              controls-position="right"
+            />
+          </el-form-item>
+
+          <el-form-item>
+            <el-button
+              type="primary"
+              :loading="isSendingConfig"
+              :disabled="!selectedDevice"
+              @click="sendWifiConfig"
+            >
+              {{ t('network.wifi.sendConfig') }}
+            </el-button>
+            <el-button @click="resetWifiForm">
+              {{ t('common.reset') }}
+            </el-button>
+            <small class="form-hint">
+              {{ t('network.wifi.configHint') }}
+            </small>
+          </el-form-item>
+        </el-form>
+      </el-collapse-item>
+    </el-collapse>
+
+    <!-- 连接状态显示 -->
+    <div
+      v-if="currentConnection"
+      class="connection-status"
+    >
+      <el-card class="status-card">
+        <template #header>
+          <div class="card-header">
+            <span>{{ t('network.connection.current') }}</span>
+            <el-button
+              type="danger"
+              size="small"
+              text
+              @click="disconnectDevice"
+            >
+              {{ t('network.disconnect') }}
+            </el-button>
+          </div>
+        </template>
+
+        <div class="connection-info">
+          <div class="info-item">
+            <strong>{{ t('network.device.name') }}:</strong>
+            {{ currentConnection.deviceName }}
+          </div>
+          <div class="info-item">
+            <strong>{{ t('network.device.address') }}:</strong>
+            {{ currentConnection.ipAddress }}:{{ currentConnection.port }}
+          </div>
+          <div class="info-item">
+            <strong>{{ t('network.device.version') }}:</strong>
+            {{ currentConnection.version }}
+          </div>
+          <div class="info-item">
+            <strong>{{ t('network.connection.status') }}:</strong>
+            <el-tag
+              :type="connectionStatus === 'connected' ? 'success' : 'danger'"
+              size="small"
+            >
+              {{ t(`network.connection.${connectionStatus}`) }}
+            </el-tag>
+          </div>
+        </div>
+      </el-card>
+    </div>
+
+    <!-- 网络诊断区域 -->
+    <el-collapse
+      v-model="expandedSections"
+      class="network-diagnostics"
+    >
+      <el-collapse-item
+        :title="t('network.diagnostics.title')"
+        name="diagnostics"
+      >
+        <div class="diagnostics-actions">
+          <el-button
+            :loading="isDiagnosticRunning"
+            type="primary"
+            size="small"
+            @click="runNetworkDiagnostics"
+          >
+            <el-icon><Tools /></el-icon>
+            {{ t('network.diagnostics.run') }}
+          </el-button>
+          <el-button
+            :disabled="!diagnosticResults"
+            size="small"
+            @click="exportDiagnostics"
+          >
+            <el-icon><Download /></el-icon>
+            {{ t('network.diagnostics.export') }}
+          </el-button>
+        </div>
+
+        <div
+          v-if="diagnosticResults"
+          class="diagnostic-results"
+        >
+          <el-table
+            :data="diagnosticResults"
+            size="small"
+          >
+            <el-table-column
+              :label="t('network.diagnostics.test')"
+              prop="testName"
+            />
+            <el-table-column
+              :label="t('network.diagnostics.result')"
+              width="100"
+            >
+              <template #default="{ row }">
+                <el-tag
+                  :type="row.passed ? 'success' : 'danger'"
+                  size="small"
+                >
+                  {{ row.passed ? t('common.passed') : t('common.failed') }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column
+              :label="t('network.diagnostics.details')"
+              prop="details"
+            />
+          </el-table>
+        </div>
+      </el-collapse-item>
+    </el-collapse>
+  </div>
+</template>
 
 <style scoped>
 .network-configuration-panel {

@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 // import { join } from 'path'; // 暂时注释掉未使用的导入
-import { HardwareCapabilities, DeviceInfo } from '../models/AnalyzerTypes';
+import { HardwareCapabilities, DeviceInfo, TriggerType, _TriggerCondition } from '../models/AnalyzerTypes';
 
 /**
  * 设备兼容性条目
@@ -202,10 +202,11 @@ export class HardwareCompatibilityDatabase {
             compressionSupport: true
           },
           triggers: {
-            types: ['edge', 'pattern', 'pulse', 'serial'],
+            types: [TriggerType.Edge, TriggerType.Complex, TriggerType.Fast, TriggerType.Blast],
             maxChannels: 24,
-            advancedTriggers: true,
-            triggerPosition: true
+            patternWidth: 32,
+            sequentialSupport: true,
+            conditions: ['rising', 'falling', 'high', 'low']
           },
           protocol: {
             supportedProtocols: ['uart', 'spi', 'i2c'],
@@ -217,6 +218,18 @@ export class HardwareCompatibilityDatabase {
             externalClock: false,
             calibration: true,
             selfTest: true
+          },
+          connectivity: {
+            interfaces: ['usb'],
+            protocols: ['custom']
+          },
+          features: {
+            signalGeneration: false,
+            powerSupply: false,
+            i2cSniffer: false,
+            canSupport: false,
+            customDecoders: true,
+            voltageMonitoring: false
           }
         },
         connectionOptions: {
@@ -291,10 +304,11 @@ export class HardwareCompatibilityDatabase {
             compressionSupport: false
           },
           triggers: {
-            types: ['edge', 'pattern', 'pulse'],
+            types: [TriggerType.Edge, TriggerType.Complex, TriggerType.Fast],
             maxChannels: 8,
-            advancedTriggers: true,
-            triggerPosition: true
+            patternWidth: 24,
+            sequentialSupport: false,
+            conditions: ['rising', 'falling', 'high']
           },
           protocol: {
             supportedProtocols: ['uart', 'spi', 'i2c', 'can', 'lin'],
@@ -306,6 +320,18 @@ export class HardwareCompatibilityDatabase {
             externalClock: false,
             calibration: true,
             selfTest: false
+          },
+          connectivity: {
+            interfaces: ['ethernet'],
+            protocols: ['saleae']
+          },
+          features: {
+            signalGeneration: false,
+            powerSupply: false,
+            i2cSniffer: true,
+            canSupport: true,
+            customDecoders: true,
+            voltageMonitoring: false
           }
         },
         connectionOptions: {
@@ -377,10 +403,11 @@ export class HardwareCompatibilityDatabase {
             compressionSupport: true
           },
           triggers: {
-            types: ['edge', 'pattern', 'pulse', 'runt', 'slope'],
+            types: [TriggerType.Edge, TriggerType.Complex, TriggerType.Fast, TriggerType.Blast],
             maxChannels: 16,
-            advancedTriggers: true,
-            triggerPosition: true
+            patternWidth: 64,
+            sequentialSupport: true,
+            conditions: ['rising', 'falling', 'high', 'low', 'any']
           },
           protocol: {
             supportedProtocols: ['uart', 'spi', 'i2c', 'can', 'lin', 'flexray'],
@@ -392,6 +419,18 @@ export class HardwareCompatibilityDatabase {
             externalClock: true,
             calibration: true,
             selfTest: true
+          },
+          connectivity: {
+            interfaces: ['ethernet', 'usb'],
+            protocols: ['scpi']
+          },
+          features: {
+            signalGeneration: true,
+            powerSupply: false,
+            i2cSniffer: true,
+            canSupport: true,
+            customDecoders: false,
+            voltageMonitoring: true
           }
         },
         connectionOptions: {

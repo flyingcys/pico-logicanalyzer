@@ -332,7 +332,7 @@ export class TestFramework {
 
     // 连接性能测试
     const connectionStart = Date.now();
-    const connectionResult = await driver.connect();
+    const connectionResult = await driver.connect({ autoDetect: true });
     const connectionTime = Date.now() - connectionStart;
 
     if (!connectionResult.success) {
@@ -595,16 +595,32 @@ class TestDataGenerator {
   generateTestSession(): CaptureSession {
     return {
       captureChannels: [
-        { channelNumber: 0, channelName: 'Test CH0', hidden: false },
-        { channelNumber: 1, channelName: 'Test CH1', hidden: false }
+        {
+          channelNumber: 0,
+          channelName: 'Test CH0',
+          textualChannelNumber: 'CH0',
+          hidden: false,
+          clone() { return { ...this }; }
+        },
+        {
+          channelNumber: 1,
+          channelName: 'Test CH1',
+          textualChannelNumber: 'CH1',
+          hidden: false,
+          clone() { return { ...this }; }
+        }
       ],
       frequency: 1000000,
       preTriggerSamples: 1000,
       postTriggerSamples: 1000,
       triggerType: TriggerType.Edge,
       triggerChannel: 0,
+      triggerInverted: false,
       loopCount: 1,
-      measureBursts: false
+      measureBursts: false,
+      get totalSamples() { return this.preTriggerSamples + this.postTriggerSamples; },
+      clone() { return { ...this }; },
+      cloneSettings() { return { ...this }; }
     };
   }
 
@@ -631,7 +647,9 @@ class TestDataGenerator {
       channels.push({
         channelNumber: i,
         channelName: `Perf CH${i}`,
-        hidden: false
+        textualChannelNumber: `CH${i}`,
+        hidden: false,
+        clone() { return { ...this }; }
       });
     }
 
@@ -642,8 +660,12 @@ class TestDataGenerator {
       postTriggerSamples: 10000,
       triggerType: TriggerType.Edge,
       triggerChannel: 0,
+      triggerInverted: false,
       loopCount: 1,
-      measureBursts: false
+      measureBursts: false,
+      get totalSamples() { return this.preTriggerSamples + this.postTriggerSamples; },
+      clone() { return { ...this }; },
+      cloneSettings() { return { ...this }; }
     };
   }
 }

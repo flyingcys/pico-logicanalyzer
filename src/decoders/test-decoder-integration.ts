@@ -54,10 +54,12 @@ export async function testDecoderExecution() {
   const mockChannelData: ChannelData[] = [
     {
       channelNumber: 0,
+      channelName: 'SCL',
       samples: new Uint8Array([1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1]) // 模拟I2C SCL
     },
     {
       channelNumber: 1,
+      channelName: 'SDA',
       samples: new Uint8Array([1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1]) // 模拟I2C SDA
     }
   ];
@@ -71,10 +73,10 @@ export async function testDecoderExecution() {
       'i2c',
       sampleRate,
       mockChannelData,
-      [{ id: 'address_format', value: 'shifted' }], // 默认选项
+      [{ optionIndex: 0, value: 'shifted' }], // 默认选项
       [
-        { name: 'scl', channel: 0 },
-        { name: 'sda', channel: 1 }
+        { captureIndex: 0, decoderIndex: 0, name: 'scl', channel: 0 },
+        { captureIndex: 1, decoderIndex: 1, name: 'sda', channel: 1 }
       ]
     );
 
@@ -113,18 +115,18 @@ export function testChannelMapping() {
 
   // 测试通道映射验证
   const validMapping = [
-    { name: 'scl', channel: 0 },
-    { name: 'sda', channel: 1 }
+    { captureIndex: 0, decoderIndex: 0, name: 'scl', channel: 0 },
+    { captureIndex: 1, decoderIndex: 1, name: 'sda', channel: 1 }
   ];
 
   const invalidMapping = [
-    { name: 'scl', channel: 0 }
+    { captureIndex: 0, decoderIndex: 0, name: 'scl', channel: 0 }
     // 缺少必需的SDA通道
   ];
 
   const mockChannels: ChannelData[] = [
-    { channelNumber: 0, samples: new Uint8Array([1, 0, 1]) },
-    { channelNumber: 1, samples: new Uint8Array([1, 1, 0]) }
+    { channelNumber: 0, channelName: 'SCL', samples: new Uint8Array([1, 0, 1]) },
+    { channelNumber: 1, channelName: 'SDA', samples: new Uint8Array([1, 1, 0]) }
   ];
 
   console.log('✅ 测试有效映射:', i2cDecoder.validateOptions([], validMapping, mockChannels));

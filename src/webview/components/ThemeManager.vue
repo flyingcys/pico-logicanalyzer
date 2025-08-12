@@ -3,288 +3,6 @@
 提供主题切换、响应式布局和外观自定义功能
 -->
 
-<template>
-  <div class="theme-manager">
-    <!-- 主题切换控制面板 -->
-    <div class="theme-controls">
-      <el-card shadow="never" class="control-card">
-        <template #header>
-          <div class="card-header">
-            <span>外观设置</span>
-            <el-button size="small" @click="resetToDefaults">重置默认</el-button>
-          </div>
-        </template>
-
-        <div class="theme-options">
-          <!-- 主题模式选择 -->
-          <div class="option-group">
-            <h4>主题模式</h4>
-            <el-radio-group v-model="currentTheme" @change="applyTheme">
-              <el-radio-button label="light">浅色</el-radio-button>
-              <el-radio-button label="dark">深色</el-radio-button>
-              <el-radio-button label="auto">自动</el-radio-button>
-            </el-radio-group>
-          </div>
-
-          <!-- 主色调设置 -->
-          <div class="option-group">
-            <h4>主色调</h4>
-            <div class="color-picker-group">
-              <div class="preset-colors">
-                <div
-                  v-for="color in presetColors"
-                  :key="color.name"
-                  class="color-option"
-                  :class="{ active: currentPrimaryColor === color.value }"
-                  :style="{ backgroundColor: color.value }"
-                  @click="setPrimaryColor(color.value)"
-                  :title="color.name"
-                />
-              </div>
-              <el-color-picker
-                v-model="currentPrimaryColor"
-                @change="setPrimaryColor"
-                show-alpha
-                :predefine="presetColors.map(c => c.value)"
-              />
-            </div>
-          </div>
-
-          <!-- 字体大小设置 -->
-          <div class="option-group">
-            <h4>字体大小</h4>
-            <el-slider
-              v-model="fontSize"
-              :min="12"
-              :max="20"
-              :step="1"
-              show-stops
-              @change="applyFontSize"
-            />
-            <div class="font-size-info">
-              <span class="font-label">当前: {{ fontSize }}px</span>
-              <span class="font-preview" :style="{ fontSize: fontSize + 'px' }">
-                预览文字 Sample Text
-              </span>
-            </div>
-          </div>
-
-          <!-- 布局密度设置 -->
-          <div class="option-group">
-            <h4>界面密度</h4>
-            <el-radio-group v-model="layoutDensity" @change="applyLayoutDensity">
-              <el-radio-button label="compact">紧凑</el-radio-button>
-              <el-radio-button label="default">默认</el-radio-button>
-              <el-radio-button label="comfortable">宽松</el-radio-button>
-            </el-radio-group>
-          </div>
-
-          <!-- 组件尺寸设置 -->
-          <div class="option-group">
-            <h4>组件尺寸</h4>
-            <el-radio-group v-model="componentSize" @change="applyComponentSize">
-              <el-radio-button label="small">小</el-radio-button>
-              <el-radio-button label="default">默认</el-radio-button>
-              <el-radio-button label="large">大</el-radio-button>
-            </el-radio-group>
-          </div>
-
-          <!-- 动画效果设置 -->
-          <div class="option-group">
-            <h4>动画效果</h4>
-            <div class="animation-controls">
-              <el-switch
-                v-model="animationsEnabled"
-                @change="applyAnimationSettings"
-                active-text="启用动画"
-                inactive-text="禁用动画"
-              />
-              <el-slider
-                v-if="animationsEnabled"
-                v-model="animationSpeed"
-                :min="0.5"
-                :max="2"
-                :step="0.1"
-                show-input
-                show-input-controls
-                @change="applyAnimationSettings"
-                style="margin-top: 8px"
-              />
-              <span v-if="animationsEnabled" class="speed-label">
-                动画速度: {{ animationSpeed }}x
-              </span>
-            </div>
-          </div>
-        </div>
-      </el-card>
-
-      <!-- 响应式布局设置 -->
-      <el-card shadow="never" class="control-card">
-        <template #header>
-          <span>布局设置</span>
-        </template>
-
-        <div class="layout-options">
-          <!-- 侧边栏设置 -->
-          <div class="option-group">
-            <h4>侧边栏</h4>
-            <div class="sidebar-controls">
-              <el-checkbox
-                v-model="sidebarSettings.leftVisible"
-                @change="applySidebarSettings"
-              >
-                显示左侧栏
-              </el-checkbox>
-              <el-checkbox
-                v-model="sidebarSettings.rightVisible"
-                @change="applySidebarSettings"
-              >
-                显示右侧栏
-              </el-checkbox>
-              <el-checkbox
-                v-model="sidebarSettings.collapsible"
-                @change="applySidebarSettings"
-              >
-                可折叠
-              </el-checkbox>
-            </div>
-            <div class="sidebar-width">
-              <span class="width-label">侧栏宽度:</span>
-              <el-input-number
-                v-model="sidebarSettings.width"
-                :min="200"
-                :max="500"
-                :step="20"
-                size="small"
-                @change="applySidebarSettings"
-              />
-              <span class="unit">px</span>
-            </div>
-          </div>
-
-          <!-- 工具栏设置 -->
-          <div class="option-group">
-            <h4>工具栏</h4>
-            <div class="toolbar-controls">
-              <el-checkbox
-                v-model="toolbarSettings.showIcons"
-                @change="applyToolbarSettings"
-              >
-                显示图标
-              </el-checkbox>
-              <el-checkbox
-                v-model="toolbarSettings.showText"
-                @change="applyToolbarSettings"
-              >
-                显示文字
-              </el-checkbox>
-              <el-select
-                v-model="toolbarSettings.position"
-                size="small"
-                @change="applyToolbarSettings"
-                style="width: 120px; margin-top: 8px"
-              >
-                <el-option label="顶部" value="top" />
-                <el-option label="底部" value="bottom" />
-                <el-option label="左侧" value="left" />
-                <el-option label="右侧" value="right" />
-              </el-select>
-            </div>
-          </div>
-
-          <!-- 响应式断点 -->
-          <div class="option-group">
-            <h4>响应式断点</h4>
-            <div class="breakpoint-info">
-              <div class="current-breakpoint">
-                <span class="breakpoint-label">当前:</span>
-                <el-tag :type="getBreakpointType(currentBreakpoint)">
-                  {{ getBreakpointName(currentBreakpoint) }}
-                </el-tag>
-                <span class="viewport-size">{{ viewportWidth }}px</span>
-              </div>
-              <div class="breakpoint-list">
-                <div
-                  v-for="bp in breakpoints"
-                  :key="bp.name"
-                  class="breakpoint-item"
-                  :class="{ active: currentBreakpoint === bp.name }"
-                >
-                  <span class="bp-name">{{ bp.label }}</span>
-                  <span class="bp-range">{{ bp.min }}px+</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </el-card>
-
-      <!-- 自定义CSS -->
-      <el-card shadow="never" class="control-card">
-        <template #header>
-          <div class="card-header">
-            <span>自定义样式</span>
-            <div class="css-actions">
-              <el-button size="small" @click="loadCustomCSS">导入</el-button>
-              <el-button size="small" @click="saveCustomCSS">导出</el-button>
-            </div>
-          </div>
-        </template>
-
-        <div class="custom-css">
-          <el-input
-            v-model="customCSS"
-            type="textarea"
-            :rows="8"
-            placeholder="输入自定义CSS规则..."
-            @change="applyCustomCSS"
-          />
-          <div class="css-help">
-            <el-button type="text" size="small" @click="showCSSHelp">
-              查看CSS变量参考
-            </el-button>
-          </div>
-        </div>
-      </el-card>
-    </div>
-
-    <!-- CSS变量参考对话框 -->
-    <el-dialog v-model="showCSSReference" title="CSS变量参考" width="600px">
-      <div class="css-reference">
-        <el-collapse>
-          <el-collapse-item title="颜色变量" name="colors">
-            <div class="var-list">
-              <div v-for="varName in colorVariables" :key="varName" class="var-item">
-                <code>{{ varName }}</code>
-                <div
-                  class="var-preview"
-                  :style="{ backgroundColor: `var(${varName})` }"
-                />
-              </div>
-            </div>
-          </el-collapse-item>
-          <el-collapse-item title="尺寸变量" name="sizes">
-            <div class="var-list">
-              <div v-for="varName in sizeVariables" :key="varName" class="var-item">
-                <code>{{ varName }}</code>
-                <span class="var-value">{{ getCSSVariableValue(varName) }}</span>
-              </div>
-            </div>
-          </el-collapse-item>
-          <el-collapse-item title="字体变量" name="fonts">
-            <div class="var-list">
-              <div v-for="varName in fontVariables" :key="varName" class="var-item">
-                <code>{{ varName }}</code>
-                <span class="var-value">{{ getCSSVariableValue(varName) }}</span>
-              </div>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
-      </div>
-    </el-dialog>
-  </div>
-</template>
-
 <script setup lang="ts">
   import { ref, computed, onMounted, onUnmounted } from 'vue';
   import { ElMessage } from 'element-plus';
@@ -415,14 +133,14 @@
   // 方法
   const applyTheme = (theme: string) => {
     const htmlElement = document.documentElement;
-    
+
     // 移除现有主题类
     htmlElement.classList.remove('theme-light', 'theme-dark');
-    
+
     // 应用新主题
     const effectiveThemeValue = theme === 'auto' ? systemTheme.value : theme;
     htmlElement.classList.add(`theme-${effectiveThemeValue}`);
-    
+
     // 设置CSS变量
     if (effectiveThemeValue === 'dark') {
       htmlElement.style.setProperty('--el-bg-color', '#1d1e1f');
@@ -444,11 +162,11 @@
 
   const setPrimaryColor = (color: string) => {
     currentPrimaryColor.value = color;
-    
+
     // 应用主色调
     const htmlElement = document.documentElement;
     htmlElement.style.setProperty('--el-color-primary', color);
-    
+
     // 生成相关颜色变体
     const lighten = (color: string, amount: number) => {
       // 简化的颜色变亮算法
@@ -516,7 +234,7 @@
 
   const applyAnimationSettings = () => {
     const htmlElement = document.documentElement;
-    
+
     if (animationsEnabled.value) {
       htmlElement.style.setProperty('--animation-duration-base', `${300 / animationSpeed.value}ms`);
       htmlElement.style.setProperty('--animation-duration-fast', `${200 / animationSpeed.value}ms`);
@@ -525,7 +243,7 @@
     } else {
       htmlElement.classList.add('no-animations');
     }
-    
+
     saveSettings();
   };
 
@@ -656,7 +374,7 @@
     if (saved) {
       try {
         const settings = JSON.parse(saved);
-        
+
         currentTheme.value = settings.theme || 'auto';
         currentPrimaryColor.value = settings.primaryColor || '#409eff';
         fontSize.value = settings.fontSize || 14;
@@ -726,7 +444,7 @@
       reader.onload = (e) => {
         try {
           const settings = JSON.parse(e.target?.result as string);
-          
+
           if (settings.theme) currentTheme.value = settings.theme;
           if (settings.primaryColor) currentPrimaryColor.value = settings.primaryColor;
           if (settings.fontSize) fontSize.value = settings.fontSize;
@@ -763,10 +481,10 @@
   onMounted(() => {
     loadSettings();
     updateBreakpoint();
-    
+
     // 监听窗口大小变化
     window.addEventListener('resize', updateBreakpoint);
-    
+
     // 监听系统主题变化
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     mediaQuery.addEventListener('change', () => {
@@ -780,6 +498,386 @@
     window.removeEventListener('resize', updateBreakpoint);
   });
 </script>
+
+<template>
+  <div class="theme-manager">
+    <!-- 主题切换控制面板 -->
+    <div class="theme-controls">
+      <el-card
+        shadow="never"
+        class="control-card"
+      >
+        <template #header>
+          <div class="card-header">
+            <span>外观设置</span>
+            <el-button
+              size="small"
+              @click="resetToDefaults"
+            >
+              重置默认
+            </el-button>
+          </div>
+        </template>
+
+        <div class="theme-options">
+          <!-- 主题模式选择 -->
+          <div class="option-group">
+            <h4>主题模式</h4>
+            <el-radio-group
+              v-model="currentTheme"
+              @change="applyTheme"
+            >
+              <el-radio-button label="light">
+                浅色
+              </el-radio-button>
+              <el-radio-button label="dark">
+                深色
+              </el-radio-button>
+              <el-radio-button label="auto">
+                自动
+              </el-radio-button>
+            </el-radio-group>
+          </div>
+
+          <!-- 主色调设置 -->
+          <div class="option-group">
+            <h4>主色调</h4>
+            <div class="color-picker-group">
+              <div class="preset-colors">
+                <div
+                  v-for="color in presetColors"
+                  :key="color.name"
+                  class="color-option"
+                  :class="{ active: currentPrimaryColor === color.value }"
+                  :style="{ backgroundColor: color.value }"
+                  :title="color.name"
+                  @click="setPrimaryColor(color.value)"
+                />
+              </div>
+              <el-color-picker
+                v-model="currentPrimaryColor"
+                show-alpha
+                :predefine="presetColors.map(c => c.value)"
+                @change="setPrimaryColor"
+              />
+            </div>
+          </div>
+
+          <!-- 字体大小设置 -->
+          <div class="option-group">
+            <h4>字体大小</h4>
+            <el-slider
+              v-model="fontSize"
+              :min="12"
+              :max="20"
+              :step="1"
+              show-stops
+              @change="applyFontSize"
+            />
+            <div class="font-size-info">
+              <span class="font-label">当前: {{ fontSize }}px</span>
+              <span
+                class="font-preview"
+                :style="{ fontSize: fontSize + 'px' }"
+              >
+                预览文字 Sample Text
+              </span>
+            </div>
+          </div>
+
+          <!-- 布局密度设置 -->
+          <div class="option-group">
+            <h4>界面密度</h4>
+            <el-radio-group
+              v-model="layoutDensity"
+              @change="applyLayoutDensity"
+            >
+              <el-radio-button label="compact">
+                紧凑
+              </el-radio-button>
+              <el-radio-button label="default">
+                默认
+              </el-radio-button>
+              <el-radio-button label="comfortable">
+                宽松
+              </el-radio-button>
+            </el-radio-group>
+          </div>
+
+          <!-- 组件尺寸设置 -->
+          <div class="option-group">
+            <h4>组件尺寸</h4>
+            <el-radio-group
+              v-model="componentSize"
+              @change="applyComponentSize"
+            >
+              <el-radio-button label="small">
+                小
+              </el-radio-button>
+              <el-radio-button label="default">
+                默认
+              </el-radio-button>
+              <el-radio-button label="large">
+                大
+              </el-radio-button>
+            </el-radio-group>
+          </div>
+
+          <!-- 动画效果设置 -->
+          <div class="option-group">
+            <h4>动画效果</h4>
+            <div class="animation-controls">
+              <el-switch
+                v-model="animationsEnabled"
+                active-text="启用动画"
+                inactive-text="禁用动画"
+                @change="applyAnimationSettings"
+              />
+              <el-slider
+                v-if="animationsEnabled"
+                v-model="animationSpeed"
+                :min="0.5"
+                :max="2"
+                :step="0.1"
+                show-input
+                show-input-controls
+                style="margin-top: 8px"
+                @change="applyAnimationSettings"
+              />
+              <span
+                v-if="animationsEnabled"
+                class="speed-label"
+              >
+                动画速度: {{ animationSpeed }}x
+              </span>
+            </div>
+          </div>
+        </div>
+      </el-card>
+
+      <!-- 响应式布局设置 -->
+      <el-card
+        shadow="never"
+        class="control-card"
+      >
+        <template #header>
+          <span>布局设置</span>
+        </template>
+
+        <div class="layout-options">
+          <!-- 侧边栏设置 -->
+          <div class="option-group">
+            <h4>侧边栏</h4>
+            <div class="sidebar-controls">
+              <el-checkbox
+                v-model="sidebarSettings.leftVisible"
+                @change="applySidebarSettings"
+              >
+                显示左侧栏
+              </el-checkbox>
+              <el-checkbox
+                v-model="sidebarSettings.rightVisible"
+                @change="applySidebarSettings"
+              >
+                显示右侧栏
+              </el-checkbox>
+              <el-checkbox
+                v-model="sidebarSettings.collapsible"
+                @change="applySidebarSettings"
+              >
+                可折叠
+              </el-checkbox>
+            </div>
+            <div class="sidebar-width">
+              <span class="width-label">侧栏宽度:</span>
+              <el-input-number
+                v-model="sidebarSettings.width"
+                :min="200"
+                :max="500"
+                :step="20"
+                size="small"
+                @change="applySidebarSettings"
+              />
+              <span class="unit">px</span>
+            </div>
+          </div>
+
+          <!-- 工具栏设置 -->
+          <div class="option-group">
+            <h4>工具栏</h4>
+            <div class="toolbar-controls">
+              <el-checkbox
+                v-model="toolbarSettings.showIcons"
+                @change="applyToolbarSettings"
+              >
+                显示图标
+              </el-checkbox>
+              <el-checkbox
+                v-model="toolbarSettings.showText"
+                @change="applyToolbarSettings"
+              >
+                显示文字
+              </el-checkbox>
+              <el-select
+                v-model="toolbarSettings.position"
+                size="small"
+                style="width: 120px; margin-top: 8px"
+                @change="applyToolbarSettings"
+              >
+                <el-option
+                  label="顶部"
+                  value="top"
+                />
+                <el-option
+                  label="底部"
+                  value="bottom"
+                />
+                <el-option
+                  label="左侧"
+                  value="left"
+                />
+                <el-option
+                  label="右侧"
+                  value="right"
+                />
+              </el-select>
+            </div>
+          </div>
+
+          <!-- 响应式断点 -->
+          <div class="option-group">
+            <h4>响应式断点</h4>
+            <div class="breakpoint-info">
+              <div class="current-breakpoint">
+                <span class="breakpoint-label">当前:</span>
+                <el-tag :type="getBreakpointType(currentBreakpoint)">
+                  {{ getBreakpointName(currentBreakpoint) }}
+                </el-tag>
+                <span class="viewport-size">{{ viewportWidth }}px</span>
+              </div>
+              <div class="breakpoint-list">
+                <div
+                  v-for="bp in breakpoints"
+                  :key="bp.name"
+                  class="breakpoint-item"
+                  :class="{ active: currentBreakpoint === bp.name }"
+                >
+                  <span class="bp-name">{{ bp.label }}</span>
+                  <span class="bp-range">{{ bp.min }}px+</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </el-card>
+
+      <!-- 自定义CSS -->
+      <el-card
+        shadow="never"
+        class="control-card"
+      >
+        <template #header>
+          <div class="card-header">
+            <span>自定义样式</span>
+            <div class="css-actions">
+              <el-button
+                size="small"
+                @click="loadCustomCSS"
+              >
+                导入
+              </el-button>
+              <el-button
+                size="small"
+                @click="saveCustomCSS"
+              >
+                导出
+              </el-button>
+            </div>
+          </div>
+        </template>
+
+        <div class="custom-css">
+          <el-input
+            v-model="customCSS"
+            type="textarea"
+            :rows="8"
+            placeholder="输入自定义CSS规则..."
+            @change="applyCustomCSS"
+          />
+          <div class="css-help">
+            <el-button
+              type="text"
+              size="small"
+              @click="showCSSHelp"
+            >
+              查看CSS变量参考
+            </el-button>
+          </div>
+        </div>
+      </el-card>
+    </div>
+
+    <!-- CSS变量参考对话框 -->
+    <el-dialog
+      v-model="showCSSReference"
+      title="CSS变量参考"
+      width="600px"
+    >
+      <div class="css-reference">
+        <el-collapse>
+          <el-collapse-item
+            title="颜色变量"
+            name="colors"
+          >
+            <div class="var-list">
+              <div
+                v-for="varName in colorVariables"
+                :key="varName"
+                class="var-item"
+              >
+                <code>{{ varName }}</code>
+                <div
+                  class="var-preview"
+                  :style="{ backgroundColor: `var(${varName})` }"
+                />
+              </div>
+            </div>
+          </el-collapse-item>
+          <el-collapse-item
+            title="尺寸变量"
+            name="sizes"
+          >
+            <div class="var-list">
+              <div
+                v-for="varName in sizeVariables"
+                :key="varName"
+                class="var-item"
+              >
+                <code>{{ varName }}</code>
+                <span class="var-value">{{ getCSSVariableValue(varName) }}</span>
+              </div>
+            </div>
+          </el-collapse-item>
+          <el-collapse-item
+            title="字体变量"
+            name="fonts"
+          >
+            <div class="var-list">
+              <div
+                v-for="varName in fontVariables"
+                :key="varName"
+                class="var-item"
+              >
+                <code>{{ varName }}</code>
+                <span class="var-value">{{ getCSSVariableValue(varName) }}</span>
+              </div>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
+    </el-dialog>
+  </div>
+</template>
 
 <style scoped>
   .theme-manager {

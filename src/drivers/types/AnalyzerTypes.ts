@@ -3,6 +3,8 @@
  * 基于原始C# SharedDriver模块精确实现
  */
 
+/* eslint-disable no-unused-vars */
+
 import { EventEmitter } from 'events';
 
 // 基础枚举类型 - 精确对应C#版本

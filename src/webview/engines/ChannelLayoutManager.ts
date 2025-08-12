@@ -116,7 +116,7 @@ export class ChannelLayoutManager {
 
     visibleChannels.forEach((channel, visibleIndex) => {
       const originalIndex = this.channels.indexOf(channel);
-      const height = channel.minimized ? this.MIN_CHANNEL_HEIGHT / 2 : this.config.channelHeight;
+      const height = (channel.minimized ?? false) ? this.MIN_CHANNEL_HEIGHT / 2 : this.config.channelHeight;
 
       const displayInfo: ChannelDisplayInfo = {
         channel,
@@ -125,7 +125,7 @@ export class ChannelLayoutManager {
         yPosition: currentY,
         height,
         hidden: false,
-        minimized: channel.minimized || false
+        minimized: channel.minimized ?? false
       };
 
       this.displayInfos.push(displayInfo);

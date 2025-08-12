@@ -11,7 +11,9 @@ import {
   DecoderOptionValue,
   DecoderResult,
   DecoderOutputType,
-  ChannelData
+  ChannelData,
+  WaitConditions,
+  WaitCondition
 } from '../types';
 
 /**
@@ -214,7 +216,7 @@ export class SPIDecoder extends DecoderBase {
 
     // 构造等待条件（对应原版 lines 333-336）
     // 我们想要所有CLK变化，如果使用CS的话还要所有CS变化
-    const waitConditions = [
+    const waitConditions: WaitCondition[] = [
       { 0: 'edge' } // 时钟的所有边沿
     ];
 

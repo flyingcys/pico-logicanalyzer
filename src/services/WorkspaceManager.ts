@@ -1280,10 +1280,11 @@ logs/
   /**
    * 清理资源
    */
-  dispose(): void {
+  async dispose(options?: ServiceDisposeOptions): Promise<boolean> {
     this.stopFileWatchers();
     this.stopAutoBackup();
     this.removeAllListeners();
+    return true;
   }
 }
 

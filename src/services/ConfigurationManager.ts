@@ -1030,8 +1030,9 @@ export class ConfigurationManager extends ServiceLifecycleBase {
   /**
    * 清理资源
    */
-  dispose(): void {
+  async dispose(options?: ServiceDisposeOptions): Promise<boolean> {
     this.removeAllListeners();
+    return true;
   }
 }
 

@@ -49,6 +49,19 @@ export interface ExportMetadata {
   duration: number;
   exportType: string;
   exportFormat: string;
+  exportSettings?: {
+    timeRange: string;
+    originalTotalSamples: number;
+    sampleRange: { startSample: number; endSample: number };
+    selectedChannelCount: number;
+    totalChannelCount: number;
+    samplingMode: string;
+  };
+  performance?: {
+    processingTime: number;
+    dataSize: number;
+    compressionRatio?: number;
+  };
 }
 
 export interface ExportOptions {
@@ -269,14 +282,22 @@ export class DataExportService extends ServiceLifecycleBase {
       frequency: input.frequency || input.sampleRate || 1000000,
       preTriggerSamples: input.preTriggerSamples || 1000,
       postTriggerSamples: input.postTriggerSamples || 1000,
+      totalSamples: input.totalSamples || (input.preTriggerSamples || 1000) + (input.postTriggerSamples || 1000),
       captureChannels: input.captureChannels || input.channels || [],
       triggerType: input.triggerType || 0,
       triggerChannel: input.triggerChannel || 0,
       triggerInverted: input.triggerInverted || false,
       triggerValue: input.triggerValue || 0,
+      loopCount: input.loopCount || 0,
+      measureBursts: input.measureBursts || false,
       name: input.name || 'Default Session',
       deviceVersion: input.deviceVersion || '1.0',
-      deviceSerial: input.deviceSerial || 'Unknown'
+      deviceSerial: input.deviceSerial || 'Unknown',
+      clone() { return { ...this }; },
+      cloneSettings() {
+        const { captureChannels, ...settings } = this;
+        return settings;
+      }
     } as CaptureSession;
   }
 
@@ -1555,8 +1576,9 @@ export class DataExportService extends ServiceLifecycleBase {
 
       // 性能信息
       performance: {
-        estimatedFileSize: this.estimateFileSize(exportedSamples, selectedChannels.length, exportFormat),
-        compressionAvailable: ['vcd', 'json'].includes(exportFormat.toLowerCase())
+        processingTime: 0, // 会在实际导出时填充
+        dataSize: this.estimateFileSize(exportedSamples, selectedChannels.length, exportFormat),
+        compressionRatio: ['vcd', 'json'].includes(exportFormat.toLowerCase()) ? 0.3 : 1.0
       }
     };
   }
@@ -1870,8 +1892,9 @@ export class DataExportService extends ServiceLifecycleBase {
   /**
    * 清理资源
    */
-  dispose(): void {
+  async dispose(options?: ServiceDisposeOptions): Promise<boolean> {
     this.dataConverters.clear();
+    return true;
   }
 }
 

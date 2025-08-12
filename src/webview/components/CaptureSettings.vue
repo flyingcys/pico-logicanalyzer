@@ -4,376 +4,6 @@
 提供完整的采集参数配置界面
 -->
 
-<template>
-  <el-dialog
-    v-model="dialogVisible"
-    title="采集设置"
-    width="900px"
-    :close-on-click-modal="false"
-    @close="handleCancel"
-  >
-    <div class="capture-settings">
-      <!-- 左侧：通道选择 -->
-      <div class="settings-section channels-section">
-        <div class="section-header">
-          <h4>
-            <el-icon><DataLine /></el-icon>
-            通道选择
-          </h4>
-          <div class="channel-actions">
-            <el-button-group size="small">
-              <el-button @click="selectAllChannels" title="选择全部">
-                <el-icon><Check /></el-icon>
-              </el-button>
-              <el-button @click="selectNoneChannels" title="取消全部">
-                <el-icon><Close /></el-icon>
-              </el-button>
-              <el-button @click="invertChannelSelection" title="反选">
-                <el-icon><RefreshRight /></el-icon>
-              </el-button>
-            </el-button-group>
-          </div>
-        </div>
-
-        <div class="channels-grid">
-          <div
-            v-for="(channelGroup, groupIndex) in channelGroups"
-            :key="groupIndex"
-            class="channel-group"
-          >
-            <div class="group-header">
-              <span class="group-title">CH{{ groupIndex * 8 }}-{{ groupIndex * 8 + 7 }}</span>
-              <div class="group-actions">
-                <el-button size="small" text @click="selectGroupChannels(groupIndex)">
-                  <el-icon><Check /></el-icon>
-                </el-button>
-                <el-button size="small" text @click="deselectGroupChannels(groupIndex)">
-                  <el-icon><Close /></el-icon>
-                </el-button>
-                <el-button size="small" text @click="invertGroupChannels(groupIndex)">
-                  <el-icon><RefreshRight /></el-icon>
-                </el-button>
-              </div>
-            </div>
-
-            <div class="channels-row">
-              <div
-                v-for="channel in channelGroup"
-                :key="channel.number"
-                class="channel-item"
-                :class="{ active: channel.enabled }"
-              >
-                <el-checkbox
-                  v-model="channel.enabled"
-                  :label="`CH${channel.number}`"
-                  @change="updateChannelLimits"
-                />
-                <div
-                  class="channel-color"
-                  :style="{ backgroundColor: channel.color }"
-                  @click="showChannelColorPicker(channel)"
-                />
-                <el-input
-                  v-model="channel.name"
-                  size="small"
-                  placeholder="名称"
-                  class="channel-name-input"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 右侧：采集参数 -->
-      <div class="settings-section parameters-section">
-        <!-- 基本参数 -->
-        <el-card shadow="never" class="parameter-card">
-          <template #header>
-            <div class="card-header">
-              <span>基本参数</span>
-              <el-button size="small" @click="resetToDefaults">重置默认</el-button>
-            </div>
-          </template>
-
-          <el-form :model="captureConfig" label-width="120px" size="small">
-            <el-form-item label="采样频率">
-              <div class="frequency-input">
-                <el-input-number
-                  v-model="captureConfig.frequency"
-                  :min="deviceLimits.minFrequency"
-                  :max="deviceLimits.maxFrequency"
-                  :step="1000000"
-                  controls-position="right"
-                  @change="updateJitter"
-                />
-                <span class="unit">Hz</span>
-                <div class="frequency-display">{{ formatFrequency(captureConfig.frequency) }}</div>
-              </div>
-              <div class="jitter-indicator" :class="jitterLevel">
-                {{ jitterText }}
-              </div>
-            </el-form-item>
-
-            <el-form-item label="触发前样本">
-              <div class="sample-input">
-                <el-input-number
-                  v-model="captureConfig.preTriggerSamples"
-                  :min="currentLimits.minPreSamples"
-                  :max="currentLimits.maxPreSamples"
-                  :step="1"
-                  controls-position="right"
-                  :disabled="captureConfig.isBlastMode"
-                />
-                <div class="sample-info">
-                  {{ formatSampleCount(captureConfig.preTriggerSamples) }}
-                  <span class="limits">
-                    ({{ formatSampleCount(currentLimits.minPreSamples) }} -
-                    {{ formatSampleCount(currentLimits.maxPreSamples) }})
-                  </span>
-                </div>
-              </div>
-            </el-form-item>
-
-            <el-form-item label="触发后样本">
-              <div class="sample-input">
-                <el-input-number
-                  v-model="captureConfig.postTriggerSamples"
-                  :min="currentLimits.minPostSamples"
-                  :max="currentLimits.maxPostSamples"
-                  :step="1"
-                  controls-position="right"
-                />
-                <div class="sample-info">
-                  {{ formatSampleCount(captureConfig.postTriggerSamples) }}
-                  <span class="limits">
-                    ({{ formatSampleCount(currentLimits.minPostSamples) }} -
-                    {{ formatSampleCount(currentLimits.maxPostSamples) }})
-                  </span>
-                </div>
-              </div>
-            </el-form-item>
-
-            <el-form-item label="总样本数">
-              <div class="total-samples">
-                {{ formatSampleCount(totalSamples) }}
-                <span v-if="totalSamples > currentLimits.maxTotalSamples" class="error">
-                  (超出限制: {{ formatSampleCount(currentLimits.maxTotalSamples) }})
-                </span>
-              </div>
-            </el-form-item>
-          </el-form>
-        </el-card>
-
-        <!-- 触发设置 -->
-        <el-card shadow="never" class="parameter-card" v-if="!isEmulatedMode">
-          <template #header>
-            <div class="card-header">
-              <span>触发设置</span>
-              <el-button size="small" @click="resetTriggerSettings">重置触发</el-button>
-            </div>
-          </template>
-
-          <el-form :model="captureConfig" label-width="120px" size="small">
-            <el-form-item label="触发类型">
-              <el-radio-group v-model="captureConfig.triggerType" @change="onTriggerTypeChange">
-                <el-radio label="edge" :disabled="isMultiDeviceMode">边沿触发</el-radio>
-                <el-radio label="pattern">模式触发</el-radio>
-              </el-radio-group>
-            </el-form-item>
-
-            <!-- 边沿触发设置 -->
-            <template v-if="captureConfig.triggerType === 'edge'">
-              <el-form-item label="触发通道">
-                <el-select v-model="captureConfig.triggerChannel">
-                  <el-option
-                    v-for="n in 24"
-                    :key="n - 1"
-                    :label="`Channel ${n}`"
-                    :value="n - 1"
-                  />
-                </el-select>
-              </el-form-item>
-
-              <el-form-item label="触发极性">
-                <el-checkbox v-model="captureConfig.triggerInverted">负极性触发</el-checkbox>
-              </el-form-item>
-
-              <el-form-item label="突发模式">
-                <el-checkbox
-                  v-model="captureConfig.isBlastMode"
-                  @change="onBlastModeChange"
-                  :disabled="captureConfig.triggerType !== 'edge'"
-                >
-                  启用突发模式
-                </el-checkbox>
-              </el-form-item>
-
-              <el-form-item label="突发采集" v-if="!captureConfig.isBlastMode">
-                <div class="burst-settings">
-                  <el-checkbox v-model="captureConfig.burstEnabled">启用突发采集</el-checkbox>
-                  <template v-if="captureConfig.burstEnabled">
-                    <el-input-number
-                      v-model="captureConfig.burstCount"
-                      :min="2"
-                      :max="256"
-                      size="small"
-                      style="margin-left: 8px"
-                    />
-                    <span>次</span>
-                    <el-checkbox
-                      v-model="captureConfig.measureBursts"
-                      style="margin-left: 16px"
-                    >
-                      测量间隔
-                    </el-checkbox>
-                  </template>
-                </div>
-              </el-form-item>
-            </template>
-
-            <!-- 模式触发设置 -->
-            <template v-if="captureConfig.triggerType === 'pattern'">
-              <el-form-item label="起始通道">
-                <el-input-number
-                  v-model="captureConfig.patternTriggerChannel"
-                  :min="1"
-                  :max="16"
-                  controls-position="right"
-                />
-              </el-form-item>
-
-              <el-form-item label="触发模式">
-                <div class="pattern-input">
-                  <el-input
-                    v-model="captureConfig.triggerPattern"
-                    placeholder="输入二进制模式 (如: 10110)"
-                    :maxlength="captureConfig.fastTrigger ? 5 : 16"
-                    @input="validatePattern"
-                  />
-                  <div class="pattern-info">
-                    长度: {{ captureConfig.triggerPattern.length }} 位
-                    <span v-if="patternError" class="error">{{ patternError }}</span>
-                  </div>
-                </div>
-              </el-form-item>
-
-              <el-form-item label="快速触发">
-                <el-checkbox v-model="captureConfig.fastTrigger" @change="onFastTriggerChange">
-                  启用快速触发 (限制5位)
-                </el-checkbox>
-              </el-form-item>
-            </template>
-
-            <!-- 触发电平设置 -->
-            <el-divider content-position="left">触发电平</el-divider>
-            
-            <el-form-item label="信号类型">
-              <el-select v-model="triggerLevelConfig.signalType" @change="onSignalTypeChange">
-                <el-option label="TTL (1.4V)" value="TTL" />
-                <el-option label="CMOS 3.3V (1.65V)" value="CMOS" />
-                <el-option label="LVDS (1.2V)" value="LVDS" />
-                <el-option label="自定义" value="Custom" />
-              </el-select>
-            </el-form-item>
-
-            <el-form-item label="触发阈值">
-              <div class="threshold-input">
-                <el-input-number
-                  v-model="triggerLevelConfig.threshold"
-                  :min="0"
-                  :max="5.0"
-                  :step="0.1"
-                  :precision="2"
-                  controls-position="right"
-                  :disabled="triggerLevelConfig.signalType !== 'Custom'"
-                />
-                <span class="unit">V</span>
-              </div>
-              <div class="threshold-info">
-                <span class="current-level">{{ formatVoltage(triggerLevelConfig.threshold) }}</span>
-                <span v-if="triggerLevelConfig.hysteresis" class="hysteresis-info">
-                  (±{{ formatVoltage(triggerLevelConfig.hysteresis) }} 滞回)
-                </span>
-              </div>
-            </el-form-item>
-
-            <el-form-item label="滞回电压" v-if="triggerLevelConfig.signalType === 'Custom'">
-              <div class="hysteresis-input">
-                <el-input-number
-                  v-model="triggerLevelConfig.hysteresis"
-                  :min="0"
-                  :max="1.0"
-                  :step="0.1"
-                  :precision="2"
-                  controls-position="right"
-                />
-                <span class="unit">V</span>
-              </div>
-              <div class="hysteresis-help">
-                <el-icon><InfoFilled /></el-icon>
-                滞回电压可减少噪音影响
-              </div>
-            </el-form-item>
-
-            <el-form-item label="输入阻抗" v-if="triggerLevelConfig.signalType === 'Custom'">
-              <div class="impedance-input">
-                <el-input-number
-                  v-model="triggerLevelConfig.inputImpedance"
-                  :min="50"
-                  :max="10000000"
-                  :step="1000"
-                  controls-position="right"
-                />
-                <span class="unit">Ω</span>
-              </div>
-            </el-form-item>
-          </el-form>
-        </el-card>
-      </div>
-    </div>
-
-    <!-- 颜色选择器对话框 -->
-    <el-dialog v-model="showColorPicker" title="选择颜色" width="400px">
-      <div class="color-picker">
-        <div class="preset-colors">
-          <div
-            v-for="color in presetColors"
-            :key="color"
-            class="color-item"
-            :style="{ backgroundColor: color }"
-            @click="selectColor(color)"
-          />
-        </div>
-        <el-input v-model="currentColor" placeholder="#RRGGBB" class="color-input" />
-      </div>
-      <template #footer>
-        <el-button @click="showColorPicker = false">取消</el-button>
-        <el-button type="primary" @click="confirmColorSelection">确定</el-button>
-      </template>
-    </el-dialog>
-
-    <template #footer>
-      <div class="dialog-footer">
-        <div class="footer-info">
-          <span v-if="selectedChannelCount > 0">
-            已选择 {{ selectedChannelCount }} 个通道
-          </span>
-          <span v-if="configErrors.length > 0" class="error">
-            {{ configErrors.join(', ') }}
-          </span>
-        </div>
-        <div class="footer-buttons">
-          <el-button @click="handleCancel">取消</el-button>
-          <el-button type="primary" :disabled="!isConfigValid" @click="handleConfirm">
-            确定
-          </el-button>
-        </div>
-      </div>
-    </template>
-  </el-dialog>
-</template>
-
 <script setup lang="ts">
   import { ref, computed, watch, onMounted } from 'vue';
   import {
@@ -385,12 +15,12 @@
     InfoFilled
   } from '@element-plus/icons-vue';
   import { ElMessage } from 'element-plus';
-  import { 
+  import {
     TriggerProcessor,
     TriggerProcessorFactory,
     TriggerLevelConfig as ITriggerLevelConfig,
     TriggerValidationResult,
-    TriggerValidationError 
+    TriggerValidationError
   } from '../../models/TriggerProcessor';
   import { TriggerType } from '../../models/AnalyzerTypes';
 
@@ -552,7 +182,7 @@
 
   const totalSamples = computed(() => {
     const loops = captureConfig.value.burstEnabled ? captureConfig.value.burstCount - 1 : 0;
-    return captureConfig.value.preTriggerSamples + 
+    return captureConfig.value.preTriggerSamples +
            (captureConfig.value.postTriggerSamples * (loops + 1));
   });
 
@@ -799,7 +429,7 @@
   // 验证触发电平
   const validateTriggerLevel = () => {
     if (!triggerProcessor.value) return;
-    
+
     const validation = triggerProcessor.value.validateTriggerLevel(triggerLevelConfig.value);
     if (!validation.isValid) {
       ElMessage.warning(validation.errorMessage || '触发电平配置无效');
@@ -921,7 +551,7 @@
   onMounted(() => {
     initializeChannels();
     updateJitter();
-    
+
     // 初始化触发处理器
     triggerProcessor.value = TriggerProcessorFactory.createForDevice({
       channelCount: deviceLimits.value.channelCount,
@@ -932,6 +562,503 @@
     });
   });
 </script>
+
+<template>
+  <el-dialog
+    v-model="dialogVisible"
+    title="采集设置"
+    width="900px"
+    :close-on-click-modal="false"
+    @close="handleCancel"
+  >
+    <div class="capture-settings">
+      <!-- 左侧：通道选择 -->
+      <div class="settings-section channels-section">
+        <div class="section-header">
+          <h4>
+            <el-icon><DataLine /></el-icon>
+            通道选择
+          </h4>
+          <div class="channel-actions">
+            <el-button-group size="small">
+              <el-button
+                title="选择全部"
+                @click="selectAllChannels"
+              >
+                <el-icon><Check /></el-icon>
+              </el-button>
+              <el-button
+                title="取消全部"
+                @click="selectNoneChannels"
+              >
+                <el-icon><Close /></el-icon>
+              </el-button>
+              <el-button
+                title="反选"
+                @click="invertChannelSelection"
+              >
+                <el-icon><RefreshRight /></el-icon>
+              </el-button>
+            </el-button-group>
+          </div>
+        </div>
+
+        <div class="channels-grid">
+          <div
+            v-for="(channelGroup, groupIndex) in channelGroups"
+            :key="groupIndex"
+            class="channel-group"
+          >
+            <div class="group-header">
+              <span class="group-title">CH{{ groupIndex * 8 }}-{{ groupIndex * 8 + 7 }}</span>
+              <div class="group-actions">
+                <el-button
+                  size="small"
+                  text
+                  @click="selectGroupChannels(groupIndex)"
+                >
+                  <el-icon><Check /></el-icon>
+                </el-button>
+                <el-button
+                  size="small"
+                  text
+                  @click="deselectGroupChannels(groupIndex)"
+                >
+                  <el-icon><Close /></el-icon>
+                </el-button>
+                <el-button
+                  size="small"
+                  text
+                  @click="invertGroupChannels(groupIndex)"
+                >
+                  <el-icon><RefreshRight /></el-icon>
+                </el-button>
+              </div>
+            </div>
+
+            <div class="channels-row">
+              <div
+                v-for="channel in channelGroup"
+                :key="channel.number"
+                class="channel-item"
+                :class="{ active: channel.enabled }"
+              >
+                <el-checkbox
+                  v-model="channel.enabled"
+                  :label="`CH${channel.number}`"
+                  @change="updateChannelLimits"
+                />
+                <div
+                  class="channel-color"
+                  :style="{ backgroundColor: channel.color }"
+                  @click="showChannelColorPicker(channel)"
+                />
+                <el-input
+                  v-model="channel.name"
+                  size="small"
+                  placeholder="名称"
+                  class="channel-name-input"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧：采集参数 -->
+      <div class="settings-section parameters-section">
+        <!-- 基本参数 -->
+        <el-card
+          shadow="never"
+          class="parameter-card"
+        >
+          <template #header>
+            <div class="card-header">
+              <span>基本参数</span>
+              <el-button
+                size="small"
+                @click="resetToDefaults"
+              >
+                重置默认
+              </el-button>
+            </div>
+          </template>
+
+          <el-form
+            :model="captureConfig"
+            label-width="120px"
+            size="small"
+          >
+            <el-form-item label="采样频率">
+              <div class="frequency-input">
+                <el-input-number
+                  v-model="captureConfig.frequency"
+                  :min="deviceLimits.minFrequency"
+                  :max="deviceLimits.maxFrequency"
+                  :step="1000000"
+                  controls-position="right"
+                  @change="updateJitter"
+                />
+                <span class="unit">Hz</span>
+                <div class="frequency-display">
+                  {{ formatFrequency(captureConfig.frequency) }}
+                </div>
+              </div>
+              <div
+                class="jitter-indicator"
+                :class="jitterLevel"
+              >
+                {{ jitterText }}
+              </div>
+            </el-form-item>
+
+            <el-form-item label="触发前样本">
+              <div class="sample-input">
+                <el-input-number
+                  v-model="captureConfig.preTriggerSamples"
+                  :min="currentLimits.minPreSamples"
+                  :max="currentLimits.maxPreSamples"
+                  :step="1"
+                  controls-position="right"
+                  :disabled="captureConfig.isBlastMode"
+                />
+                <div class="sample-info">
+                  {{ formatSampleCount(captureConfig.preTriggerSamples) }}
+                  <span class="limits">
+                    ({{ formatSampleCount(currentLimits.minPreSamples) }} -
+                    {{ formatSampleCount(currentLimits.maxPreSamples) }})
+                  </span>
+                </div>
+              </div>
+            </el-form-item>
+
+            <el-form-item label="触发后样本">
+              <div class="sample-input">
+                <el-input-number
+                  v-model="captureConfig.postTriggerSamples"
+                  :min="currentLimits.minPostSamples"
+                  :max="currentLimits.maxPostSamples"
+                  :step="1"
+                  controls-position="right"
+                />
+                <div class="sample-info">
+                  {{ formatSampleCount(captureConfig.postTriggerSamples) }}
+                  <span class="limits">
+                    ({{ formatSampleCount(currentLimits.minPostSamples) }} -
+                    {{ formatSampleCount(currentLimits.maxPostSamples) }})
+                  </span>
+                </div>
+              </div>
+            </el-form-item>
+
+            <el-form-item label="总样本数">
+              <div class="total-samples">
+                {{ formatSampleCount(totalSamples) }}
+                <span
+                  v-if="totalSamples > currentLimits.maxTotalSamples"
+                  class="error"
+                >
+                  (超出限制: {{ formatSampleCount(currentLimits.maxTotalSamples) }})
+                </span>
+              </div>
+            </el-form-item>
+          </el-form>
+        </el-card>
+
+        <!-- 触发设置 -->
+        <el-card
+          v-if="!isEmulatedMode"
+          shadow="never"
+          class="parameter-card"
+        >
+          <template #header>
+            <div class="card-header">
+              <span>触发设置</span>
+              <el-button
+                size="small"
+                @click="resetTriggerSettings"
+              >
+                重置触发
+              </el-button>
+            </div>
+          </template>
+
+          <el-form
+            :model="captureConfig"
+            label-width="120px"
+            size="small"
+          >
+            <el-form-item label="触发类型">
+              <el-radio-group
+                v-model="captureConfig.triggerType"
+                @change="onTriggerTypeChange"
+              >
+                <el-radio
+                  label="edge"
+                  :disabled="isMultiDeviceMode"
+                >
+                  边沿触发
+                </el-radio>
+                <el-radio label="pattern">
+                  模式触发
+                </el-radio>
+              </el-radio-group>
+            </el-form-item>
+
+            <!-- 边沿触发设置 -->
+            <template v-if="captureConfig.triggerType === 'edge'">
+              <el-form-item label="触发通道">
+                <el-select v-model="captureConfig.triggerChannel">
+                  <el-option
+                    v-for="n in 24"
+                    :key="n - 1"
+                    :label="`Channel ${n}`"
+                    :value="n - 1"
+                  />
+                </el-select>
+              </el-form-item>
+
+              <el-form-item label="触发极性">
+                <el-checkbox v-model="captureConfig.triggerInverted">
+                  负极性触发
+                </el-checkbox>
+              </el-form-item>
+
+              <el-form-item label="突发模式">
+                <el-checkbox
+                  v-model="captureConfig.isBlastMode"
+                  :disabled="captureConfig.triggerType !== 'edge'"
+                  @change="onBlastModeChange"
+                >
+                  启用突发模式
+                </el-checkbox>
+              </el-form-item>
+
+              <el-form-item
+                v-if="!captureConfig.isBlastMode"
+                label="突发采集"
+              >
+                <div class="burst-settings">
+                  <el-checkbox v-model="captureConfig.burstEnabled">
+                    启用突发采集
+                  </el-checkbox>
+                  <template v-if="captureConfig.burstEnabled">
+                    <el-input-number
+                      v-model="captureConfig.burstCount"
+                      :min="2"
+                      :max="256"
+                      size="small"
+                      style="margin-left: 8px"
+                    />
+                    <span>次</span>
+                    <el-checkbox
+                      v-model="captureConfig.measureBursts"
+                      style="margin-left: 16px"
+                    >
+                      测量间隔
+                    </el-checkbox>
+                  </template>
+                </div>
+              </el-form-item>
+            </template>
+
+            <!-- 模式触发设置 -->
+            <template v-if="captureConfig.triggerType === 'pattern'">
+              <el-form-item label="起始通道">
+                <el-input-number
+                  v-model="captureConfig.patternTriggerChannel"
+                  :min="1"
+                  :max="16"
+                  controls-position="right"
+                />
+              </el-form-item>
+
+              <el-form-item label="触发模式">
+                <div class="pattern-input">
+                  <el-input
+                    v-model="captureConfig.triggerPattern"
+                    placeholder="输入二进制模式 (如: 10110)"
+                    :maxlength="captureConfig.fastTrigger ? 5 : 16"
+                    @input="validatePattern"
+                  />
+                  <div class="pattern-info">
+                    长度: {{ captureConfig.triggerPattern.length }} 位
+                    <span
+                      v-if="patternError"
+                      class="error"
+                    >{{ patternError }}</span>
+                  </div>
+                </div>
+              </el-form-item>
+
+              <el-form-item label="快速触发">
+                <el-checkbox
+                  v-model="captureConfig.fastTrigger"
+                  @change="onFastTriggerChange"
+                >
+                  启用快速触发 (限制5位)
+                </el-checkbox>
+              </el-form-item>
+            </template>
+
+            <!-- 触发电平设置 -->
+            <el-divider content-position="left">
+              触发电平
+            </el-divider>
+
+            <el-form-item label="信号类型">
+              <el-select
+                v-model="triggerLevelConfig.signalType"
+                @change="onSignalTypeChange"
+              >
+                <el-option
+                  label="TTL (1.4V)"
+                  value="TTL"
+                />
+                <el-option
+                  label="CMOS 3.3V (1.65V)"
+                  value="CMOS"
+                />
+                <el-option
+                  label="LVDS (1.2V)"
+                  value="LVDS"
+                />
+                <el-option
+                  label="自定义"
+                  value="Custom"
+                />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="触发阈值">
+              <div class="threshold-input">
+                <el-input-number
+                  v-model="triggerLevelConfig.threshold"
+                  :min="0"
+                  :max="5.0"
+                  :step="0.1"
+                  :precision="2"
+                  controls-position="right"
+                  :disabled="triggerLevelConfig.signalType !== 'Custom'"
+                />
+                <span class="unit">V</span>
+              </div>
+              <div class="threshold-info">
+                <span class="current-level">{{ formatVoltage(triggerLevelConfig.threshold) }}</span>
+                <span
+                  v-if="triggerLevelConfig.hysteresis"
+                  class="hysteresis-info"
+                >
+                  (±{{ formatVoltage(triggerLevelConfig.hysteresis) }} 滞回)
+                </span>
+              </div>
+            </el-form-item>
+
+            <el-form-item
+              v-if="triggerLevelConfig.signalType === 'Custom'"
+              label="滞回电压"
+            >
+              <div class="hysteresis-input">
+                <el-input-number
+                  v-model="triggerLevelConfig.hysteresis"
+                  :min="0"
+                  :max="1.0"
+                  :step="0.1"
+                  :precision="2"
+                  controls-position="right"
+                />
+                <span class="unit">V</span>
+              </div>
+              <div class="hysteresis-help">
+                <el-icon><InfoFilled /></el-icon>
+                滞回电压可减少噪音影响
+              </div>
+            </el-form-item>
+
+            <el-form-item
+              v-if="triggerLevelConfig.signalType === 'Custom'"
+              label="输入阻抗"
+            >
+              <div class="impedance-input">
+                <el-input-number
+                  v-model="triggerLevelConfig.inputImpedance"
+                  :min="50"
+                  :max="10000000"
+                  :step="1000"
+                  controls-position="right"
+                />
+                <span class="unit">Ω</span>
+              </div>
+            </el-form-item>
+          </el-form>
+        </el-card>
+      </div>
+    </div>
+
+    <!-- 颜色选择器对话框 -->
+    <el-dialog
+      v-model="showColorPicker"
+      title="选择颜色"
+      width="400px"
+    >
+      <div class="color-picker">
+        <div class="preset-colors">
+          <div
+            v-for="color in presetColors"
+            :key="color"
+            class="color-item"
+            :style="{ backgroundColor: color }"
+            @click="selectColor(color)"
+          />
+        </div>
+        <el-input
+          v-model="currentColor"
+          placeholder="#RRGGBB"
+          class="color-input"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="showColorPicker = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          @click="confirmColorSelection"
+        >
+          确定
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <template #footer>
+      <div class="dialog-footer">
+        <div class="footer-info">
+          <span v-if="selectedChannelCount > 0">
+            已选择 {{ selectedChannelCount }} 个通道
+          </span>
+          <span
+            v-if="configErrors.length > 0"
+            class="error"
+          >
+            {{ configErrors.join(', ') }}
+          </span>
+        </div>
+        <div class="footer-buttons">
+          <el-button @click="handleCancel">
+            取消
+          </el-button>
+          <el-button
+            type="primary"
+            :disabled="!isConfigValid"
+            @click="handleConfirm"
+          >
+            确定
+          </el-button>
+        </div>
+      </div>
+    </template>
+  </el-dialog>
+</template>
 
 <style scoped>
   .capture-settings {

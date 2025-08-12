@@ -30,7 +30,7 @@ export interface MarkerPair {
 
 export interface MeasurementResult {
   id: string;
-  type: 'time' | 'frequency' | 'pulse_width' | 'period' | 'samples';
+  type: 'time' | 'frequency' | 'pulse_width' | 'period' | 'custom';
   value: number;
   unit: string;
   displayText: string;
@@ -230,7 +230,7 @@ export class MarkerTools {
         displayText = this.formatFrequency(value);
         break;
 
-      case 'samples':
+      case 'custom':
         value = sampleDiff;
         unit = 'samples';
         displayText = `${sampleDiff} 样本`;

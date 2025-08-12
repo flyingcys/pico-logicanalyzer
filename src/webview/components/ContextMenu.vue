@@ -3,86 +3,6 @@
 提供上下文相关的操作菜单，提升用户交互体验
 -->
 
-<template>
-  <teleport to="body">
-    <div
-      v-show="visible"
-      ref="menuRef"
-      class="context-menu"
-      :style="menuStyle"
-      @contextmenu.prevent
-    >
-      <div class="context-menu-content">
-        <template v-for="(item, index) in menuItems" :key="item.id || index">
-          <!-- 分隔线 -->
-          <div v-if="item.type === 'divider'" class="menu-divider" />
-          
-          <!-- 子菜单 -->
-          <div
-            v-else-if="item.type === 'submenu'"
-            class="menu-item submenu"
-            :class="{ disabled: item.disabled }"
-            @mouseenter="showSubmenu(item, index)"
-            @mouseleave="hideSubmenu"
-          >
-            <div class="menu-item-content">
-              <el-icon v-if="item.icon" class="menu-icon">
-                <component :is="item.icon" />
-              </el-icon>
-              <span class="menu-label">{{ item.label }}</span>
-              <el-icon class="submenu-arrow">
-                <ArrowRight />
-              </el-icon>
-            </div>
-            
-            <!-- 子菜单内容 -->
-            <div
-              v-if="submenuIndex === index"
-              class="submenu-content"
-              :style="submenuStyle"
-            >
-              <div
-                v-for="subItem in item.children"
-                :key="subItem.id"
-                class="menu-item"
-                :class="{ disabled: subItem.disabled }"
-                @click="handleItemClick(subItem)"
-              >
-                <div class="menu-item-content">
-                  <el-icon v-if="subItem.icon" class="menu-icon">
-                    <component :is="subItem.icon" />
-                  </el-icon>
-                  <span class="menu-label">{{ subItem.label }}</span>
-                  <span v-if="subItem.shortcut" class="menu-shortcut">{{ subItem.shortcut }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <!-- 普通菜单项 -->
-          <div
-            v-else
-            class="menu-item"
-            :class="{ disabled: item.disabled, checked: item.checked }"
-            @click="handleItemClick(item)"
-          >
-            <div class="menu-item-content">
-              <el-icon v-if="item.icon" class="menu-icon">
-                <component :is="item.icon" />
-              </el-icon>
-              <span class="menu-label">{{ item.label }}</span>
-              <span v-if="item.shortcut" class="menu-shortcut">{{ item.shortcut }}</span>
-              <el-icon v-if="item.checked" class="menu-check">
-                <Check />
-              </el-icon>
-            </div>
-          </div>
-        </template>
-      </div>
-    </div>
-  </teleport>
-</template>
-
 <script setup lang="ts">
   import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
   import { ArrowRight, Check } from '@element-plus/icons-vue';
@@ -146,7 +66,7 @@
     if (item.disabled) return;
 
     emit('item-click', item);
-    
+
     if (item.action) {
       try {
         item.action();
@@ -162,7 +82,7 @@
     if (item.disabled || !item.children?.length) return;
 
     submenuIndex.value = index;
-    
+
     nextTick(() => {
       const menuElement = menuRef.value;
       if (menuElement) {
@@ -189,7 +109,7 @@
 
   const handleClickOutside = (event: MouseEvent) => {
     if (!props.visible) return;
-    
+
     const menuElement = menuRef.value;
     if (menuElement && !menuElement.contains(event.target as Node)) {
       hideMenu();
@@ -218,6 +138,110 @@
     hide: hideMenu
   });
 </script>
+
+<template>
+  <teleport to="body">
+    <div
+      v-show="visible"
+      ref="menuRef"
+      class="context-menu"
+      :style="menuStyle"
+      @contextmenu.prevent
+    >
+      <div class="context-menu-content">
+        <template
+          v-for="(item, index) in menuItems"
+          :key="item.id || index"
+        >
+          <!-- 分隔线 -->
+          <div
+            v-if="item.type === 'divider'"
+            class="menu-divider"
+          />
+
+          <!-- 子菜单 -->
+          <div
+            v-else-if="item.type === 'submenu'"
+            class="menu-item submenu"
+            :class="{ disabled: item.disabled }"
+            @mouseenter="showSubmenu(item, index)"
+            @mouseleave="hideSubmenu"
+          >
+            <div class="menu-item-content">
+              <el-icon
+                v-if="item.icon"
+                class="menu-icon"
+              >
+                <component :is="item.icon" />
+              </el-icon>
+              <span class="menu-label">{{ item.label }}</span>
+              <el-icon class="submenu-arrow">
+                <ArrowRight />
+              </el-icon>
+            </div>
+
+            <!-- 子菜单内容 -->
+            <div
+              v-if="submenuIndex === index"
+              class="submenu-content"
+              :style="submenuStyle"
+            >
+              <div
+                v-for="subItem in item.children"
+                :key="subItem.id"
+                class="menu-item"
+                :class="{ disabled: subItem.disabled }"
+                @click="handleItemClick(subItem)"
+              >
+                <div class="menu-item-content">
+                  <el-icon
+                    v-if="subItem.icon"
+                    class="menu-icon"
+                  >
+                    <component :is="subItem.icon" />
+                  </el-icon>
+                  <span class="menu-label">{{ subItem.label }}</span>
+                  <span
+                    v-if="subItem.shortcut"
+                    class="menu-shortcut"
+                  >{{ subItem.shortcut }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 普通菜单项 -->
+          <div
+            v-else
+            class="menu-item"
+            :class="{ disabled: item.disabled, checked: item.checked }"
+            @click="handleItemClick(item)"
+          >
+            <div class="menu-item-content">
+              <el-icon
+                v-if="item.icon"
+                class="menu-icon"
+              >
+                <component :is="item.icon" />
+              </el-icon>
+              <span class="menu-label">{{ item.label }}</span>
+              <span
+                v-if="item.shortcut"
+                class="menu-shortcut"
+              >{{ item.shortcut }}</span>
+              <el-icon
+                v-if="item.checked"
+                class="menu-check"
+              >
+                <Check />
+              </el-icon>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </teleport>
+</template>
 
 <style scoped>
   .context-menu {

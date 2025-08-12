@@ -6,10 +6,10 @@
 import {
   initializeDecoders,
   decoderManager,
-  runDecoderTests,
   getDecoderSystemStats,
   I2CDecoder
 } from './index';
+import { testDecoderExecution } from './test-decoder-integration';
 
 /**
  * Week 3 自测主函数
@@ -68,7 +68,7 @@ export async function runWeek3SelfTest(): Promise<void> {
 
     // 5. 运行解码器功能测试
     console.log('🧪 运行解码器功能测试...');
-    await runDecoderTests();
+    await testDecoderExecution();
     console.log('✅ 解码器功能测试完成\n');
 
     // 6. 测试解码器搜索功能

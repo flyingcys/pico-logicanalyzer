@@ -393,9 +393,11 @@ export class ChannelMappingManager {
    * @returns DecoderSelectedChannel 数组
    */
   public toDecoderSelectedChannels(mapping: Record<string, number>): DecoderSelectedChannel[] {
-    return Object.entries(mapping).map(([name, channel]) => ({
+    return Object.entries(mapping).map(([name, channel], index) => ({
       name,
-      channel
+      channel,
+      captureIndex: channel,
+      decoderIndex: index
     }));
   }
 

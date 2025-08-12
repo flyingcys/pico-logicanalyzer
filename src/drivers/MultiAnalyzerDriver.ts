@@ -381,7 +381,9 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
       captureChannels: channels.map(ch => ({
         channelNumber: ch,
         channelName: `Channel ${ch + 1}`,
-        hidden: false
+        textualChannelNumber: `CH${ch}`,
+        hidden: false,
+        clone() { return { ...this }; }
       })),
       triggerChannel: 24, // 使用外部触发
       triggerType: TriggerType.Edge,
@@ -407,7 +409,9 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
       captureChannels: channels.map(ch => ({
         channelNumber: ch,
         channelName: `Channel ${ch + 1}`,
-        hidden: false
+        textualChannelNumber: `CH${ch}`,
+        hidden: false,
+        clone() { return { ...this }; }
       }))
     };
 

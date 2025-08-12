@@ -274,11 +274,16 @@ const webviewConfig = {
       name: 'runtime'
     }
   },
-  // 性能预算
+  // 性能预算 - 为VSCode扩展调整
   performance: {
-    maxAssetSize: 512000,        // 512KB
-    maxEntrypointSize: 1024000,  // 1MB
-    hints: isProduction ? 'warning' : false
+    maxAssetSize: 1500000,       // 1.5MB - 考虑到element-plus的大小
+    maxEntrypointSize: 2500000,  // 2.5MB - 为整个entrypoint提供更大空间
+    hints: isProduction ? 'warning' : false,
+    // 排除已知的大文件
+    assetFilter: function(assetFilename) {
+      // 不对这些已知会很大的文件进行警告
+      return !/(element-plus|vendors|vue-vendor)\.[a-z0-9]+\.js$/.test(assetFilename);
+    }
   },
   devtool: isDevelopment ? 'eval-cheap-module-source-map' : 'source-map'
 };

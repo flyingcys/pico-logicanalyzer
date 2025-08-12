@@ -1,451 +1,3 @@
-<template>
-  <div class="performance-analyzer">
-    <el-card shadow="never" class="analyzer-card">
-      <template #header>
-        <div class="card-header">
-          <span>性能分析工具</span>
-          <div class="header-controls">
-            <el-switch
-              v-model="isAnalyzing"
-              active-text="启用分析"
-              inactive-text="停止分析"
-              @change="onAnalysisToggle"
-            />
-            <el-button size="small" @click="resetMetrics">重置指标</el-button>
-            <el-button size="small" @click="exportReport">导出报告</el-button>
-          </div>
-        </div>
-      </template>
-
-      <!-- 实时性能指标 -->
-      <div class="metrics-overview">
-        <el-row :gutter="16">
-          <el-col :span="6">
-            <el-card shadow="never" class="metric-card">
-              <el-statistic
-                title="渲染FPS"
-                :value="renderingFPS"
-                :precision="1"
-                suffix="fps"
-              >
-                <template #suffix>
-                  <el-icon :color="getFPSColor(renderingFPS)"><VideoPlay /></el-icon>
-                </template>
-              </el-statistic>
-              <div class="metric-trend">
-                <span :class="getFPSTrendClass(renderingFPS)">
-                  {{ getFPSTrendText(renderingFPS) }}
-                </span>
-              </div>
-            </el-card>
-          </el-col>
-          
-          <el-col :span="6">
-            <el-card shadow="never" class="metric-card">
-              <el-statistic
-                title="内存使用"
-                :value="memoryUsage"
-                :precision="1"
-                suffix="MB"
-              >
-                <template #suffix>
-                  <el-icon :color="getMemoryColor(memoryUsage)"><Cpu /></el-icon>
-                </template>
-              </el-statistic>
-              <div class="metric-trend">
-                <el-progress
-                  :percentage="memoryUsagePercent"
-                  :stroke-width="4"
-                  :show-text="false"
-                  :status="memoryUsagePercent > 80 ? 'exception' : ''"
-                />
-              </div>
-            </el-card>
-          </el-col>
-          
-          <el-col :span="6">
-            <el-card shadow="never" class="metric-card">
-              <el-statistic
-                title="解码延迟"
-                :value="decodingLatency"
-                :precision="2"
-                suffix="ms"
-              >
-                <template #suffix>
-                  <el-icon :color="getLatencyColor(decodingLatency)"><Timer /></el-icon>
-                </template>
-              </el-statistic>
-              <div class="metric-trend">
-                <span :class="getLatencyTrendClass(decodingLatency)">
-                  {{ getLatencyTrendText(decodingLatency) }}
-                </span>
-              </div>
-            </el-card>
-          </el-col>
-          
-          <el-col :span="6">
-            <el-card shadow="never" class="metric-card">
-              <el-statistic
-                title="CPU使用率"
-                :value="cpuUsage"
-                :precision="1"
-                suffix="%"
-              >
-                <template #suffix>
-                  <el-icon :color="getCPUColor(cpuUsage)"><Setting /></el-icon>
-                </template>
-              </el-statistic>
-              <div class="metric-trend">
-                <el-progress
-                  :percentage="cpuUsage"
-                  :stroke-width="4"
-                  :show-text="false"
-                  :status="cpuUsage > 80 ? 'exception' : ''"
-                />
-              </div>
-            </el-card>
-          </el-col>
-        </el-row>
-      </div>
-
-      <!-- 详细性能数据 -->
-      <el-tabs v-model="activeTab" class="performance-tabs">
-        <!-- 渲染性能 -->
-        <el-tab-pane label="渲染性能" name="rendering">
-          <div class="performance-section">
-            <el-row :gutter="16">
-              <el-col :span="12">
-                <el-card shadow="never" class="section-card">
-                  <template #header>
-                    <span>渲染统计</span>
-                  </template>
-                  <el-descriptions :column="2" border size="small">
-                    <el-descriptions-item label="平均帧时间">
-                      {{ averageFrameTime.toFixed(2) }}ms
-                    </el-descriptions-item>
-                    <el-descriptions-item label="最大帧时间">
-                      {{ maxFrameTime.toFixed(2) }}ms
-                    </el-descriptions-item>
-                    <el-descriptions-item label="最小帧时间">
-                      {{ minFrameTime.toFixed(2) }}ms
-                    </el-descriptions-item>
-                    <el-descriptions-item label="帧时间方差">
-                      {{ frameTimeVariance.toFixed(2) }}ms²
-                    </el-descriptions-item>
-                    <el-descriptions-item label="渲染调用次数">
-                      {{ renderCallCount }}
-                    </el-descriptions-item>
-                    <el-descriptions-item label="跳帧次数">
-                      {{ droppedFrames }}
-                    </el-descriptions-item>
-                  </el-descriptions>
-                </el-card>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-card shadow="never" class="section-card">
-                  <template #header>
-                    <span>Canvas性能</span>
-                  </template>
-                  <el-descriptions :column="2" border size="small">
-                    <el-descriptions-item label="绘制调用">
-                      {{ canvasDrawCalls }}
-                    </el-descriptions-item>
-                    <el-descriptions-item label="填充操作">
-                      {{ canvasFillOps }}
-                    </el-descriptions-item>
-                    <el-descriptions-item label="描边操作">
-                      {{ canvasStrokeOps }}
-                    </el-descriptions-item>
-                    <el-descriptions-item label="文本渲染">
-                      {{ canvasTextOps }}
-                    </el-descriptions-item>
-                    <el-descriptions-item label="像素数据">
-                      {{ formatBytes(pixelDataSize) }}
-                    </el-descriptions-item>
-                    <el-descriptions-item label="缓存命中率">
-                      {{ cacheHitRate.toFixed(1) }}%
-                    </el-descriptions-item>
-                  </el-descriptions>
-                </el-card>
-              </el-col>
-            </el-row>
-          </div>
-        </el-tab-pane>
-
-        <!-- 解码性能 -->
-        <el-tab-pane label="解码性能" name="decoding">
-          <div class="performance-section">
-            <el-table
-              :data="decoderPerformance"
-              style="width: 100%"
-              size="small"
-              border
-            >
-              <el-table-column prop="name" label="解码器" width="120" />
-              <el-table-column prop="samplesPerSecond" label="处理速度" width="120">
-                <template #default="{ row }">
-                  {{ formatNumber(row.samplesPerSecond) }} sps
-                </template>
-              </el-table-column>
-              <el-table-column prop="averageLatency" label="平均延迟" width="100">
-                <template #default="{ row }">
-                  {{ row.averageLatency.toFixed(2) }}ms
-                </template>
-              </el-table-column>
-              <el-table-column prop="memoryUsage" label="内存使用" width="100">
-                <template #default="{ row }">
-                  {{ formatBytes(row.memoryUsage) }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="cpuUsage" label="CPU使用" width="100">
-                <template #default="{ row }">
-                  {{ row.cpuUsage.toFixed(1) }}%
-                </template>
-              </el-table-column>
-              <el-table-column prop="successRate" label="成功率" width="100">
-                <template #default="{ row }">
-                  <el-progress
-                    :percentage="row.successRate"
-                    :stroke-width="6"
-                    :show-text="false"
-                    :status="row.successRate < 95 ? 'exception' : 'success'"
-                  />
-                  <span class="success-rate-text">{{ row.successRate.toFixed(1) }}%</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="errorCount" label="错误次数" width="80" />
-              <el-table-column label="操作" width="120">
-                <template #default="{ row }">
-                  <el-button-group size="small">
-                    <el-button type="primary" @click="showDecoderProfile(row)">
-                      分析
-                    </el-button>
-                    <el-button type="warning" @click="optimizeDecoder(row)">
-                      优化
-                    </el-button>
-                  </el-button-group>
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
-        </el-tab-pane>
-
-        <!-- 内存分析 -->
-        <el-tab-pane label="内存分析" name="memory">
-          <div class="performance-section">
-            <el-row :gutter="16">
-              <el-col :span="8">
-                <el-card shadow="never" class="section-card">
-                  <template #header>
-                    <span>内存分布</span>
-                  </template>
-                  <div class="memory-breakdown">
-                    <div v-for="item in memoryBreakdown" :key="item.name" class="memory-item">
-                      <div class="memory-label">
-                        <span class="memory-name">{{ item.name }}</span>
-                        <span class="memory-size">{{ formatBytes(item.size) }}</span>
-                      </div>
-                      <el-progress
-                        :percentage="(item.size / totalMemoryUsage) * 100"
-                        :stroke-width="8"
-                        :show-text="false"
-                        :color="item.color"
-                      />
-                    </div>
-                  </div>
-                </el-card>
-              </el-col>
-              
-              <el-col :span="8">
-                <el-card shadow="never" class="section-card">
-                  <template #header>
-                    <span>垃圾回收</span>
-                  </template>
-                  <el-descriptions :column="1" border size="small">
-                    <el-descriptions-item label="GC次数">
-                      {{ gcCount }}
-                    </el-descriptions-item>
-                    <el-descriptions-item label="平均GC时间">
-                      {{ averageGCTime.toFixed(2) }}ms
-                    </el-descriptions-item>
-                    <el-descriptions-item label="最大GC时间">
-                      {{ maxGCTime.toFixed(2) }}ms
-                    </el-descriptions-item>
-                    <el-descriptions-item label="回收内存">
-                      {{ formatBytes(reclaimedMemory) }}
-                    </el-descriptions-item>
-                    <el-descriptions-item label="内存泄漏检测">
-                      <el-tag :type="memoryLeakDetected ? 'danger' : 'success'" size="small">
-                        {{ memoryLeakDetected ? '检测到泄漏' : '无泄漏' }}
-                      </el-tag>
-                    </el-descriptions-item>
-                  </el-descriptions>
-                </el-card>
-              </el-col>
-              
-              <el-col :span="8">
-                <el-card shadow="never" class="section-card">
-                  <template #header>
-                    <span>内存警告</span>
-                  </template>
-                  <div class="memory-warnings">
-                    <div
-                      v-for="warning in memoryWarnings"
-                      :key="warning.id"
-                      class="warning-item"
-                    >
-                      <el-tag :type="warning.level" size="small">
-                        {{ warning.level.toUpperCase() }}
-                      </el-tag>
-                      <span class="warning-message">{{ warning.message }}</span>
-                      <span class="warning-time">{{ formatTime(warning.timestamp) }}</span>
-                    </div>
-                  </div>
-                </el-card>
-              </el-col>
-            </el-row>
-          </div>
-        </el-tab-pane>
-
-        <!-- 瓶颈分析 -->
-        <el-tab-pane label="瓶颈分析" name="bottlenecks">
-          <div class="performance-section">
-            <el-alert
-              title="性能瓶颈检测"
-              type="info"
-              :closable="false"
-              show-icon
-            >
-              <p>系统自动检测到的性能瓶颈和优化建议</p>
-            </el-alert>
-
-            <div class="bottleneck-list">
-              <el-card
-                v-for="bottleneck in bottlenecks"
-                :key="bottleneck.id"
-                shadow="never"
-                class="bottleneck-card"
-              >
-                <div class="bottleneck-header">
-                  <el-tag :type="getBottleneckSeverityType(bottleneck.severity)" size="large">
-                    {{ bottleneck.severity.toUpperCase() }}
-                  </el-tag>
-                  <span class="bottleneck-title">{{ bottleneck.title }}</span>
-                  <span class="bottleneck-impact">影响: {{ bottleneck.impact }}</span>
-                </div>
-                
-                <div class="bottleneck-content">
-                  <p class="bottleneck-description">{{ bottleneck.description }}</p>
-                  
-                  <div class="bottleneck-metrics">
-                    <el-row :gutter="16">
-                      <el-col :span="8">
-                        <el-statistic
-                          title="当前值"
-                          :value="bottleneck.currentValue"
-                          :suffix="bottleneck.unit"
-                          :precision="2"
-                        />
-                      </el-col>
-                      <el-col :span="8">
-                        <el-statistic
-                          title="建议值"
-                          :value="bottleneck.recommendedValue"
-                          :suffix="bottleneck.unit"
-                          :precision="2"
-                        />
-                      </el-col>
-                      <el-col :span="8">
-                        <el-statistic
-                          title="改进潜力"
-                          :value="bottleneck.improvementPotential"
-                          suffix="%"
-                          :precision="1"
-                        />
-                      </el-col>
-                    </el-row>
-                  </div>
-                  
-                  <div class="bottleneck-recommendations">
-                    <h4>优化建议:</h4>
-                    <ul>
-                      <li v-for="(rec, index) in bottleneck.recommendations" :key="index">
-                        {{ rec }}
-                      </li>
-                    </ul>
-                  </div>
-                  
-                  <div class="bottleneck-actions">
-                    <el-button type="primary" @click="applyOptimization(bottleneck)">
-                      应用优化
-                    </el-button>
-                    <el-button @click="dismissBottleneck(bottleneck)">
-                      忽略
-                    </el-button>
-                  </div>
-                </div>
-              </el-card>
-            </div>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
-    </el-card>
-
-    <!-- 性能分析报告对话框 -->
-    <el-dialog
-      v-model="reportDialogVisible"
-      title="性能分析报告"
-      width="900px"
-      :close-on-click-modal="false"
-    >
-      <div class="performance-report">
-        <div class="report-summary">
-          <h3>性能概要</h3>
-          <el-descriptions :column="3" border>
-            <el-descriptions-item label="分析时长">
-              {{ formatDuration(analysisRuntime) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="平均FPS">
-              {{ averageFPS.toFixed(1) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="内存峰值">
-              {{ formatBytes(peakMemoryUsage) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="瓶颈数量">
-              {{ bottlenecks.length }}
-            </el-descriptions-item>
-            <el-descriptions-item label="优化建议">
-              {{ optimizationCount }}
-            </el-descriptions-item>
-            <el-descriptions-item label="总体评分">
-              <el-rate
-                v-model="performanceScore"
-                disabled
-                show-score
-                text-color="#ff9900"
-                score-template="{value}/5"
-              />
-            </el-descriptions-item>
-          </el-descriptions>
-        </div>
-
-        <div class="report-details">
-          <h3>详细分析</h3>
-          <pre class="report-text">{{ generateDetailedReport() }}</pre>
-        </div>
-      </div>
-      
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="reportDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="downloadReport">下载报告</el-button>
-        </span>
-      </template>
-    </el-dialog>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -620,17 +172,17 @@ const analysisStartTime = ref(0);
 
 // 计算属性
 const memoryUsagePercent = computed(() => (memoryUsage.value / 100) * 100);
-const totalMemoryUsage = computed(() => 
+const totalMemoryUsage = computed(() =>
   memoryBreakdown.value.reduce((sum, item) => sum + item.size, 0)
 );
-const analysisRuntime = computed(() => 
+const analysisRuntime = computed(() =>
   isAnalyzing.value ? Date.now() - analysisStartTime.value : 0
 );
-const averageFPS = computed(() => 
+const averageFPS = computed(() =>
   renderingFPS.value // 简化计算
 );
 const peakMemoryUsage = computed(() => memoryUsage.value * 1024 * 1024);
-const optimizationCount = computed(() => 
+const optimizationCount = computed(() =>
   bottlenecks.value.reduce((sum, b) => sum + b.recommendations.length, 0)
 );
 const performanceScore = computed(() => {
@@ -664,12 +216,12 @@ function onAnalysisToggle(enabled: boolean): void {
 
 function startAnalysis(): void {
   if (analysisTimer) return;
-  
+
   analysisStartTime.value = Date.now();
   analysisTimer = window.setInterval(() => {
     updatePerformanceMetrics();
   }, 1000);
-  
+
   ElMessage.success('性能分析已启动');
 }
 
@@ -678,7 +230,7 @@ function stopAnalysis(): void {
     clearInterval(analysisTimer);
     analysisTimer = null;
   }
-  
+
   ElMessage.info('性能分析已停止');
 }
 
@@ -688,11 +240,11 @@ function updatePerformanceMetrics(): void {
   memoryUsage.value = Math.max(20, memoryUsage.value + (Math.random() - 0.5) * 2);
   decodingLatency.value = Math.max(5, decodingLatency.value + (Math.random() - 0.5) * 3);
   cpuUsage.value = Math.max(10, cpuUsage.value + (Math.random() - 0.5) * 10);
-  
+
   // 更新其他指标
   averageFrameTime.value = 1000 / renderingFPS.value;
   canvasDrawCalls.value += Math.floor(Math.random() * 5);
-  
+
   // 检测性能问题
   checkPerformanceIssues();
 }
@@ -713,7 +265,7 @@ function checkPerformanceIssues(): void {
       recommendations: ['优化渲染算法', '启用硬件加速', '减少绘制调用']
     });
   }
-  
+
   // 检测内存问题
   if (memoryUsage.value > 80 && !memoryWarnings.value.find(w => w.message.includes('内存过高'))) {
     memoryWarnings.value.unshift({
@@ -742,7 +294,7 @@ function resetMetrics(): void {
     gcCount.value = 0;
     memoryWarnings.value = [];
     bottlenecks.value = [];
-    
+
     ElMessage.success('性能指标已重置');
   }).catch(() => {
     // 用户取消
@@ -762,7 +314,7 @@ function downloadReport(): void {
   a.download = `performance-report-${new Date().toISOString().slice(0, 19)}.txt`;
   a.click();
   URL.revokeObjectURL(url);
-  
+
   ElMessage.success('性能报告已下载');
   reportDialogVisible.value = false;
 }
@@ -790,7 +342,7 @@ Canvas Draw Calls: ${canvasDrawCalls.value}
 Cache Hit Rate: ${cacheHitRate.value.toFixed(1)}%
 
 === DECODER PERFORMANCE ===
-${decoderPerformance.value.map(d => 
+${decoderPerformance.value.map(d =>
   `${d.name}: ${formatNumber(d.samplesPerSecond)} sps, ` +
   `${d.averageLatency.toFixed(2)}ms latency, ` +
   `${d.successRate.toFixed(1)}% success rate`
@@ -798,7 +350,7 @@ ${decoderPerformance.value.map(d =>
 
 === MEMORY ANALYSIS ===
 Total Memory: ${formatBytes(totalMemoryUsage.value)}
-${memoryBreakdown.value.map(m => 
+${memoryBreakdown.value.map(m =>
   `${m.name}: ${formatBytes(m.size)} (${((m.size / totalMemoryUsage.value) * 100).toFixed(1)}%)`
 ).join('\n')}
 
@@ -807,7 +359,7 @@ Average GC Time: ${averageGCTime.value.toFixed(2)}ms
 Reclaimed Memory: ${formatBytes(reclaimedMemory.value)}
 
 === PERFORMANCE BOTTLENECKS ===
-${bottlenecks.value.map(b => 
+${bottlenecks.value.map(b =>
   `[${b.severity.toUpperCase()}] ${b.title}: ${b.description}\n` +
   `Current: ${b.currentValue} ${b.unit}, Recommended: ${b.recommendedValue} ${b.unit}\n` +
   `Improvement Potential: ${b.improvementPotential}%\n` +
@@ -815,8 +367,8 @@ ${bottlenecks.value.map(b =>
 ).join('\n\n')}
 
 === OPTIMIZATION SUGGESTIONS ===
-${optimizationCount.value > 0 ? 
-  bottlenecks.value.flatMap(b => b.recommendations).join('\n- ') : 
+${optimizationCount.value > 0 ?
+  bottlenecks.value.flatMap(b => b.recommendations).join('\n- ') :
   'No specific optimizations needed at this time.'
 }
 `.trim();
@@ -838,28 +390,28 @@ function showDecoderProfile(decoder: DecoderPerformance): void {
 
 function optimizeDecoder(decoder: DecoderPerformance): void {
   ElMessage.info(`正在优化 ${decoder.name} 解码器性能...`);
-  
+
   // 模拟优化过程
   setTimeout(() => {
     decoder.samplesPerSecond *= 1.2;
     decoder.averageLatency *= 0.8;
     decoder.cpuUsage *= 0.9;
     decoder.successRate = Math.min(100, decoder.successRate * 1.02);
-    
+
     ElMessage.success(`${decoder.name} 解码器优化完成`);
   }, 2000);
 }
 
 function applyOptimization(bottleneck: PerformanceBottleneck): void {
   ElMessage.info(`正在应用 ${bottleneck.title} 的优化方案...`);
-  
+
   // 模拟应用优化
   setTimeout(() => {
     const index = bottlenecks.value.findIndex(b => b.id === bottleneck.id);
     if (index !== -1) {
       bottlenecks.value.splice(index, 1);
     }
-    
+
     ElMessage.success('优化方案已应用');
   }, 1500);
 }
@@ -950,7 +502,7 @@ function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
-  
+
   if (hours > 0) {
     return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
   } else if (minutes > 0) {
@@ -968,6 +520,593 @@ function simulatePerformanceData(): void {
   cpuUsage.value = 28.6;
 }
 </script>
+
+<template>
+  <div class="performance-analyzer">
+    <el-card
+      shadow="never"
+      class="analyzer-card"
+    >
+      <template #header>
+        <div class="card-header">
+          <span>性能分析工具</span>
+          <div class="header-controls">
+            <el-switch
+              v-model="isAnalyzing"
+              active-text="启用分析"
+              inactive-text="停止分析"
+              @change="onAnalysisToggle"
+            />
+            <el-button
+              size="small"
+              @click="resetMetrics"
+            >
+              重置指标
+            </el-button>
+            <el-button
+              size="small"
+              @click="exportReport"
+            >
+              导出报告
+            </el-button>
+          </div>
+        </div>
+      </template>
+
+      <!-- 实时性能指标 -->
+      <div class="metrics-overview">
+        <el-row :gutter="16">
+          <el-col :span="6">
+            <el-card
+              shadow="never"
+              class="metric-card"
+            >
+              <el-statistic
+                title="渲染FPS"
+                :value="renderingFPS"
+                :precision="1"
+                suffix="fps"
+              >
+                <template #suffix>
+                  <el-icon :color="getFPSColor(renderingFPS)">
+                    <VideoPlay />
+                  </el-icon>
+                </template>
+              </el-statistic>
+              <div class="metric-trend">
+                <span :class="getFPSTrendClass(renderingFPS)">
+                  {{ getFPSTrendText(renderingFPS) }}
+                </span>
+              </div>
+            </el-card>
+          </el-col>
+
+          <el-col :span="6">
+            <el-card
+              shadow="never"
+              class="metric-card"
+            >
+              <el-statistic
+                title="内存使用"
+                :value="memoryUsage"
+                :precision="1"
+                suffix="MB"
+              >
+                <template #suffix>
+                  <el-icon :color="getMemoryColor(memoryUsage)">
+                    <Cpu />
+                  </el-icon>
+                </template>
+              </el-statistic>
+              <div class="metric-trend">
+                <el-progress
+                  :percentage="memoryUsagePercent"
+                  :stroke-width="4"
+                  :show-text="false"
+                  :status="memoryUsagePercent > 80 ? 'exception' : ''"
+                />
+              </div>
+            </el-card>
+          </el-col>
+
+          <el-col :span="6">
+            <el-card
+              shadow="never"
+              class="metric-card"
+            >
+              <el-statistic
+                title="解码延迟"
+                :value="decodingLatency"
+                :precision="2"
+                suffix="ms"
+              >
+                <template #suffix>
+                  <el-icon :color="getLatencyColor(decodingLatency)">
+                    <Timer />
+                  </el-icon>
+                </template>
+              </el-statistic>
+              <div class="metric-trend">
+                <span :class="getLatencyTrendClass(decodingLatency)">
+                  {{ getLatencyTrendText(decodingLatency) }}
+                </span>
+              </div>
+            </el-card>
+          </el-col>
+
+          <el-col :span="6">
+            <el-card
+              shadow="never"
+              class="metric-card"
+            >
+              <el-statistic
+                title="CPU使用率"
+                :value="cpuUsage"
+                :precision="1"
+                suffix="%"
+              >
+                <template #suffix>
+                  <el-icon :color="getCPUColor(cpuUsage)">
+                    <Setting />
+                  </el-icon>
+                </template>
+              </el-statistic>
+              <div class="metric-trend">
+                <el-progress
+                  :percentage="cpuUsage"
+                  :stroke-width="4"
+                  :show-text="false"
+                  :status="cpuUsage > 80 ? 'exception' : ''"
+                />
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+      </div>
+
+      <!-- 详细性能数据 -->
+      <el-tabs
+        v-model="activeTab"
+        class="performance-tabs"
+      >
+        <!-- 渲染性能 -->
+        <el-tab-pane
+          label="渲染性能"
+          name="rendering"
+        >
+          <div class="performance-section">
+            <el-row :gutter="16">
+              <el-col :span="12">
+                <el-card
+                  shadow="never"
+                  class="section-card"
+                >
+                  <template #header>
+                    <span>渲染统计</span>
+                  </template>
+                  <el-descriptions
+                    :column="2"
+                    border
+                    size="small"
+                  >
+                    <el-descriptions-item label="平均帧时间">
+                      {{ averageFrameTime.toFixed(2) }}ms
+                    </el-descriptions-item>
+                    <el-descriptions-item label="最大帧时间">
+                      {{ maxFrameTime.toFixed(2) }}ms
+                    </el-descriptions-item>
+                    <el-descriptions-item label="最小帧时间">
+                      {{ minFrameTime.toFixed(2) }}ms
+                    </el-descriptions-item>
+                    <el-descriptions-item label="帧时间方差">
+                      {{ frameTimeVariance.toFixed(2) }}ms²
+                    </el-descriptions-item>
+                    <el-descriptions-item label="渲染调用次数">
+                      {{ renderCallCount }}
+                    </el-descriptions-item>
+                    <el-descriptions-item label="跳帧次数">
+                      {{ droppedFrames }}
+                    </el-descriptions-item>
+                  </el-descriptions>
+                </el-card>
+              </el-col>
+
+              <el-col :span="12">
+                <el-card
+                  shadow="never"
+                  class="section-card"
+                >
+                  <template #header>
+                    <span>Canvas性能</span>
+                  </template>
+                  <el-descriptions
+                    :column="2"
+                    border
+                    size="small"
+                  >
+                    <el-descriptions-item label="绘制调用">
+                      {{ canvasDrawCalls }}
+                    </el-descriptions-item>
+                    <el-descriptions-item label="填充操作">
+                      {{ canvasFillOps }}
+                    </el-descriptions-item>
+                    <el-descriptions-item label="描边操作">
+                      {{ canvasStrokeOps }}
+                    </el-descriptions-item>
+                    <el-descriptions-item label="文本渲染">
+                      {{ canvasTextOps }}
+                    </el-descriptions-item>
+                    <el-descriptions-item label="像素数据">
+                      {{ formatBytes(pixelDataSize) }}
+                    </el-descriptions-item>
+                    <el-descriptions-item label="缓存命中率">
+                      {{ cacheHitRate.toFixed(1) }}%
+                    </el-descriptions-item>
+                  </el-descriptions>
+                </el-card>
+              </el-col>
+            </el-row>
+          </div>
+        </el-tab-pane>
+
+        <!-- 解码性能 -->
+        <el-tab-pane
+          label="解码性能"
+          name="decoding"
+        >
+          <div class="performance-section">
+            <el-table
+              :data="decoderPerformance"
+              style="width: 100%"
+              size="small"
+              border
+            >
+              <el-table-column
+                prop="name"
+                label="解码器"
+                width="120"
+              />
+              <el-table-column
+                prop="samplesPerSecond"
+                label="处理速度"
+                width="120"
+              >
+                <template #default="{ row }">
+                  {{ formatNumber(row.samplesPerSecond) }} sps
+                </template>
+              </el-table-column>
+              <el-table-column
+                prop="averageLatency"
+                label="平均延迟"
+                width="100"
+              >
+                <template #default="{ row }">
+                  {{ row.averageLatency.toFixed(2) }}ms
+                </template>
+              </el-table-column>
+              <el-table-column
+                prop="memoryUsage"
+                label="内存使用"
+                width="100"
+              >
+                <template #default="{ row }">
+                  {{ formatBytes(row.memoryUsage) }}
+                </template>
+              </el-table-column>
+              <el-table-column
+                prop="cpuUsage"
+                label="CPU使用"
+                width="100"
+              >
+                <template #default="{ row }">
+                  {{ row.cpuUsage.toFixed(1) }}%
+                </template>
+              </el-table-column>
+              <el-table-column
+                prop="successRate"
+                label="成功率"
+                width="100"
+              >
+                <template #default="{ row }">
+                  <el-progress
+                    :percentage="row.successRate"
+                    :stroke-width="6"
+                    :show-text="false"
+                    :status="row.successRate < 95 ? 'exception' : 'success'"
+                  />
+                  <span class="success-rate-text">{{ row.successRate.toFixed(1) }}%</span>
+                </template>
+              </el-table-column>
+              <el-table-column
+                prop="errorCount"
+                label="错误次数"
+                width="80"
+              />
+              <el-table-column
+                label="操作"
+                width="120"
+              >
+                <template #default="{ row }">
+                  <el-button-group size="small">
+                    <el-button
+                      type="primary"
+                      @click="showDecoderProfile(row)"
+                    >
+                      分析
+                    </el-button>
+                    <el-button
+                      type="warning"
+                      @click="optimizeDecoder(row)"
+                    >
+                      优化
+                    </el-button>
+                  </el-button-group>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-tab-pane>
+
+        <!-- 内存分析 -->
+        <el-tab-pane
+          label="内存分析"
+          name="memory"
+        >
+          <div class="performance-section">
+            <el-row :gutter="16">
+              <el-col :span="8">
+                <el-card
+                  shadow="never"
+                  class="section-card"
+                >
+                  <template #header>
+                    <span>内存分布</span>
+                  </template>
+                  <div class="memory-breakdown">
+                    <div
+                      v-for="item in memoryBreakdown"
+                      :key="item.name"
+                      class="memory-item"
+                    >
+                      <div class="memory-label">
+                        <span class="memory-name">{{ item.name }}</span>
+                        <span class="memory-size">{{ formatBytes(item.size) }}</span>
+                      </div>
+                      <el-progress
+                        :percentage="(item.size / totalMemoryUsage) * 100"
+                        :stroke-width="8"
+                        :show-text="false"
+                        :color="item.color"
+                      />
+                    </div>
+                  </div>
+                </el-card>
+              </el-col>
+
+              <el-col :span="8">
+                <el-card
+                  shadow="never"
+                  class="section-card"
+                >
+                  <template #header>
+                    <span>垃圾回收</span>
+                  </template>
+                  <el-descriptions
+                    :column="1"
+                    border
+                    size="small"
+                  >
+                    <el-descriptions-item label="GC次数">
+                      {{ gcCount }}
+                    </el-descriptions-item>
+                    <el-descriptions-item label="平均GC时间">
+                      {{ averageGCTime.toFixed(2) }}ms
+                    </el-descriptions-item>
+                    <el-descriptions-item label="最大GC时间">
+                      {{ maxGCTime.toFixed(2) }}ms
+                    </el-descriptions-item>
+                    <el-descriptions-item label="回收内存">
+                      {{ formatBytes(reclaimedMemory) }}
+                    </el-descriptions-item>
+                    <el-descriptions-item label="内存泄漏检测">
+                      <el-tag
+                        :type="memoryLeakDetected ? 'danger' : 'success'"
+                        size="small"
+                      >
+                        {{ memoryLeakDetected ? '检测到泄漏' : '无泄漏' }}
+                      </el-tag>
+                    </el-descriptions-item>
+                  </el-descriptions>
+                </el-card>
+              </el-col>
+
+              <el-col :span="8">
+                <el-card
+                  shadow="never"
+                  class="section-card"
+                >
+                  <template #header>
+                    <span>内存警告</span>
+                  </template>
+                  <div class="memory-warnings">
+                    <div
+                      v-for="warning in memoryWarnings"
+                      :key="warning.id"
+                      class="warning-item"
+                    >
+                      <el-tag
+                        :type="warning.level"
+                        size="small"
+                      >
+                        {{ warning.level.toUpperCase() }}
+                      </el-tag>
+                      <span class="warning-message">{{ warning.message }}</span>
+                      <span class="warning-time">{{ formatTime(warning.timestamp) }}</span>
+                    </div>
+                  </div>
+                </el-card>
+              </el-col>
+            </el-row>
+          </div>
+        </el-tab-pane>
+
+        <!-- 瓶颈分析 -->
+        <el-tab-pane
+          label="瓶颈分析"
+          name="bottlenecks"
+        >
+          <div class="performance-section">
+            <el-alert
+              title="性能瓶颈检测"
+              type="info"
+              :closable="false"
+              show-icon
+            >
+              <p>系统自动检测到的性能瓶颈和优化建议</p>
+            </el-alert>
+
+            <div class="bottleneck-list">
+              <el-card
+                v-for="bottleneck in bottlenecks"
+                :key="bottleneck.id"
+                shadow="never"
+                class="bottleneck-card"
+              >
+                <div class="bottleneck-header">
+                  <el-tag
+                    :type="getBottleneckSeverityType(bottleneck.severity)"
+                    size="large"
+                  >
+                    {{ bottleneck.severity.toUpperCase() }}
+                  </el-tag>
+                  <span class="bottleneck-title">{{ bottleneck.title }}</span>
+                  <span class="bottleneck-impact">影响: {{ bottleneck.impact }}</span>
+                </div>
+
+                <div class="bottleneck-content">
+                  <p class="bottleneck-description">
+                    {{ bottleneck.description }}
+                  </p>
+
+                  <div class="bottleneck-metrics">
+                    <el-row :gutter="16">
+                      <el-col :span="8">
+                        <el-statistic
+                          title="当前值"
+                          :value="bottleneck.currentValue"
+                          :suffix="bottleneck.unit"
+                          :precision="2"
+                        />
+                      </el-col>
+                      <el-col :span="8">
+                        <el-statistic
+                          title="建议值"
+                          :value="bottleneck.recommendedValue"
+                          :suffix="bottleneck.unit"
+                          :precision="2"
+                        />
+                      </el-col>
+                      <el-col :span="8">
+                        <el-statistic
+                          title="改进潜力"
+                          :value="bottleneck.improvementPotential"
+                          suffix="%"
+                          :precision="1"
+                        />
+                      </el-col>
+                    </el-row>
+                  </div>
+
+                  <div class="bottleneck-recommendations">
+                    <h4>优化建议:</h4>
+                    <ul>
+                      <li
+                        v-for="(rec, index) in bottleneck.recommendations"
+                        :key="index"
+                      >
+                        {{ rec }}
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div class="bottleneck-actions">
+                    <el-button
+                      type="primary"
+                      @click="applyOptimization(bottleneck)"
+                    >
+                      应用优化
+                    </el-button>
+                    <el-button @click="dismissBottleneck(bottleneck)">
+                      忽略
+                    </el-button>
+                  </div>
+                </div>
+              </el-card>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </el-card>
+
+    <!-- 性能分析报告对话框 -->
+    <el-dialog
+      v-model="reportDialogVisible"
+      title="性能分析报告"
+      width="900px"
+      :close-on-click-modal="false"
+    >
+      <div class="performance-report">
+        <div class="report-summary">
+          <h3>性能概要</h3>
+          <el-descriptions
+            :column="3"
+            border
+          >
+            <el-descriptions-item label="分析时长">
+              {{ formatDuration(analysisRuntime) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="平均FPS">
+              {{ averageFPS.toFixed(1) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="内存峰值">
+              {{ formatBytes(peakMemoryUsage) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="瓶颈数量">
+              {{ bottlenecks.length }}
+            </el-descriptions-item>
+            <el-descriptions-item label="优化建议">
+              {{ optimizationCount }}
+            </el-descriptions-item>
+            <el-descriptions-item label="总体评分">
+              <el-rate
+                v-model="performanceScore"
+                disabled
+                show-score
+                text-color="#ff9900"
+                score-template="{value}/5"
+              />
+            </el-descriptions-item>
+          </el-descriptions>
+        </div>
+
+        <div class="report-details">
+          <h3>详细分析</h3>
+          <pre class="report-text">{{ generateDetailedReport() }}</pre>
+        </div>
+      </div>
+
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="reportDialogVisible = false">取消</el-button>
+          <el-button
+            type="primary"
+            @click="downloadReport"
+          >下载报告</el-button>
+        </span>
+      </template>
+    </el-dialog>
+  </div>
+</template>
 
 <style scoped>
 .performance-analyzer {

@@ -4,166 +4,6 @@
 显示采集状态、进度信息、设备状态等
 -->
 
-<template>
-  <div class="status-bar">
-    <!-- 左侧状态信息 -->
-    <div class="status-left">
-      <!-- 设备状态 -->
-      <div class="status-item device-status">
-        <el-icon :class="deviceStatusIcon">
-          <component :is="deviceStatusIcon" />
-        </el-icon>
-        <span class="status-text">{{ deviceStatusText }}</span>
-      </div>
-
-      <!-- 采集状态 -->
-      <div v-if="captureInfo.isActive" class="status-item capture-status">
-        <div class="status-indicator" :class="captureInfo.status" />
-        <span class="status-text">{{ captureInfo.statusText }}</span>
-        
-        <!-- 进度条 -->
-        <div v-if="captureInfo.showProgress" class="progress-container">
-          <el-progress
-            :percentage="captureInfo.progress"
-            :show-text="false"
-            :stroke-width="4"
-            class="status-progress"
-          />
-          <span class="progress-text">{{ captureInfo.progress }}%</span>
-        </div>
-      </div>
-
-      <!-- 采样信息 -->
-      <div v-if="sampleInfo.totalSamples > 0" class="status-item sample-info">
-        <el-icon><DataLine /></el-icon>
-        <span class="status-text">
-          样本: {{ formatNumber(sampleInfo.totalSamples) }}
-        </span>
-        <span class="status-divider">|</span>
-        <span class="status-text">
-          频率: {{ formatFrequency(sampleInfo.sampleRate) }}
-        </span>
-        <span class="status-divider">|</span>
-        <span class="status-text">
-          持续: {{ formatTime(sampleInfo.duration) }}
-        </span>
-      </div>
-
-      <!-- 通道信息 -->
-      <div v-if="channelInfo.total > 0" class="status-item channel-info">
-        <el-icon><Grid /></el-icon>
-        <span class="status-text">
-          通道: {{ channelInfo.active }}/{{ channelInfo.total }}
-        </span>
-        <span v-if="channelInfo.withData > 0" class="status-text">
-          ({{ channelInfo.withData }} 有数据)
-        </span>
-      </div>
-
-      <!-- 解码器状态 -->
-      <div v-if="decoderInfo.active > 0" class="status-item decoder-info">
-        <el-icon><Cpu /></el-icon>
-        <span class="status-text">
-          解码器: {{ decoderInfo.active }}
-        </span>
-        <span v-if="decoderInfo.results > 0" class="status-text">
-          ({{ decoderInfo.results }} 结果)
-        </span>
-      </div>
-    </div>
-
-    <!-- 中间进度显示区域 -->
-    <div v-if="globalProgress.show" class="status-center">
-      <div class="global-progress">
-        <div class="progress-info">
-          <span class="progress-title">{{ globalProgress.title }}</span>
-          <span class="progress-detail">{{ globalProgress.detail }}</span>
-        </div>
-        <el-progress
-          :percentage="globalProgress.percentage"
-          :status="globalProgress.status"
-          :stroke-width="6"
-          class="main-progress"
-        />
-        <div class="progress-actions">
-          <el-button
-            v-if="globalProgress.cancellable"
-            size="small"
-            type="danger"
-            @click="cancelOperation"
-          >
-            取消
-          </el-button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 右侧系统信息 -->
-    <div class="status-right">
-      <!-- 性能监控 -->
-      <div v-if="performanceInfo.show" class="status-item performance-info">
-        <el-tooltip content="CPU使用率" placement="top">
-          <div class="perf-item">
-            <el-icon><Monitor /></el-icon>
-            <span class="perf-value">{{ performanceInfo.cpu }}%</span>
-          </div>
-        </el-tooltip>
-        <el-tooltip content="内存使用" placement="top">
-          <div class="perf-item">
-            <el-icon><MemoryCard /></el-icon>
-            <span class="perf-value">{{ formatBytes(performanceInfo.memory) }}</span>
-          </div>
-        </el-tooltip>
-      </div>
-
-      <!-- 时间戳 -->
-      <div class="status-item timestamp">
-        <el-icon><Clock /></el-icon>
-        <span class="status-text">{{ currentTime }}</span>
-      </div>
-
-      <!-- 文件状态 -->
-      <div v-if="fileInfo.name" class="status-item file-info">
-        <el-icon><Document /></el-icon>
-        <span class="status-text">{{ fileInfo.name }}</span>
-        <el-tag
-          v-if="fileInfo.modified"
-          size="small"
-          type="warning"
-          class="modified-indicator"
-        >
-          *
-        </el-tag>
-      </div>
-
-      <!-- 缩放信息 -->
-      <div v-if="zoomInfo.show" class="status-item zoom-info">
-        <el-button-group size="small">
-          <el-button :icon="ZoomOut" @click="zoomOut" :disabled="!zoomInfo.canZoomOut" />
-          <el-button class="zoom-level" disabled>{{ zoomInfo.level }}%</el-button>
-          <el-button :icon="ZoomIn" @click="zoomIn" :disabled="!zoomInfo.canZoomIn" />
-        </el-button-group>
-      </div>
-    </div>
-
-    <!-- 通知弹出 -->
-    <transition name="notification-slide">
-      <div v-if="notification.show" class="status-notification" :class="notification.type">
-        <el-icon>
-          <component :is="notification.icon" />
-        </el-icon>
-        <span class="notification-text">{{ notification.message }}</span>
-        <el-button
-          type="text"
-          :icon="Close"
-          @click="dismissNotification"
-          class="notification-close"
-        />
-      </div>
-    </transition>
-  </div>
-</template>
-
 <script setup lang="ts">
   import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
   import {
@@ -567,6 +407,225 @@
     fileInfo.value.modified = modified;
   });
 </script>
+
+<template>
+  <div class="status-bar">
+    <!-- 左侧状态信息 -->
+    <div class="status-left">
+      <!-- 设备状态 -->
+      <div class="status-item device-status">
+        <el-icon :class="deviceStatusIcon">
+          <component :is="deviceStatusIcon" />
+        </el-icon>
+        <span class="status-text">{{ deviceStatusText }}</span>
+      </div>
+
+      <!-- 采集状态 -->
+      <div
+        v-if="captureInfo.isActive"
+        class="status-item capture-status"
+      >
+        <div
+          class="status-indicator"
+          :class="captureInfo.status"
+        />
+        <span class="status-text">{{ captureInfo.statusText }}</span>
+
+        <!-- 进度条 -->
+        <div
+          v-if="captureInfo.showProgress"
+          class="progress-container"
+        >
+          <el-progress
+            :percentage="captureInfo.progress"
+            :show-text="false"
+            :stroke-width="4"
+            class="status-progress"
+          />
+          <span class="progress-text">{{ captureInfo.progress }}%</span>
+        </div>
+      </div>
+
+      <!-- 采样信息 -->
+      <div
+        v-if="sampleInfo.totalSamples > 0"
+        class="status-item sample-info"
+      >
+        <el-icon><DataLine /></el-icon>
+        <span class="status-text">
+          样本: {{ formatNumber(sampleInfo.totalSamples) }}
+        </span>
+        <span class="status-divider">|</span>
+        <span class="status-text">
+          频率: {{ formatFrequency(sampleInfo.sampleRate) }}
+        </span>
+        <span class="status-divider">|</span>
+        <span class="status-text">
+          持续: {{ formatTime(sampleInfo.duration) }}
+        </span>
+      </div>
+
+      <!-- 通道信息 -->
+      <div
+        v-if="channelInfo.total > 0"
+        class="status-item channel-info"
+      >
+        <el-icon><Grid /></el-icon>
+        <span class="status-text">
+          通道: {{ channelInfo.active }}/{{ channelInfo.total }}
+        </span>
+        <span
+          v-if="channelInfo.withData > 0"
+          class="status-text"
+        >
+          ({{ channelInfo.withData }} 有数据)
+        </span>
+      </div>
+
+      <!-- 解码器状态 -->
+      <div
+        v-if="decoderInfo.active > 0"
+        class="status-item decoder-info"
+      >
+        <el-icon><Cpu /></el-icon>
+        <span class="status-text">
+          解码器: {{ decoderInfo.active }}
+        </span>
+        <span
+          v-if="decoderInfo.results > 0"
+          class="status-text"
+        >
+          ({{ decoderInfo.results }} 结果)
+        </span>
+      </div>
+    </div>
+
+    <!-- 中间进度显示区域 -->
+    <div
+      v-if="globalProgress.show"
+      class="status-center"
+    >
+      <div class="global-progress">
+        <div class="progress-info">
+          <span class="progress-title">{{ globalProgress.title }}</span>
+          <span class="progress-detail">{{ globalProgress.detail }}</span>
+        </div>
+        <el-progress
+          :percentage="globalProgress.percentage"
+          :status="globalProgress.status"
+          :stroke-width="6"
+          class="main-progress"
+        />
+        <div class="progress-actions">
+          <el-button
+            v-if="globalProgress.cancellable"
+            size="small"
+            type="danger"
+            @click="cancelOperation"
+          >
+            取消
+          </el-button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧系统信息 -->
+    <div class="status-right">
+      <!-- 性能监控 -->
+      <div
+        v-if="performanceInfo.show"
+        class="status-item performance-info"
+      >
+        <el-tooltip
+          content="CPU使用率"
+          placement="top"
+        >
+          <div class="perf-item">
+            <el-icon><Monitor /></el-icon>
+            <span class="perf-value">{{ performanceInfo.cpu }}%</span>
+          </div>
+        </el-tooltip>
+        <el-tooltip
+          content="内存使用"
+          placement="top"
+        >
+          <div class="perf-item">
+            <el-icon><MemoryCard /></el-icon>
+            <span class="perf-value">{{ formatBytes(performanceInfo.memory) }}</span>
+          </div>
+        </el-tooltip>
+      </div>
+
+      <!-- 时间戳 -->
+      <div class="status-item timestamp">
+        <el-icon><Clock /></el-icon>
+        <span class="status-text">{{ currentTime }}</span>
+      </div>
+
+      <!-- 文件状态 -->
+      <div
+        v-if="fileInfo.name"
+        class="status-item file-info"
+      >
+        <el-icon><Document /></el-icon>
+        <span class="status-text">{{ fileInfo.name }}</span>
+        <el-tag
+          v-if="fileInfo.modified"
+          size="small"
+          type="warning"
+          class="modified-indicator"
+        >
+          *
+        </el-tag>
+      </div>
+
+      <!-- 缩放信息 -->
+      <div
+        v-if="zoomInfo.show"
+        class="status-item zoom-info"
+      >
+        <el-button-group size="small">
+          <el-button
+            :icon="ZoomOut"
+            :disabled="!zoomInfo.canZoomOut"
+            @click="zoomOut"
+          />
+          <el-button
+            class="zoom-level"
+            disabled
+          >
+            {{ zoomInfo.level }}%
+          </el-button>
+          <el-button
+            :icon="ZoomIn"
+            :disabled="!zoomInfo.canZoomIn"
+            @click="zoomIn"
+          />
+        </el-button-group>
+      </div>
+    </div>
+
+    <!-- 通知弹出 -->
+    <transition name="notification-slide">
+      <div
+        v-if="notification.show"
+        class="status-notification"
+        :class="notification.type"
+      >
+        <el-icon>
+          <component :is="notification.icon" />
+        </el-icon>
+        <span class="notification-text">{{ notification.message }}</span>
+        <el-button
+          type="text"
+          :icon="Close"
+          class="notification-close"
+          @click="dismissNotification"
+        />
+      </div>
+    </transition>
+  </div>
+</template>
 
 <style scoped>
   .status-bar {

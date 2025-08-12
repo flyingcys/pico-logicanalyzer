@@ -4,6 +4,7 @@
  */
 
 // 枚举类型定义
+/* eslint-disable no-unused-vars */
 export enum AnalyzerDriverType {
   Serial = 'Serial',
   Network = 'Network',
@@ -32,6 +33,7 @@ export enum TriggerType {
   Fast = 2,
   Blast = 3
 }
+/* eslint-enable no-unused-vars */
 
 // 数据结构定义
 export interface CaptureLimits {
@@ -66,6 +68,16 @@ export interface DeviceInfo {
 }
 
 export interface HardwareCapabilities {
+  // 元数据信息
+  metadata?: {
+    manufacturer?: string;
+    model?: string;
+    revision?: string;
+    calibrationDate?: Date;
+    certifications?: string[];
+    description?: string;
+  };
+
   // 通道规格
   channels: {
     digital: number;
@@ -73,6 +85,7 @@ export interface HardwareCapabilities {
     mixed?: boolean;
     maxVoltage: number;
     inputImpedance: number;
+    thresholdVoltages?: number[];
   };
 
   // 采样能力
@@ -82,6 +95,7 @@ export interface HardwareCapabilities {
     supportedRates: number[];
     bufferSize: number;
     streamingSupport: boolean;
+    compressionSupport?: boolean;
   };
 
   // 触发能力
@@ -109,6 +123,21 @@ export interface HardwareCapabilities {
     customDecoders?: boolean;
     voltageMonitoring?: boolean;
   };
+
+  // 协议解码能力
+  protocol?: {
+    supportedProtocols: string[];
+    hardwareDecoding: boolean;
+    customProtocols: boolean;
+  };
+
+  // 高级功能
+  advanced?: {
+    memorySegmentation: boolean;
+    externalClock: boolean;
+    calibration: boolean;
+    selfTest: boolean;
+  };
 }
 
 export interface NetworkCapability {
@@ -122,6 +151,7 @@ export type TriggerCondition = 'rising' | 'falling' | 'high' | 'low' | 'any' | '
 
 export interface ConnectionParams {
   devicePath?: string;
+  timeout?: number;
   networkConfig?: {
     host: string;
     port: number;
@@ -190,6 +220,11 @@ export interface CaptureSession {
   // 突发信息数组
   bursts?: BurstInfo[];
 
+  // 会话信息
+  name?: string;
+  deviceVersion?: string;
+  deviceSerial?: string;
+
   // 方法接口
   clone(): CaptureSession;
   cloneSettings(): CaptureSession;
@@ -198,12 +233,12 @@ export interface CaptureSession {
 export interface AnalyzerChannel {
   channelNumber: number;
   channelName: string;
-  channelColor?: string;
+  textualChannelNumber: string;
   hidden: boolean;
+  channelColor?: number;
   samples?: Uint8Array;
-
-  // 显示属性
-  get textualChannelNumber(): string;
+  enabled?: boolean;
+  minimized?: boolean;
 
   // 克隆方法
   clone(): AnalyzerChannel;
@@ -225,6 +260,8 @@ export interface DeviceStatus {
   batteryVoltage?: string;
   temperature?: number;
   errorStatus?: string;
+  lastError?: string;
+  multiDeviceStatus?: DeviceStatus[];
 }
 
 export interface CaptureEventArgs {

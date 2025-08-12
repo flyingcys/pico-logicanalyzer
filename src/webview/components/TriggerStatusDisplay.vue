@@ -3,122 +3,6 @@
 显示当前触发配置和状态信息
 -->
 
-<template>
-  <div class="trigger-status">
-    <div class="status-header">
-      <h4>
-        <el-icon><Setting /></el-icon>
-        触发状态
-      </h4>
-      <div class="status-indicator" :class="statusClass">
-        <el-icon>
-          <SuccessFilled v-if="triggerStatus === 'ready'" />
-          <Loading v-else-if="triggerStatus === 'waiting'" />
-          <WarningFilled v-else-if="triggerStatus === 'warning'" />
-          <CircleCloseFilled v-else />
-        </el-icon>
-        {{ statusText }}
-      </div>
-    </div>
-
-    <div class="status-content">
-      <!-- 基本触发信息 -->
-      <div class="trigger-info">
-        <div class="info-row">
-          <label>触发类型:</label>
-          <span class="value">{{ triggerTypeText }}</span>
-        </div>
-
-        <div v-if="triggerConfig.triggerType === 'edge'" class="info-row">
-          <label>触发通道:</label>
-          <span class="value">Channel {{ triggerConfig.triggerChannel + 1 }}</span>
-        </div>
-
-        <div v-if="triggerConfig.triggerType === 'edge'" class="info-row">
-          <label>触发极性:</label>
-          <span class="value">{{ triggerConfig.triggerInverted ? '下降沿' : '上升沿' }}</span>
-        </div>
-
-        <div v-if="triggerConfig.triggerType === 'pattern'" class="info-row">
-          <label>触发模式:</label>
-          <span class="value pattern-value">{{ triggerConfig.triggerPattern || '未设置' }}</span>
-        </div>
-
-        <div v-if="triggerConfig.triggerType === 'pattern'" class="info-row">
-          <label>起始通道:</label>
-          <span class="value">Channel {{ triggerConfig.patternTriggerChannel }}</span>
-        </div>
-
-        <div class="info-row">
-          <label>触发阈值:</label>
-          <span class="value">{{ formatVoltage(levelConfig.threshold) }}</span>
-        </div>
-      </div>
-
-      <!-- 高级配置 -->
-      <div v-if="showAdvanced" class="advanced-info">
-        <el-divider>高级配置</el-divider>
-
-        <div v-if="triggerConfig.isBlastMode" class="info-row highlight">
-          <label>突发模式:</label>
-          <span class="value">已启用</span>
-        </div>
-
-        <div v-if="triggerConfig.burstEnabled && !triggerConfig.isBlastMode" class="info-row">
-          <label>突发采集:</label>
-          <span class="value">{{ triggerConfig.burstCount }} 次</span>
-        </div>
-
-        <div v-if="triggerConfig.measureBursts" class="info-row">
-          <label>测量间隔:</label>
-          <span class="value">已启用</span>
-        </div>
-
-        <div v-if="triggerConfig.fastTrigger" class="info-row highlight">
-          <label>快速触发:</label>
-          <span class="value">已启用</span>
-        </div>
-
-        <div class="info-row">
-          <label>信号类型:</label>
-          <span class="value">{{ levelConfig.signalType }}</span>
-        </div>
-
-        <div v-if="levelConfig.hysteresis" class="info-row">
-          <label>滞回电压:</label>
-          <span class="value">±{{ formatVoltage(levelConfig.hysteresis) }}</span>
-        </div>
-      </div>
-
-      <!-- 验证结果 -->
-      <div v-if="validationResults.length > 0" class="validation-results">
-        <el-divider>验证结果</el-divider>
-        <div
-          v-for="(result, index) in validationResults"
-          :key="index"
-          class="validation-item"
-          :class="{ 'validation-error': !result.isValid }"
-        >
-          <el-icon>
-            <SuccessFilled v-if="result.isValid" />
-            <CircleCloseFilled v-else />
-          </el-icon>
-          <span>{{ result.errorMessage || '验证通过' }}</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="status-actions">
-      <el-button size="small" @click="showAdvanced = !showAdvanced">
-        {{ showAdvanced ? '隐藏详情' : '显示详情' }}
-      </el-button>
-      <el-button size="small" type="primary" @click="validateTrigger">
-        验证配置
-      </el-button>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
   import { ref, computed, watch } from 'vue';
   import {
@@ -219,7 +103,7 @@
     }
 
     validationResults.value = [];
-    
+
     try {
       // 验证电平配置
       const levelValidation = props.triggerProcessor.validateTriggerLevel(props.levelConfig);
@@ -266,6 +150,165 @@
     validateTrigger();
   }, { deep: true, immediate: true });
 </script>
+
+<template>
+  <div class="trigger-status">
+    <div class="status-header">
+      <h4>
+        <el-icon><Setting /></el-icon>
+        触发状态
+      </h4>
+      <div
+        class="status-indicator"
+        :class="statusClass"
+      >
+        <el-icon>
+          <SuccessFilled v-if="triggerStatus === 'ready'" />
+          <Loading v-else-if="triggerStatus === 'waiting'" />
+          <WarningFilled v-else-if="triggerStatus === 'warning'" />
+          <CircleCloseFilled v-else />
+        </el-icon>
+        {{ statusText }}
+      </div>
+    </div>
+
+    <div class="status-content">
+      <!-- 基本触发信息 -->
+      <div class="trigger-info">
+        <div class="info-row">
+          <label>触发类型:</label>
+          <span class="value">{{ triggerTypeText }}</span>
+        </div>
+
+        <div
+          v-if="triggerConfig.triggerType === 'edge'"
+          class="info-row"
+        >
+          <label>触发通道:</label>
+          <span class="value">Channel {{ triggerConfig.triggerChannel + 1 }}</span>
+        </div>
+
+        <div
+          v-if="triggerConfig.triggerType === 'edge'"
+          class="info-row"
+        >
+          <label>触发极性:</label>
+          <span class="value">{{ triggerConfig.triggerInverted ? '下降沿' : '上升沿' }}</span>
+        </div>
+
+        <div
+          v-if="triggerConfig.triggerType === 'pattern'"
+          class="info-row"
+        >
+          <label>触发模式:</label>
+          <span class="value pattern-value">{{ triggerConfig.triggerPattern || '未设置' }}</span>
+        </div>
+
+        <div
+          v-if="triggerConfig.triggerType === 'pattern'"
+          class="info-row"
+        >
+          <label>起始通道:</label>
+          <span class="value">Channel {{ triggerConfig.patternTriggerChannel }}</span>
+        </div>
+
+        <div class="info-row">
+          <label>触发阈值:</label>
+          <span class="value">{{ formatVoltage(levelConfig.threshold) }}</span>
+        </div>
+      </div>
+
+      <!-- 高级配置 -->
+      <div
+        v-if="showAdvanced"
+        class="advanced-info"
+      >
+        <el-divider>高级配置</el-divider>
+
+        <div
+          v-if="triggerConfig.isBlastMode"
+          class="info-row highlight"
+        >
+          <label>突发模式:</label>
+          <span class="value">已启用</span>
+        </div>
+
+        <div
+          v-if="triggerConfig.burstEnabled && !triggerConfig.isBlastMode"
+          class="info-row"
+        >
+          <label>突发采集:</label>
+          <span class="value">{{ triggerConfig.burstCount }} 次</span>
+        </div>
+
+        <div
+          v-if="triggerConfig.measureBursts"
+          class="info-row"
+        >
+          <label>测量间隔:</label>
+          <span class="value">已启用</span>
+        </div>
+
+        <div
+          v-if="triggerConfig.fastTrigger"
+          class="info-row highlight"
+        >
+          <label>快速触发:</label>
+          <span class="value">已启用</span>
+        </div>
+
+        <div class="info-row">
+          <label>信号类型:</label>
+          <span class="value">{{ levelConfig.signalType }}</span>
+        </div>
+
+        <div
+          v-if="levelConfig.hysteresis"
+          class="info-row"
+        >
+          <label>滞回电压:</label>
+          <span class="value">±{{ formatVoltage(levelConfig.hysteresis) }}</span>
+        </div>
+      </div>
+
+      <!-- 验证结果 -->
+      <div
+        v-if="validationResults.length > 0"
+        class="validation-results"
+      >
+        <el-divider>验证结果</el-divider>
+        <div
+          v-for="(result, index) in validationResults"
+          :key="index"
+          class="validation-item"
+          :class="{ 'validation-error': !result.isValid }"
+        >
+          <el-icon>
+            <SuccessFilled v-if="result.isValid" />
+            <CircleCloseFilled v-else />
+          </el-icon>
+          <span>{{ result.errorMessage || '验证通过' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-actions">
+      <el-button
+        size="small"
+        @click="showAdvanced = !showAdvanced"
+      >
+        {{ showAdvanced ? '隐藏详情' : '显示详情' }}
+      </el-button>
+      <el-button
+        size="small"
+        type="primary"
+        @click="validateTrigger"
+      >
+        验证配置
+      </el-button>
+    </div>
+  </div>
+</template>
 
 <style scoped>
   .trigger-status {
