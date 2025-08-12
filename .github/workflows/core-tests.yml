@@ -1,0 +1,61 @@
+name: 核心测试CI验证
+
+# 触发条件：推送到master分支、PR、或手动触发
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  core-tests:
+    name: 核心测试稳定性验证
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 设置 Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: 运行CI测试套件
+      run: node scripts/ci-test-runner.js
+      
+    - name: 上传测试报告
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-report-node-${{ matrix.node-version }}
+        path: ci-test-report.json
+        retention-days: 7
+
+  test-summary:
+    name: 测试结果汇总
+    runs-on: ubuntu-latest
+    needs: core-tests
+    if: always()
+    
+    steps:
+    - name: 汇总测试结果
+      run: |
+        echo "📋 CI测试执行汇总："
+        echo "  - 核心测试状态: ${{ needs.core-tests.result }}"
+        
+        if [[ "${{ needs.core-tests.result }}" == "success" ]]; then
+          echo "🎉 所有核心测试通过！项目质量稳定。"
+          echo "✅ LogicAnalyzerDriver测试100%通过"
+          echo "✅ 质量检查机制正常工作"
+          echo "✅ CI环境验证成功"
+        else
+          echo "❌ 核心测试未通过，请检查失败项。"
+          exit 1
+        fi
