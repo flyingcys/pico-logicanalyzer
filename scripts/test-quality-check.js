@@ -24,10 +24,13 @@ const QUALITY_STANDARDS = {
 function getStagedTestFiles() {
   try {
     const output = execSync('git diff --cached --name-only --diff-filter=ACM', { encoding: 'utf8' });
-    return output
+    const stagedFiles = output
       .split('\n')
       .filter(file => file.trim() !== '')
       .filter(file => file.includes('utest/') && file.endsWith('.test.ts'));
+    
+    console.log(`找到 ${stagedFiles.length} 个staged测试文件:`, stagedFiles);
+    return stagedFiles;
   } catch (error) {
     console.log('获取staged文件时出错:', error.message);
     return [];
