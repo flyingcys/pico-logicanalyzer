@@ -1,10 +1,10 @@
 /**
- * Mock对象集中导出
+ * 简化的Mock导出 - 统一Mock策略
+ * 基于分析报告重构：最大化简化，最小化维护成本
  */
 
+export * from './simple-mocks';
 export { MockBase } from './MockBase';
-export { MockAnalyzerDriver } from './MockAnalyzerDriver';
-export { vscode, VSCodeMock } from './vscode';
 
 // 测试工具类导出
 export class TestUtils {
