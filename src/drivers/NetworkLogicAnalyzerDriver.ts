@@ -80,6 +80,9 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
   private _isConnected: boolean = false;
   private _deviceConfig: any = {};
   private _authToken: string = '';
+  
+  // 定时器资源追踪
+  private _activeTimeouts: Set<NodeJS.Timeout> = new Set();
 
   constructor(
     host: string,
@@ -483,12 +486,16 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
     }, 200); // 每200ms检查一次状态
 
     // 设置超时保护
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (this._capturing) {
         clearInterval(checkInterval);
         this.handleCaptureError(session, '采集超时');
       }
+      this._activeTimeouts.delete(timeoutId);
     }, 300000); // 5分钟超时
+    
+    // 跟踪超时定时器
+    this._activeTimeouts.add(timeoutId);
   }
 
   /**
@@ -781,6 +788,12 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
    * 资源清理
    */
   override dispose(): void {
+    // 清理所有活跃的定时器
+    for (const timeoutId of this._activeTimeouts) {
+      clearTimeout(timeoutId);
+    }
+    this._activeTimeouts.clear();
+    
     this.disconnect();
     super.dispose();
   }

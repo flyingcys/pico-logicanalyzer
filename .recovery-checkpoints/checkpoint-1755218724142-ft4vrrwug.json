@@ -1,0 +1,11 @@
+{
+  "id": "checkpoint-1755218724142-ft4vrrwug",
+  "timestamp": 1755218724142,
+  "processedDataMB": 15,
+  "totalDataMB": 50,
+  "currentPhase": "processing",
+  "chunkIndex": 2,
+  "processingState": {},
+  "errorHistory": [],
+  "metadata": {}
+}

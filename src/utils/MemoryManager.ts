@@ -4,11 +4,34 @@
  * 提供智能内存管理、垃圾回收优化和内存泄漏检测
  */
 
-export interface MemoryBlock {
+// 内存数据类型枚举
+export enum MemoryDataType {
+  SAMPLE_DATA = 'sample_data',
+  DECODER_RESULT = 'decoder_result', 
+  CONFIGURATION = 'configuration',
+  ANALYSIS_RESULT = 'analysis_result',
+  CACHED_COMPUTATION = 'cached_computation',
+  TEMPORARY_BUFFER = 'temporary_buffer'
+}
+
+// 支持的内存数据类型
+export type MemoryData = 
+  | Uint8Array          // 采样数据
+  | ArrayBuffer         // 原始缓冲区
+  | object              // 配置对象
+  | Map<string, unknown>// 分析结果
+  | Array<unknown>      // 数组数据
+  | string              // 字符串数据
+  | number              // 数值数据
+  | Buffer;             // Node.js Buffer
+
+export interface MemoryBlock<T extends MemoryData = MemoryData> {
   /** 内存块ID */
   id: string;
   /** 数据引用 */
-  data: any;
+  data: T;
+  /** 数据类型 */
+  dataType: MemoryDataType;
   /** 创建时间 */
   createdAt: number;
   /** 最后访问时间 */
@@ -125,10 +148,11 @@ export class MemoryManager {
   /**
    * 分配内存
    */
-  public allocate(
+  public allocate<T extends MemoryData>(
     poolName: string,
     blockId: string,
-    data: any,
+    data: T,
+    dataType: MemoryDataType,
     options: {
       priority?: 'high' | 'medium' | 'low';
       canRelease?: boolean;
@@ -156,9 +180,10 @@ export class MemoryManager {
     }
 
     const now = Date.now();
-    const block: MemoryBlock = {
+    const block: MemoryBlock<T> = {
       id: blockId,
       data,
+      dataType,
       createdAt: now,
       lastAccessedAt: now,
       accessCount: 1,
@@ -177,7 +202,7 @@ export class MemoryManager {
   /**
    * 获取内存块
    */
-  public get(poolName: string, blockId: string): any | null {
+  public get<T extends MemoryData = MemoryData>(poolName: string, blockId: string): T | null {
     const pool = this.pools.get(poolName);
     if (!pool) return null;
 
@@ -486,7 +511,7 @@ export class MemoryManager {
   /**
    * 计算数据大小
    */
-  private calculateDataSize(data: any, visited = new WeakSet()): number {
+  private calculateDataSize(data: MemoryData, visited = new WeakSet<object>()): number {
     if (data === null || data === undefined) return 0;
 
     if (data instanceof Uint8Array || data instanceof ArrayBuffer) {

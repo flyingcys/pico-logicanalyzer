@@ -1,0 +1,856 @@
+{
+  "summary": {
+    "totalTests": 4,
+    "passedTests": 4,
+    "failedTests": 0,
+    "averagePerformance": {
+      "avgDuration": 62.26,
+      "avgMemoryUsage": 440.05,
+      "totalMemoryGrowth": 1.57
+    },
+    "regressions": [],
+    "environment": {
+      "nodeVersion": "v22.17.1",
+      "platform": "linux",
+      "timestamp": "2025-08-15T00:45:23.980Z",
+      "runId": "perf-1755218723980"
+    }
+  },
+  "testResults": [
+    {
+      "testName": "LogicAnalyzerDriver-连接性能",
+      "config": {
+        "iterations": 10,
+        "warmupIterations": 3,
+        "timeout": 15000,
+        "memoryThreshold": 100,
+        "timeoutThreshold": 2000
+      },
+      "results": [
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 438.7,
+            "heapTotal": 472,
+            "external": 10.69,
+            "arrayBuffers": 7.31,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 438.7,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219925931222910",
+            "endTime": "219925931265866",
+            "duration": 0.043
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.275Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 438.77,
+            "heapTotal": 472,
+            "external": 10.69,
+            "arrayBuffers": 7.31,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 438.77,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219925931452919",
+            "endTime": "219925931481556",
+            "duration": 0.029
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.276Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 438.84,
+            "heapTotal": 472,
+            "external": 10.69,
+            "arrayBuffers": 7.31,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 438.84,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219925931623557",
+            "endTime": "219925931650378",
+            "duration": 0.027
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.276Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 438.9,
+            "heapTotal": 472,
+            "external": 10.69,
+            "arrayBuffers": 7.31,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 438.9,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219925931785394",
+            "endTime": "219925931813054",
+            "duration": 0.028
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.276Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 438.97,
+            "heapTotal": 472,
+            "external": 10.69,
+            "arrayBuffers": 7.31,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 438.97,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219925931935986",
+            "endTime": "219925931961969",
+            "duration": 0.026
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.276Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 439.04,
+            "heapTotal": 472,
+            "external": 10.69,
+            "arrayBuffers": 7.31,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 439.04,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219925932105995",
+            "endTime": "219925932183387",
+            "duration": 0.077
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.276Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 439.1,
+            "heapTotal": 472,
+            "external": 10.69,
+            "arrayBuffers": 7.31,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 439.1,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219925932324339",
+            "endTime": "219925932360590",
+            "duration": 0.036
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.277Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 439.17,
+            "heapTotal": 472,
+            "external": 10.69,
+            "arrayBuffers": 7.31,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 439.17,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219925932497981",
+            "endTime": "219925932529901",
+            "duration": 0.032
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.277Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 439.23,
+            "heapTotal": 472,
+            "external": 10.69,
+            "arrayBuffers": 7.31,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 439.23,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219925932654859",
+            "endTime": "219925932681052",
+            "duration": 0.026
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.277Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 439.3,
+            "heapTotal": 472,
+            "external": 10.69,
+            "arrayBuffers": 7.31,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 439.3,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219925932815718",
+            "endTime": "219925932838698",
+            "duration": 0.023
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.277Z"
+          }
+        }
+      ],
+      "statistics": {
+        "averageDuration": 0.035,
+        "minDuration": 0.023,
+        "maxDuration": 0.077,
+        "standardDeviation": 0.015,
+        "averageMemoryUsed": 439,
+        "memoryGrowth": 0.6
+      },
+      "success": true
+    },
+    {
+      "testName": "LogicAnalyzerDriver-数据采集性能",
+      "config": {
+        "iterations": 5,
+        "warmupIterations": 2,
+        "timeout": 20000,
+        "memoryThreshold": 100,
+        "timeoutThreshold": 5000
+      },
+      "results": [
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 439.66,
+            "heapTotal": 472,
+            "external": 10.84,
+            "arrayBuffers": 7.45,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 439.66,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219926129168176",
+            "endTime": "219926191464135",
+            "duration": 62.296
+          },
+          "throughput": {
+            "bytesPerSecond": 802620,
+            "operationsPerSecond": 802620,
+            "recordsPerSecond": 802620
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.536Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 439.72,
+            "heapTotal": 472,
+            "external": 10.88,
+            "arrayBuffers": 7.5,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 439.72,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219926191855143",
+            "endTime": "219926256104813",
+            "duration": 64.25
+          },
+          "throughput": {
+            "bytesPerSecond": 778210,
+            "operationsPerSecond": 778210,
+            "recordsPerSecond": 778210
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.600Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 439.79,
+            "heapTotal": 472,
+            "external": 10.93,
+            "arrayBuffers": 7.55,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 439.79,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219926256513562",
+            "endTime": "219926306757430",
+            "duration": 50.244
+          },
+          "throughput": {
+            "bytesPerSecond": 995144,
+            "operationsPerSecond": 995144,
+            "recordsPerSecond": 995144
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.651Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 439.85,
+            "heapTotal": 472,
+            "external": 10.98,
+            "arrayBuffers": 7.6,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 439.85,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219926307126575",
+            "endTime": "219926392445264",
+            "duration": 85.319
+          },
+          "throughput": {
+            "bytesPerSecond": 586036,
+            "operationsPerSecond": 586036,
+            "recordsPerSecond": 586036
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.737Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 439.91,
+            "heapTotal": 472,
+            "external": 11.03,
+            "arrayBuffers": 7.64,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 439.91,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219926392846958",
+            "endTime": "219926513144915",
+            "duration": 120.298
+          },
+          "throughput": {
+            "bytesPerSecond": 415635,
+            "operationsPerSecond": 415635,
+            "recordsPerSecond": 415635
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:22.857Z"
+          }
+        }
+      ],
+      "statistics": {
+        "averageDuration": 76.481,
+        "minDuration": 50.244,
+        "maxDuration": 120.298,
+        "standardDeviation": 24.646,
+        "averageMemoryUsed": 439.79,
+        "memoryGrowth": 0.25
+      },
+      "success": true
+    },
+    {
+      "testName": "LogicAnalyzerDriver-大数据量处理",
+      "config": {
+        "iterations": 3,
+        "warmupIterations": 1,
+        "timeout": 60000,
+        "memoryThreshold": 200,
+        "timeoutThreshold": 30000
+      },
+      "results": [
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 440.25,
+            "heapTotal": 472,
+            "external": 13.89,
+            "arrayBuffers": 10.51,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 440.25,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219926615841656",
+            "endTime": "219926717366349",
+            "duration": 101.525
+          },
+          "throughput": {
+            "bytesPerSecond": 9849791,
+            "operationsPerSecond": 10,
+            "recordsPerSecond": 9849791
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:23.062Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 440.32,
+            "heapTotal": 472,
+            "external": 15.32,
+            "arrayBuffers": 11.94,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 440.32,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219926718106107",
+            "endTime": "219926819809749",
+            "duration": 101.704
+          },
+          "throughput": {
+            "bytesPerSecond": 9832455,
+            "operationsPerSecond": 10,
+            "recordsPerSecond": 9832455
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:23.164Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 440.38,
+            "heapTotal": 472,
+            "external": 16.75,
+            "arrayBuffers": 13.37,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 440.38,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219926820216612",
+            "endTime": "219926921675857",
+            "duration": 101.459
+          },
+          "throughput": {
+            "bytesPerSecond": 9856198,
+            "operationsPerSecond": 10,
+            "recordsPerSecond": 9856198
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:23.266Z"
+          }
+        }
+      ],
+      "statistics": {
+        "averageDuration": 101.563,
+        "minDuration": 101.459,
+        "maxDuration": 101.704,
+        "standardDeviation": 0.104,
+        "averageMemoryUsed": 440.32,
+        "memoryGrowth": 0.13
+      },
+      "success": true
+    },
+    {
+      "testName": "LogicAnalyzerDriver-内存效率",
+      "config": {
+        "iterations": 8,
+        "warmupIterations": 2,
+        "timeout": 10000,
+        "memoryThreshold": 50,
+        "timeoutThreshold": 10000
+      },
+      "results": [
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 440.78,
+            "heapTotal": 472,
+            "external": 16.75,
+            "arrayBuffers": 13.37,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 440.78,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219927064493425",
+            "endTime": "219927135915480",
+            "duration": 71.422
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:23.480Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 440.87,
+            "heapTotal": 472,
+            "external": 16.75,
+            "arrayBuffers": 13.37,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 440.87,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219927136629115",
+            "endTime": "219927207146851",
+            "duration": 70.518
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:23.551Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 440.96,
+            "heapTotal": 472,
+            "external": 16.75,
+            "arrayBuffers": 13.37,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 440.96,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219927207519000",
+            "endTime": "219927279125244",
+            "duration": 71.606
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:23.623Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 441.04,
+            "heapTotal": 472,
+            "external": 16.75,
+            "arrayBuffers": 13.37,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 441.04,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219927279515693",
+            "endTime": "219927351079748",
+            "duration": 71.564
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:23.695Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 441.12,
+            "heapTotal": 472,
+            "external": 16.75,
+            "arrayBuffers": 13.37,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 441.12,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219927351442188",
+            "endTime": "219927422249025",
+            "duration": 70.807
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:23.766Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 441.2,
+            "heapTotal": 472,
+            "external": 16.75,
+            "arrayBuffers": 13.37,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 441.21,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219927422676772",
+            "endTime": "219927493552688",
+            "duration": 70.876
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:23.838Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 441.29,
+            "heapTotal": 472,
+            "external": 16.75,
+            "arrayBuffers": 13.37,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 441.29,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219927494083391",
+            "endTime": "219927564487276",
+            "duration": 70.404
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:23.909Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 587.1,
+            "heapUsed": 441.37,
+            "heapTotal": 472,
+            "external": 16.75,
+            "arrayBuffers": 13.37,
+            "heapStatistics": {
+              "totalHeapSize": 472,
+              "usedHeapSize": 441.37,
+              "heapSizeLimit": 4144,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.64
+            }
+          },
+          "timing": {
+            "startTime": "219927564915792",
+            "endTime": "219927635476833",
+            "duration": 70.561
+          },
+          "environment": {
+            "nodeVersion": "v22.17.1",
+            "platform": "linux",
+            "arch": "x64",
+            "timestamp": "2025-08-15T00:45:23.980Z"
+          }
+        }
+      ],
+      "statistics": {
+        "averageDuration": 70.97,
+        "minDuration": 70.404,
+        "maxDuration": 71.606,
+        "standardDeviation": 0.459,
+        "averageMemoryUsed": 441.08,
+        "memoryGrowth": 0.59
+      },
+      "success": true
+    }
+  ],
+  "config": {
+    "outputDir": "tests/performance/reports",
+    "reportFormats": [
+      "json",
+      "html"
+    ],
+    "saveHistory": true,
+    "regressionThreshold": 25
+  }
+}

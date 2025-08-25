@@ -1,0 +1,71 @@
+name: Code Quality Check
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  quality-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run quality inspector
+      run: node scripts/quality-inspector.js
+      continue-on-error: true
+      id: quality-check
+
+    - name: Upload quality report
+      uses: actions/upload-artifact@v3
+      with:
+        name: quality-report
+        path: quality-report.json
+
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('quality-report.json', 'utf8'));
+          
+          const comment = `## 🔍 代码质量检测报告
+          
+          **质量评分**: ${report.summary.qualityScore}/100
+          
+          ### 问题统计
+          - 📋 TODO标记: ${report.summary.todoCount}
+          - 🔀 any类型使用: ${report.summary.anyTypeCount}
+          - 💧 潜在资源泄漏: ${report.summary.resourceLeakCount}
+          - ⚠️ 总问题数: ${report.summary.totalIssues}
+          
+          ### 改进建议
+          ${report.recommendations.map(r => `- ${r}`).join('\n')}
+          
+          详细报告请查看 Artifacts 中的 quality-report.json`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+    - name: Fail if quality score is too low
+      if: steps.quality-check.outcome == 'failure'
+      run: |
+        echo "Quality score is below threshold. Please improve code quality before merging."
+        exit 1

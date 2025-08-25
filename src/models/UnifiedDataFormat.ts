@@ -93,9 +93,99 @@ export interface TriggerInfo {
   holdoff?: number; // 触发禁止时间 (ns)
 }
 
+// 硬件特定的扩展数据类型
+export type HardwareExtensionData = 
+  | PicoExtensionData
+  | SaleaeExtensionData  
+  | RigolExtensionData
+  | GenericExtensionData;
+
+// Pico逻辑分析器扩展数据
+export interface PicoExtensionData {
+  blastFrequency?: number;
+  networkConfig?: {
+    ssid: string;
+    signalStrength: number;
+  };
+  batteryVoltage?: string;
+}
+
+// Saleae扩展数据
+export interface SaleaeExtensionData {
+  deviceType: string;
+  firmwareVersion: string;
+  serialNumber: string;
+}
+
+// Rigol扩展数据
+export interface RigolExtensionData {
+  modelNumber: string;
+  firmwareVersion: string;
+  calibrationDate?: string;
+}
+
+// 通用扩展数据
+export interface GenericExtensionData {
+  [key: string]: string | number | boolean | undefined;
+}
+
 // 扩展数据 (硬件特定)
 export interface ExtensionData {
-  [deviceType: string]: any; // 硬件特定的扩展数据
+  pico?: PicoExtensionData;
+  saleae?: SaleaeExtensionData;
+  rigol?: RigolExtensionData;
+  generic?: GenericExtensionData;
+}
+
+// LAC文件格式接口（兼容原软件）
+export interface LacFileFormat {
+  captureSession: {
+    frequency: number;
+    totalSamples: number;
+    preTriggerSamples: number;
+    postTriggerSamples: number;
+    captureChannels: Array<{
+      channelNumber: number;
+      channelName: string;
+      channelColor?: number;
+      hidden: boolean;
+      samples: Uint8Array;
+    }>;
+  };
+  deviceInfo?: DeviceInfo;
+  quality?: QualityMetrics;
+}
+
+// LAC格式输入数据（从文件读取时的类型）
+export interface LacInputData {
+  captureSession?: {
+    frequency: number;
+    totalSamples: number;
+    preTriggerSamples: number;
+    postTriggerSamples: number;
+    captureChannels: Array<{
+      channelNumber: number;
+      channelName: string;
+      channelColor?: number;
+      hidden: boolean;
+      samples?: Uint8Array | number[];
+    }>;
+  };
+  [key: string]: unknown; // 允许其他字段
+}
+
+// 设备信息接口
+export interface DeviceInfo {
+  name: string;
+  version?: string;
+  type?: string;
+  connectionPath?: string;
+  isNetwork?: boolean;
+  capabilities?: {
+    channels: number;
+    maxFrequency: number;
+    bufferSize: number;
+  };
 }
 
 // 统一采集数据格式 - 核心接口
@@ -239,7 +329,7 @@ export class UnifiedDataFormat {
   /**
    * 转换为.lac兼容格式
    */
-  static toLacFormat(data: UnifiedCaptureData): any {
+  static toLacFormat(data: UnifiedCaptureData): LacFileFormat {
     // 转换为与原软件兼容的.lac格式
     return {
       captureSession: {
@@ -263,7 +353,7 @@ export class UnifiedDataFormat {
   /**
    * 从.lac格式转换
    */
-  static fromLacFormat(lacData: any, deviceInfo: DeviceInfo): UnifiedCaptureData {
+  static fromLacFormat(lacData: LacInputData, deviceInfo: DeviceInfo): UnifiedCaptureData {
     const session = lacData.captureSession || lacData;
 
     return {
@@ -285,7 +375,7 @@ export class UnifiedDataFormat {
         },
         captureMode: 'imported'
       },
-      channels: (session.captureChannels || []).map((ch: any) => ({
+      channels: (session.captureChannels || []).map((ch) => ({
         channelNumber: ch.channelNumber || 0,
         channelName: ch.channelName || `Channel ${ch.channelNumber + 1}`,
         channelColor: ch.channelColor,
@@ -294,7 +384,16 @@ export class UnifiedDataFormat {
       })),
       samples: {
         digital: {
-          data: (session.captureChannels || []).map((ch: any) => ch.samples || new Uint8Array()),
+          data: (session.captureChannels || []).map((ch) => {
+            // 处理可能的数组格式转换
+            if (ch.samples instanceof Uint8Array) {
+              return ch.samples;
+            } else if (Array.isArray(ch.samples)) {
+              return new Uint8Array(ch.samples);
+            } else {
+              return new Uint8Array();
+            }
+          }),
           encoding: 'binary'
         }
       },

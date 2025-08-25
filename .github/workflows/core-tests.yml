@@ -30,12 +30,19 @@ jobs:
     - name: 运行CI测试套件
       run: node scripts/ci-test-runner.js
       
+    - name: 生成测试仪表板
+      if: always()
+      run: node scripts/generate-test-dashboard.js
+      
     - name: 上传测试报告
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: test-report-node-${{ matrix.node-version }}
-        path: ci-test-report.json
+        path: |
+          ci-test-report.json
+          test-dashboard.html
+          test-history.json
         retention-days: 7
 
   test-summary:
@@ -45,6 +52,27 @@ jobs:
     if: always()
     
     steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 设置 Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: 下载测试报告
+      uses: actions/download-artifact@v4
+      with:
+        name: test-report-node-20.x
+        path: ./reports
+        
+    - name: 生成汇总仪表板
+      run: |
+        cp ./reports/ci-test-report.json ./ 2>/dev/null || echo "CI报告文件不存在，使用默认数据"
+        cp ./reports/test-history.json ./ 2>/dev/null || echo "历史数据文件不存在，将创建新的"
+        node scripts/generate-test-dashboard.js
+        
     - name: 汇总测试结果
       run: |
         echo "📋 CI测试执行汇总："
@@ -55,7 +83,50 @@ jobs:
           echo "✅ LogicAnalyzerDriver测试100%通过"
           echo "✅ 质量检查机制正常工作"
           echo "✅ CI环境验证成功"
+          echo "📊 测试仪表板已生成，可在Artifacts中下载查看"
         else
           echo "❌ 核心测试未通过，请检查失败项。"
           exit 1
         fi
+    
+    - name: 上传汇总仪表板
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-dashboard-summary
+        path: |
+          test-dashboard.html
+          test-history.json
+        retention-days: 30
+
+  publish-dashboard:
+    name: 发布测试仪表板
+    runs-on: ubuntu-latest
+    needs: [core-tests, test-summary]
+    if: github.ref == 'refs/heads/master' && always()
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 下载汇总仪表板
+      uses: actions/download-artifact@v4
+      with:
+        name: test-dashboard-summary
+        path: ./dashboard
+        
+    - name: 发布到GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      if: needs.test-summary.result == 'success'
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./dashboard
+        destination_dir: test-reports
+        
+    - name: 输出仪表板访问链接
+      if: needs.test-summary.result == 'success'
+      run: |
+        echo "🎉 测试仪表板已发布！"
+        echo "📊 访问链接: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/test-reports/test-dashboard.html"
+        echo ""
+        echo "💡 在PR中也可以下载test-dashboard-summary artifact查看最新测试报告"

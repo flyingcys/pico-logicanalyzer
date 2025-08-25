@@ -76,7 +76,7 @@ export class VirtualizationRenderer {
   // 渲染队列和任务管理
   private renderQueue: any[] = [];
   private renderWorker: Worker | null = null;
-  private workerTasks = new Map<string, { resolve: Function; reject: Function }>();
+  private workerTasks = new Map<string, { resolve: Function; reject: Function; timeoutId: NodeJS.Timeout }>();
 
   constructor(canvas: HTMLCanvasElement, config: VirtualizationConfig) {
     this.canvas = canvas;
@@ -228,7 +228,10 @@ export class VirtualizationRenderer {
         const task = this.workerTasks.get(taskId);
 
         if (task) {
+          // 清理超时定时器
+          clearTimeout(task.timeoutId);
           this.workerTasks.delete(taskId);
+          
           if (success) {
             task.resolve(result);
           } else {
@@ -581,16 +584,16 @@ export class VirtualizationRenderer {
     const taskId = `${type}_${Date.now()}_${Math.random()}`;
 
     return new Promise((resolve, reject) => {
-      this.workerTasks.set(taskId, { resolve, reject } as any);
-      this.renderWorker!.postMessage({ taskId, type, data });
-
       // 设置超时
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         if (this.workerTasks.has(taskId)) {
           this.workerTasks.delete(taskId);
           reject(new Error('Worker task timeout'));
         }
       }, 5000);
+      
+      this.workerTasks.set(taskId, { resolve, reject, timeoutId });
+      this.renderWorker!.postMessage({ taskId, type, data });
     });
   }
 
@@ -865,8 +868,13 @@ export class VirtualizationRenderer {
     this.tileCache.clear();
     this.tileCacheSize = 0;
 
-    // 清理任务队列
+    // 清理任务队列和超时定时器
     this.renderQueue = [];
+    
+    // 清理所有待处理任务的超时定时器
+    for (const task of this.workerTasks.values()) {
+      clearTimeout(task.timeoutId);
+    }
     this.workerTasks.clear();
   }
 }

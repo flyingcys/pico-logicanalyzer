@@ -114,6 +114,7 @@ export abstract class ServiceLifecycleBase implements IServiceLifecycle {
   protected _initPromise?: Promise<ServiceInitResult>;
   protected _disposePromise?: Promise<boolean>;
   protected _metadata: Record<string, any> = {};
+  protected _activeTimeouts: Set<NodeJS.Timeout> = new Set();
   public readonly serviceName: string;
 
   constructor(
@@ -229,13 +230,33 @@ export abstract class ServiceLifecycleBase implements IServiceLifecycle {
 
       // 设置超时
       const timeout = options.timeout || 30000; // 默认30秒
+      let timeoutId: NodeJS.Timeout;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`服务初始化超时: ${this.serviceName}`)), timeout);
+        timeoutId = setTimeout(() => {
+          this._activeTimeouts.delete(timeoutId);
+          reject(new Error(`服务初始化超时: ${this.serviceName}`));
+        }, timeout);
+        this._activeTimeouts.add(timeoutId);
       });
 
       // 执行子类的初始化逻辑
       const initPromise = this.onInitialize(options);
-      await Promise.race([initPromise, timeoutPromise]);
+      
+      try {
+        await Promise.race([initPromise, timeoutPromise]);
+        // 初始化成功，清理超时
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          this._activeTimeouts.delete(timeoutId);
+        }
+      } catch (error) {
+        // 初始化失败，确保清理超时
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          this._activeTimeouts.delete(timeoutId);
+        }
+        throw error;
+      }
 
       this._state = ServiceState.Ready;
       return {
@@ -262,25 +283,59 @@ export abstract class ServiceLifecycleBase implements IServiceLifecycle {
 
       // 设置超时
       const timeout = options.timeout || 10000; // 默认10秒
+      let timeoutId: NodeJS.Timeout;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`服务销毁超时: ${this.serviceName}`)), timeout);
+        timeoutId = setTimeout(() => {
+          this._activeTimeouts.delete(timeoutId);
+          reject(new Error(`服务销毁超时: ${this.serviceName}`));
+        }, timeout);
+        this._activeTimeouts.add(timeoutId);
       });
 
       // 执行子类的销毁逻辑
       const disposePromise = this.onDispose(options);
-      await Promise.race([disposePromise, timeoutPromise]);
+      
+      try {
+        await Promise.race([disposePromise, timeoutPromise]);
+        // 销毁成功，清理超时
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          this._activeTimeouts.delete(timeoutId);
+        }
+      } catch (error) {
+        // 销毁失败，确保清理超时
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          this._activeTimeouts.delete(timeoutId);
+        }
+        throw error;
+      }
 
       this._state = ServiceState.Disposed;
+      // 确保清理所有定时器
+      this.cleanupActiveTimeouts();
       return true;
 
     } catch (error) {
       if (options.force) {
         this._state = ServiceState.Disposed;
+        // 强制销毁时也要清理定时器
+        this.cleanupActiveTimeouts();
         return true;
       }
       this._state = ServiceState.Error;
       return false;
     }
+  }
+
+  /**
+   * 清理所有活跃的定时器
+   */
+  protected cleanupActiveTimeouts(): void {
+    for (const timeoutId of this._activeTimeouts) {
+      clearTimeout(timeoutId);
+    }
+    this._activeTimeouts.clear();
   }
 
   /**

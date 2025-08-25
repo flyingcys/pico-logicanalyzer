@@ -36,7 +36,6 @@ module.exports = {
     '^@drivers/(.*)$': '<rootDir>/src/drivers/$1',
     '^@models/(.*)$': '<rootDir>/src/models/$1',
     '^@services/(.*)$': '<rootDir>/src/services/$1',
-    '^vscode$': '<rootDir>/utest/mocks/simple-mocks',
     '\\.(css|less|scss|sass)$': '<rootDir>/utest/mocks/fileMock.js'
   },
   

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>性能基准测试报告</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .summary { background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .test-result { border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px; }
+        .passed { border-left: 5px solid #4CAF50; }
+        .failed { border-left: 5px solid #f44336; }
+        .regression { background: #fff3cd; border-color: #ffc107; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h1>性能基准测试报告</h1>
+    
+    <div class="summary">
+        <h2>测试汇总</h2>
+        <p><strong>总测试数:</strong> 4</p>
+        <p><strong>通过:</strong> 4 | <strong>失败:</strong> 0</p>
+        <p><strong>平均执行时间:</strong> 62.26ms</p>
+        <p><strong>平均内存使用:</strong> 440.05MB</p>
+        <p><strong>运行时间:</strong> 8/15/2025, 8:45:23 AM</p>
+    </div>
+    
+    
+    
+    <h2>详细测试结果</h2>
+    
+        <div class="test-result passed">
+            <h3>LogicAnalyzerDriver-连接性能 ✅</h3>
+            <p><strong>平均执行时间:</strong> 0.035ms</p>
+            <p><strong>内存使用:</strong> 439MB</p>
+            <p><strong>标准差:</strong> 0.015ms</p>
+            
+        </div>
+    
+        <div class="test-result passed">
+            <h3>LogicAnalyzerDriver-数据采集性能 ✅</h3>
+            <p><strong>平均执行时间:</strong> 76.481ms</p>
+            <p><strong>内存使用:</strong> 439.79MB</p>
+            <p><strong>标准差:</strong> 24.646ms</p>
+            
+        </div>
+    
+        <div class="test-result passed">
+            <h3>LogicAnalyzerDriver-大数据量处理 ✅</h3>
+            <p><strong>平均执行时间:</strong> 101.563ms</p>
+            <p><strong>内存使用:</strong> 440.32MB</p>
+            <p><strong>标准差:</strong> 0.104ms</p>
+            
+        </div>
+    
+        <div class="test-result passed">
+            <h3>LogicAnalyzerDriver-内存效率 ✅</h3>
+            <p><strong>平均执行时间:</strong> 70.97ms</p>
+            <p><strong>内存使用:</strong> 441.08MB</p>
+            <p><strong>标准差:</strong> 0.459ms</p>
+            
+        </div>
+    
+</body>
+</html>

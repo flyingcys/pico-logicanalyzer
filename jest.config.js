@@ -37,14 +37,15 @@ const baseConfig = {
     '^@utils/(.*)$': '<rootDir>/src/utils/$1',
     '^@components/(.*)$': '<rootDir>/src/webview/components/$1',
     '^@stores/(.*)$': '<rootDir>/src/webview/stores/$1',
-    '^vscode$': '<rootDir>/utest/mocks/vscode.ts',
-    '.*HardwareDriverManager$': '<rootDir>/utest/mocks/HardwareDriverManager.js',
-    '\\.(css|less|scss|sass)$': '<rootDir>/utest/mocks/styleMock.js'
+    // 优先使用@tests中的Mock文件
+    '^vscode$': '<rootDir>/tests/fixtures/mocks/vscode.ts',
+    '.*HardwareDriverManager$': '<rootDir>/tests/fixtures/mocks/HardwareDriverManager.js',
+    '\\.(css|less|scss|sass)$': '<rootDir>/tests/fixtures/mocks/styleMock.js'
   },
   
-  // 测试设置文件
+  // 测试设置文件 - 迁移到@tests
   setupFilesAfterEnv: [
-    '<rootDir>/utest/setup.ts'
+    '<rootDir>/tests/fixtures/setup.ts'
   ],
   
   // Mock配置
@@ -57,7 +58,7 @@ const baseConfig = {
     '/out/',
     '/dist/',
     '/.vscode-test/',
-    '/utest/docs/',
+    '/archive/',
     '.*archive.*'
   ],
   
@@ -77,15 +78,13 @@ module.exports = {
       displayName: 'node',
       testEnvironment: 'node',
       testMatch: [
-        '<rootDir>/utest/unit/drivers/**/*.{test,spec}.ts',
-        '<rootDir>/utest/unit/services/**/*.{test,spec}.ts',
-        '<rootDir>/utest/unit/models/**/*.{test,spec}.ts',
-        '<rootDir>/utest/unit/utils/**/*.{test,spec}.ts',
-        '<rootDir>/utest/unit/decoders/**/*.{test,spec}.ts',
-        '<rootDir>/utest/unit/database/**/*.{test,spec}.ts',
-        '<rootDir>/utest/unit/tools/**/*.{test,spec}.ts',
-        '<rootDir>/utest/unit/driver-sdk/**/*.{test,spec}.ts',
-        '<rootDir>/utest/integration/**/*.{test,spec}.ts'
+        // 优先使用@tests中的测试文件（新5层架构）
+        '<rootDir>/tests/unit/**/*.{test,spec}.ts',
+        '<rootDir>/tests/integration/**/*.{test,spec}.ts',
+        '<rootDir>/tests/performance/**/*.{test,spec}.ts',
+        '<rootDir>/tests/e2e/**/*.{test,spec}.ts',
+        '<rootDir>/tests/stress/**/*.{test,spec}.ts',
+        // @utest依赖已完全移除 - 所有核心测试已迁移到@tests
       ]
     },
     // JSDOM环境 - 用于前端代码、Vue组件等测试
@@ -99,8 +98,8 @@ module.exports = {
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       },
       testMatch: [
-        '<rootDir>/utest/unit/webview/**/*.{test,spec}.ts',
-        '<rootDir>/utest/unit/extension/**/*.{test,spec}.ts'
+        '<rootDir>/tests/unit/webview/**/*.{test,spec}.ts',
+        '<rootDir>/tests/unit/extension/**/*.{test,spec}.ts'
       ],
     }
   ],

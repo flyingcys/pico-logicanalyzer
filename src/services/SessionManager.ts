@@ -4,8 +4,7 @@
  * 基于原版 MainWindow.axaml.cs 中的 mnuSave_Click 和 mnuOpen_Click 实现
  * 支持完整的会话状态保存，包括配置、数据、解码结果、标记等
  */
-import { CaptureSession, AnalyzerChannel } from '../models/AnalyzerTypes';
-import { SampleRegion } from '../models/CaptureModels';
+import { CaptureSession, AnalyzerChannel, SampleRegion } from '../models/CaptureModels';
 import { DecoderResult } from '../decoders/types';
 import { ExportedCapture, ExportMetadata } from './DataExportService';
 import { ServiceLifecycleBase, ServiceInitOptions, ServiceDisposeOptions } from '../common/ServiceLifecycle';

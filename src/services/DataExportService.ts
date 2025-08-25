@@ -3,11 +3,170 @@
  * 基于原版 MainWindow.axaml.cs 中的导出功能实现
  * 支持多种格式导出：LAC、CSV、JSON、VCD、TXT、HTML等
  */
-import { CaptureSession, AnalyzerChannel } from '../models/AnalyzerTypes';
+import { CaptureSession, AnalyzerChannel, SampleRegion } from '../models/CaptureModels';
 import { DecoderResult } from '../decoders/types';
-import { SampleRegion } from '../models/CaptureModels';
 import { exportPerformanceOptimizer, PerformanceConfig } from './ExportPerformanceOptimizer';
 import { ServiceLifecycleBase, ServiceInitOptions, ServiceDisposeOptions } from '../common/ServiceLifecycle';
+import * as zlib from 'zlib';
+import * as path from 'path';
+
+// 界面状态管理器接口
+interface UIStateManager {
+  getVisibleTimeRange(): { startSample: number; endSample: number } | null;
+  getUserSelection(): { startSample: number; endSample: number } | null;
+  getTotalSamples(): number;
+}
+
+// 默认界面状态管理器实现
+class DefaultUIStateManager implements UIStateManager {
+  private visibleRange: { startSample: number; endSample: number } | null = null;
+  private userSelection: { startSample: number; endSample: number } | null = null;
+  private totalSamples: number = 0;
+
+  setVisibleRange(startSample: number, endSample: number): void {
+    this.visibleRange = { startSample, endSample };
+  }
+
+  setUserSelection(startSample: number, endSample: number): void {
+    this.userSelection = { startSample, endSample };
+  }
+
+  setTotalSamples(totalSamples: number): void {
+    this.totalSamples = totalSamples;
+  }
+
+  getVisibleTimeRange(): { startSample: number; endSample: number } | null {
+    return this.visibleRange;
+  }
+
+  getUserSelection(): { startSample: number; endSample: number } | null {
+    return this.userSelection;
+  }
+
+  getTotalSamples(): number {
+    return this.totalSamples;
+  }
+}
+
+// 简单的ZIP文件生成器
+class SimpleZipGenerator {
+  private files: Map<string, string | Uint8Array> = new Map();
+
+  addFile(filename: string, content: string | Uint8Array): void {
+    this.files.set(filename, content);
+  }
+
+  async generateZip(): Promise<Uint8Array> {
+    // 创建基本的ZIP文件结构
+    const centralDirectory: Uint8Array[] = [];
+    const fileData: Uint8Array[] = [];
+    let centralDirOffset = 0;
+
+    for (const [filename, content] of this.files.entries()) {
+      const fileBuffer = typeof content === 'string' ? 
+        Buffer.from(content, 'utf8') : 
+        Buffer.from(content);
+
+      // 压缩文件内容
+      const compressedData = zlib.deflateSync(fileBuffer);
+
+      // 创建本地文件头
+      const localHeader = this.createLocalFileHeader(filename, fileBuffer.length, compressedData.length);
+      
+      // 添加到文件数据
+      fileData.push(localHeader);
+      fileData.push(compressedData);
+
+      // 创建中央目录条目
+      const centralDirEntry = this.createCentralDirectoryEntry(
+        filename, 
+        fileBuffer.length, 
+        compressedData.length, 
+        centralDirOffset
+      );
+      centralDirectory.push(centralDirEntry);
+
+      centralDirOffset += localHeader.length + compressedData.length;
+    }
+
+    // 创建中央目录结束记录
+    const endOfCentralDir = this.createEndOfCentralDirectory(
+      this.files.size,
+      centralDirectory.reduce((sum, entry) => sum + entry.length, 0),
+      centralDirOffset
+    );
+
+    // 合并所有部分
+    return Buffer.concat([
+      ...fileData,
+      ...centralDirectory,
+      endOfCentralDir
+    ]);
+  }
+
+  private createLocalFileHeader(filename: string, uncompressedSize: number, compressedSize: number): Uint8Array {
+    const filenameBuffer = Buffer.from(filename, 'utf8');
+    const header = Buffer.alloc(30 + filenameBuffer.length);
+    
+    header.writeUInt32LE(0x04034b50, 0); // 本地文件头签名
+    header.writeUInt16LE(20, 4); // 提取所需版本
+    header.writeUInt16LE(0, 6); // 通用位标志
+    header.writeUInt16LE(8, 8); // 压缩方法 (deflate)
+    header.writeUInt16LE(0, 10); // 文件最后修改时间
+    header.writeUInt16LE(0, 12); // 文件最后修改日期
+    header.writeUInt32LE(0, 14); // CRC-32 (简化版本设为0)
+    header.writeUInt32LE(compressedSize, 18); // 压缩大小
+    header.writeUInt32LE(uncompressedSize, 22); // 未压缩大小
+    header.writeUInt16LE(filenameBuffer.length, 26); // 文件名长度
+    header.writeUInt16LE(0, 28); // 额外字段长度
+    
+    filenameBuffer.copy(header, 30);
+    
+    return header;
+  }
+
+  private createCentralDirectoryEntry(filename: string, uncompressedSize: number, compressedSize: number, localHeaderOffset: number): Uint8Array {
+    const filenameBuffer = Buffer.from(filename, 'utf8');
+    const entry = Buffer.alloc(46 + filenameBuffer.length);
+    
+    entry.writeUInt32LE(0x02014b50, 0); // 中央目录文件头签名
+    entry.writeUInt16LE(20, 4); // 创建版本
+    entry.writeUInt16LE(20, 6); // 提取所需版本
+    entry.writeUInt16LE(0, 8); // 通用位标志
+    entry.writeUInt16LE(8, 10); // 压缩方法
+    entry.writeUInt16LE(0, 12); // 最后修改时间
+    entry.writeUInt16LE(0, 14); // 最后修改日期
+    entry.writeUInt32LE(0, 16); // CRC-32
+    entry.writeUInt32LE(compressedSize, 20); // 压缩大小
+    entry.writeUInt32LE(uncompressedSize, 24); // 未压缩大小
+    entry.writeUInt16LE(filenameBuffer.length, 28); // 文件名长度
+    entry.writeUInt16LE(0, 30); // 额外字段长度
+    entry.writeUInt16LE(0, 32); // 文件注释长度
+    entry.writeUInt16LE(0, 34); // 磁盘号
+    entry.writeUInt16LE(0, 36); // 内部文件属性
+    entry.writeUInt32LE(0, 38); // 外部文件属性
+    entry.writeUInt32LE(localHeaderOffset, 42); // 本地文件头相对偏移
+    
+    filenameBuffer.copy(entry, 46);
+    
+    return entry;
+  }
+
+  private createEndOfCentralDirectory(totalEntries: number, centralDirSize: number, centralDirOffset: number): Uint8Array {
+    const endRecord = Buffer.alloc(22);
+    
+    endRecord.writeUInt32LE(0x06054b50, 0); // 中央目录结束记录签名
+    endRecord.writeUInt16LE(0, 4); // 当前磁盘号
+    endRecord.writeUInt16LE(0, 6); // 中央目录起始磁盘号
+    endRecord.writeUInt16LE(totalEntries, 8); // 当前磁盘上的目录条目数
+    endRecord.writeUInt16LE(totalEntries, 10); // 中央目录条目总数
+    endRecord.writeUInt32LE(centralDirSize, 12); // 中央目录大小
+    endRecord.writeUInt32LE(centralDirOffset, 16); // 中央目录偏移
+    endRecord.writeUInt16LE(0, 20); // 注释长度
+    
+    return endRecord;
+  }
+}
 
 // 导出数据类型 - 增强版本，支持多种格式
 export interface ExportedCapture {
@@ -102,10 +261,34 @@ export interface ExportResult {
 export class DataExportService extends ServiceLifecycleBase {
   private performanceOptimizer = exportPerformanceOptimizer;
   private dataConverters: Map<string, (input: any) => any> = new Map();
+  private uiStateManager: UIStateManager;
 
-  constructor() {
+  constructor(uiStateManager?: UIStateManager) {
     super('DataExportService');
+    this.uiStateManager = uiStateManager || new DefaultUIStateManager();
     this.initializeDataConverters();
+  }
+
+  /**
+   * 设置界面状态管理器 - 允许外部组件设置
+   */
+  public setUIStateManager(uiStateManager: UIStateManager): void {
+    this.uiStateManager = uiStateManager;
+  }
+
+  /**
+   * 更新界面状态 - 供外部组件调用
+   */
+  public updateUIState(totalSamples: number, visibleRange?: { startSample: number; endSample: number }, userSelection?: { startSample: number; endSample: number }): void {
+    if (this.uiStateManager instanceof DefaultUIStateManager) {
+      this.uiStateManager.setTotalSamples(totalSamples);
+      if (visibleRange) {
+        this.uiStateManager.setVisibleRange(visibleRange.startSample, visibleRange.endSample);
+      }
+      if (userSelection) {
+        this.uiStateManager.setUserSelection(userSelection.startSample, userSelection.endSample);
+      }
+    }
   }
 
   /**
@@ -180,17 +363,17 @@ export class DataExportService extends ServiceLifecycleBase {
     this.dataConverters.set('channels', (input: any) => {
       if (Array.isArray(input)) {
         return input.map(ch => {
-          if (typeof ch === 'object' && ch.channelNumber !== undefined) {
-            return ch as AnalyzerChannel;
+          if (ch instanceof AnalyzerChannel) {
+            return ch;
           }
-          // 基本转换
-          return {
-            channelNumber: ch.channelNumber || ch.number || 0,
-            channelName: ch.channelName || ch.name || `Channel ${ch.number || 0}`,
-            enabled: ch.enabled !== false,
-            hidden: ch.hidden === true,
-            samples: ch.samples || new Uint8Array(0)
-          } as AnalyzerChannel;
+          // 基本转换 - 创建真正的AnalyzerChannel实例
+          const channel = new AnalyzerChannel(
+            ch.channelNumber || ch.number || 0,
+            ch.channelName || ch.name || `Channel ${ch.number || 0}`
+          );
+          channel.hidden = ch.hidden === true;
+          channel.samples = ch.samples || new Uint8Array(0);
+          return channel;
         });
       }
       return [];
@@ -278,27 +461,19 @@ export class DataExportService extends ServiceLifecycleBase {
    * 创建默认的CaptureSession
    */
   private createDefaultCaptureSession(input: any): CaptureSession {
-    return {
-      frequency: input.frequency || input.sampleRate || 1000000,
-      preTriggerSamples: input.preTriggerSamples || 1000,
-      postTriggerSamples: input.postTriggerSamples || 1000,
-      totalSamples: input.totalSamples || (input.preTriggerSamples || 1000) + (input.postTriggerSamples || 1000),
-      captureChannels: input.captureChannels || input.channels || [],
-      triggerType: input.triggerType || 0,
-      triggerChannel: input.triggerChannel || 0,
-      triggerInverted: input.triggerInverted || false,
-      triggerValue: input.triggerValue || 0,
-      loopCount: input.loopCount || 0,
-      measureBursts: input.measureBursts || false,
-      name: input.name || 'Default Session',
-      deviceVersion: input.deviceVersion || '1.0',
-      deviceSerial: input.deviceSerial || 'Unknown',
-      clone() { return { ...this }; },
-      cloneSettings() {
-        const { captureChannels, ...settings } = this;
-        return settings;
-      }
-    } as CaptureSession;
+    const session = new CaptureSession();
+    session.frequency = input.frequency || input.sampleRate || 1000000;
+    session.preTriggerSamples = input.preTriggerSamples || 1000;
+    session.postTriggerSamples = input.postTriggerSamples || 1000;
+    session.captureChannels = input.captureChannels || input.channels || [];
+    session.triggerType = input.triggerType || 0;
+    session.triggerChannel = input.triggerChannel || 0;
+    session.triggerInverted = input.triggerInverted || false;
+    session.triggerBitCount = input.triggerBitCount || 1;
+    session.triggerPattern = input.triggerPattern || 0;
+    session.loopCount = input.loopCount || 0;
+    session.measureBursts = input.measureBursts || false;
+    return session;
   }
 
   /**
@@ -761,7 +936,7 @@ export class DataExportService extends ServiceLifecycleBase {
     const startTime = Date.now();
 
     // 克隆会话设置并调整样本范围
-    const exportSession = { ...session };
+    const exportSession = session.clone();
     this.adjustSampleRange(exportSession, options);
 
     // 获取选中的通道和样本范围
@@ -782,11 +957,13 @@ export class DataExportService extends ServiceLifecycleBase {
 
         // 提取指定范围的样本数据
         if (channel.samples && (startSample > 0 || endSample < channel.samples.length)) {
+          const newChannel = channel.clone();
           const newSamples = new Uint8Array(totalSamples);
           for (let i = 0; i < totalSamples; i++) {
             newSamples[i] = channel.samples[startSample + i] || 0;
           }
-          return { ...channel, samples: newSamples };
+          newChannel.samples = newSamples;
+          return newChannel;
         }
         return channel;
       });
@@ -950,7 +1127,7 @@ export class DataExportService extends ServiceLifecycleBase {
           number: channelIndex,
           name: channel?.channelName || `Channel ${channelIndex + 1}`,
           hidden: channel?.hidden || false,
-          enabled: channel?.enabled !== false
+          enabled: true // AnalyzerChannel没有enabled属性，默认都启用
         };
       }),
       samples: [] as any[],
@@ -1514,21 +1691,39 @@ export class DataExportService extends ServiceLifecycleBase {
           return { startSample: start, endSample: Math.max(start + 1, end) };
         }
       case 'visible':
-        // TODO: 实际应该从界面组件获取当前可见的时间范围
-        // 暂时返回全部范围的中间部分（50%到100%）
-        return {
-          startSample: Math.floor(maxSamples * 0.5),
-          endSample: maxSamples
-        };
+        {
+          // 从界面组件获取当前可见的时间范围
+          const visibleRange = this.uiStateManager.getVisibleTimeRange();
+          if (visibleRange) {
+            return {
+              startSample: Math.max(0, visibleRange.startSample),
+              endSample: Math.min(maxSamples, visibleRange.endSample)
+            };
+          }
+          // 如果没有设置可见范围，返回全部范围的中间部分（50%到100%）
+          return {
+            startSample: Math.floor(maxSamples * 0.5),
+            endSample: maxSamples
+          };
+        }
       case 'selection':
-        // TODO: 实际应该从界面组件获取用户选中的区域
-        // 暂时返回触发点附近的数据（前后10%）
-        const triggerPos = session.preTriggerSamples;
-        const windowSize = Math.floor(maxSamples * 0.2);
-        return {
-          startSample: Math.max(0, triggerPos - windowSize / 2),
-          endSample: Math.min(maxSamples, triggerPos + windowSize / 2)
-        };
+        {
+          // 从界面组件获取用户选中的区域
+          const userSelection = this.uiStateManager.getUserSelection();
+          if (userSelection) {
+            return {
+              startSample: Math.max(0, userSelection.startSample),
+              endSample: Math.min(maxSamples, userSelection.endSample)
+            };
+          }
+          // 如果没有用户选择，返回触发点附近的数据（前后10%）
+          const triggerPos = session.preTriggerSamples;
+          const windowSize = Math.floor(maxSamples * 0.2);
+          return {
+            startSample: Math.max(0, triggerPos - windowSize / 2),
+            endSample: Math.min(maxSamples, triggerPos + windowSize / 2)
+          };
+        }
       case 'all':
       default:
         return { startSample: 0, endSample: maxSamples };
@@ -1554,8 +1749,8 @@ export class DataExportService extends ServiceLifecycleBase {
       timestamp: new Date().toISOString(),
       deviceInfo: {
         name: 'Pico Logic Analyzer',
-        version: session.deviceVersion || 'Unknown',
-        serialNumber: session.deviceSerial || 'Unknown'
+        version: 'Unknown', // CaptureSession没有deviceVersion属性
+        serialNumber: 'Unknown' // CaptureSession没有deviceSerial属性
       },
       sampleRate: session.frequency,
       totalSamples: exportedSamples,
@@ -1678,7 +1873,7 @@ export class DataExportService extends ServiceLifecycleBase {
       version: '1.0.0',
       type: 'vscode-logic-analyzer-project-archive',
       created: new Date().toISOString(),
-      name: session.name || 'Logic Analyzer Project',
+      name: 'Logic Analyzer Project', // CaptureSession没有name属性
       description: '完整的逻辑分析仪项目档案',
 
       // 主要数据
@@ -1702,13 +1897,74 @@ export class DataExportService extends ServiceLifecycleBase {
       options.onProgress(50, '序列化项目数据...');
     }
 
-    // TODO: 实际应该使用JSZip库创建真正的ZIP文件，包含：
+    // 使用SimpleZipGenerator创建真正的ZIP文件，包含：
     // - project.json (主项目文件)
-    // - waveform.lac (波形数据)
+    // - waveform.lac (波形数据)  
     // - decoders/ (解码结果文件夹)
     // - analysis/ (分析报告文件夹)
     // - README.md (项目说明)
-    const jsonString = JSON.stringify(projectData, null, 2);
+    
+    const zipGenerator = new SimpleZipGenerator();
+    
+    // 添加主项目文件
+    zipGenerator.addFile('project.json', JSON.stringify(projectData, null, 2));
+    
+    // 添加波形数据文件
+    const lacData = {
+      Settings: session,
+      Samples: session.captureChannels.map(ch => ch.samples ? Array.from(ch.samples) : []),
+      Metadata: this.generateMetadata(session, 'project', 'lac', options)
+    };
+    zipGenerator.addFile('waveform.lac', JSON.stringify(lacData, null, 2));
+    
+    // 添加解码结果文件
+    if (decoderResults && decoderResults.size > 0) {
+      for (const [decoderId, results] of decoderResults.entries()) {
+        const decoderData = {
+          decoderId,
+          results: results.map(result => ({
+            startSample: result.startSample,
+            endSample: result.endSample,
+            data: result.data,
+            type: result.type || 'unknown'
+          })),
+          timestamp: new Date().toISOString()
+        };
+        zipGenerator.addFile(`decoders/${decoderId}.json`, JSON.stringify(decoderData, null, 2));
+      }
+    }
+    
+    // 添加分析报告
+    if (analysisData) {
+      zipGenerator.addFile('analysis/report.json', JSON.stringify(analysisData, null, 2));
+    }
+    
+    // 添加项目说明文件
+    const readmeContent = `# Logic Analyzer Project
+
+## Project Information
+- Created: ${new Date().toLocaleString()}
+- Device: ${projectData.deviceInfo?.name || 'Unknown'}
+- Sample Rate: ${session.frequency} Hz
+- Total Samples: ${session.totalSamples}
+- Channels: ${session.captureChannels.length}
+
+## Files Description
+- \`project.json\`: Main project configuration and metadata
+- \`waveform.lac\`: Raw waveform data in LAC format
+- \`decoders/\`: Protocol decoder results (if any)
+- \`analysis/\`: Analysis reports and measurements (if any)
+
+## How to Open
+1. Import this ZIP file into Logic Analyzer VSCode Extension
+2. Or extract and open \`waveform.lac\` file directly
+
+Generated with VSCode Logic Analyzer Extension
+`;
+    zipGenerator.addFile('README.md', readmeContent);
+
+    // 生成ZIP文件
+    const zipBuffer = await zipGenerator.generateZip();
     const processingTime = Date.now() - startTime;
 
     if (options.onProgress) {
@@ -1717,10 +1973,10 @@ export class DataExportService extends ServiceLifecycleBase {
 
     return {
       success: true,
-      data: jsonString,
+      data: zipBuffer,
       filename: this.ensureFileExtension(options.filename, '.zip'),
       mimeType: 'application/zip',
-      size: Buffer.byteLength(jsonString, 'utf8'),
+      size: zipBuffer.length,
       processingTime
     };
   }
@@ -1745,7 +2001,7 @@ export class DataExportService extends ServiceLifecycleBase {
       // 项目基本信息
       version: '1.0.0',
       type: 'vscode-logic-analyzer-project',
-      name: session.name || 'Untitled Project',
+      name: 'Untitled Project', // CaptureSession没有name属性
       description: '逻辑分析仪项目文件',
       created: new Date().toISOString(),
       lastModified: new Date().toISOString(),

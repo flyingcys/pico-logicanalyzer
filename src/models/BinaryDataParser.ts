@@ -8,6 +8,20 @@ import { CaptureMode } from './AnalyzerTypes';
 import { AnalyzerChannel, CaptureSession } from './CaptureModels';
 import { UnifiedCaptureData, DigitalSampleData } from './UnifiedDataFormat';
 
+// 设备信息接口
+export interface DeviceInfo {
+  name: string;
+  version: string;
+  type: string;
+  connectionPath: string;
+  isNetwork: boolean;
+  capabilities?: {
+    channels: number;
+    maxFrequency: number;
+    bufferSize: number;
+  };
+}
+
 /**
  * 二进制数据格式
  */
@@ -366,7 +380,7 @@ export class BinaryDataParser {
   public convertToUnifiedFormat(
     channels: AnalyzerChannel[],
     session: CaptureSession,
-    deviceInfo: any
+    deviceInfo: DeviceInfo
   ): DigitalSampleData {
 
     return {

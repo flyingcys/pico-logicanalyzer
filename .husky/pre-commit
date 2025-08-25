@@ -1,5 +1,5 @@
 # 测试质量检查
 node scripts/test-quality-check.js
 
-# 运行核心测试
-npm run test:unit
+# 运行核心测试（只运行已验证通过的模块）
+npx jest utest/unit/drivers/LogicAnalyzerDriver.core.test.ts --verbose

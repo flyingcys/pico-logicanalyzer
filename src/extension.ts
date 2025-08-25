@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { LACEditorProvider } from './providers/LACEditorProvider';
 import { hardwareDriverManager } from './drivers/HardwareDriverManager';
 import { WiFiDeviceDiscovery } from './services/WiFiDeviceDiscovery';
 import { NetworkStabilityService } from './services/NetworkStabilityService';
-import { AnalyzerDriverType } from './models/AnalyzerTypes';
+import { AnalyzerDriverType, TriggerType } from './models/AnalyzerTypes';
+import { CaptureSession, AnalyzerChannel } from './models/CaptureModels';
+import { LACFileFormat } from './models/LACFileFormat';
 
 // 服务依赖接口
 export interface ExtensionServices {
@@ -26,9 +29,55 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
   context.subscriptions.push(LACEditorProvider.register(context));
 
   // 注册命令
-  const openAnalyzerCommand = vscode.commands.registerCommand('logicAnalyzer.openAnalyzer', () => {
-    vscode.window.showInformationMessage('打开逻辑分析器界面!');
-    // TODO: 实现主界面打开逻辑
+  const openAnalyzerCommand = vscode.commands.registerCommand('logicAnalyzer.openAnalyzer', async () => {
+    try {
+      // 创建一个新的.lac文件来启动主界面
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const fileName = `analyzer_session_${timestamp}.lac`;
+      
+      // 获取工作区根目录
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      let filePath: string;
+      
+      if (workspaceFolder) {
+        filePath = path.join(workspaceFolder.uri.fsPath, fileName);
+      } else {
+        // 如果没有工作区，创建临时文件
+        const tempDir = require('os').tmpdir();
+        filePath = path.join(tempDir, fileName);
+      }
+      
+      const fileUri = vscode.Uri.file(filePath);
+
+      // 创建初始化的LAC文件内容
+      const initialSession = new CaptureSession();
+      initialSession.frequency = 1000000;
+      initialSession.postTriggerSamples = 1000;
+      initialSession.preTriggerSamples = 100;
+      
+      // 添加默认通道
+      for (let i = 0; i < 8; i++) {
+        const channel = new AnalyzerChannel(i, `Channel ${i + 1}`);
+        channel.hidden = false;
+        initialSession.captureChannels.push(channel);
+      }
+
+      // 转换为LAC格式
+      const lacData = LACFileFormat.createFromCaptureSession(initialSession, 'VSCode Logic Analyzer - New Session');
+      const lacContent = JSON.stringify(lacData, null, 2);
+
+      // 写入文件
+      const encoder = new TextEncoder();
+      await vscode.workspace.fs.writeFile(fileUri, encoder.encode(lacContent));
+
+      // 打开文件，这将触发LACEditorProvider自动打开主界面
+      await vscode.commands.executeCommand('vscode.open', fileUri);
+      
+      vscode.window.showInformationMessage('逻辑分析器主界面已打开！');
+      
+    } catch (error) {
+      vscode.window.showErrorMessage(`打开逻辑分析器界面失败: ${error}`);
+    }
   });
 
   const connectDeviceCommand = vscode.commands.registerCommand(
@@ -126,9 +175,118 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
     }
   );
 
-  const startCaptureCommand = vscode.commands.registerCommand('logicAnalyzer.startCapture', () => {
-    vscode.window.showInformationMessage('开始数据采集!');
-    // TODO: 实现数据采集逻辑
+  const startCaptureCommand = vscode.commands.registerCommand('logicAnalyzer.startCapture', async () => {
+    try {
+      // 检查设备连接状态
+      const currentDevice = hardwareDriverManager.getCurrentDevice();
+      if (!currentDevice) {
+        const action = await vscode.window.showWarningMessage(
+          '请先连接逻辑分析器设备',
+          '连接设备',
+          '取消'
+        );
+        
+        if (action === '连接设备') {
+          await vscode.commands.executeCommand('logicAnalyzer.connectDevice');
+          return;
+        }
+        return;
+      }
+
+      // 获取设备信息
+      const deviceInfo = hardwareDriverManager.getCurrentDeviceInfo();
+      vscode.window.showInformationMessage(`正在使用设备: ${deviceInfo?.name || '未知设备'} 开始数据采集...`);
+
+      // 配置采集参数
+      const captureConfig = await getCaptureConfiguration();
+      if (!captureConfig) {
+        vscode.window.showInformationMessage('数据采集已取消');
+        return;
+      }
+
+      // 创建采集会话
+      const captureSession = createCaptureSession(captureConfig);
+
+      // 显示进度条并开始采集
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: '数据采集中...',
+        cancellable: true
+      }, async (progress, token) => {
+        return new Promise<void>((resolve, reject) => {
+          let progressValue = 0;
+          
+          // 设置进度更新定时器
+          const progressTimer = setInterval(() => {
+            if (progressValue < 90) {
+              progressValue += 10;
+              progress.report({ 
+                increment: 10, 
+                message: `采集进度: ${progressValue}%` 
+              });
+            }
+          }, 500);
+
+          // 采集完成处理函数
+          const captureCompletedHandler = async (success: boolean, session: any, error?: string) => {
+            clearInterval(progressTimer);
+            
+            if (success && session) {
+              progress.report({ increment: 10, message: '采集完成，正在处理数据...' });
+              
+              try {
+                // 保存采集数据到工作区
+                await saveCaptureData(session);
+                
+                vscode.window.showInformationMessage(
+                  `数据采集成功！共采集 ${session.totalSamples} 个样本`
+                );
+                resolve();
+              } catch (saveError) {
+                vscode.window.showErrorMessage(`保存采集数据失败: ${saveError}`);
+                reject(saveError);
+              }
+            } else {
+              clearInterval(progressTimer);
+              const errorMsg = error || '采集失败';
+              vscode.window.showErrorMessage(`数据采集失败: ${errorMsg}`);
+              reject(new Error(errorMsg));
+            }
+          };
+
+          // 取消处理
+          token.onCancellationRequested(() => {
+            clearInterval(progressTimer);
+            currentDevice.stopCapture().then(() => {
+              vscode.window.showInformationMessage('数据采集已取消');
+              resolve();
+            }).catch(error => {
+              vscode.window.showErrorMessage(`停止采集失败: ${error}`);
+              reject(error);
+            });
+          });
+
+          // 开始采集
+          currentDevice.startCapture(captureSession, captureCompletedHandler)
+            .then(result => {
+              if (result !== 0) { // CaptureError.None = 0
+                clearInterval(progressTimer);
+                const errorMsg = `采集启动失败，错误代码: ${result}`;
+                vscode.window.showErrorMessage(errorMsg);
+                reject(new Error(errorMsg));
+              }
+            })
+            .catch(error => {
+              clearInterval(progressTimer);
+              vscode.window.showErrorMessage(`启动采集异常: ${error}`);
+              reject(error);
+            });
+        });
+      });
+
+    } catch (error) {
+      vscode.window.showErrorMessage(`数据采集失败: ${error}`);
+    }
   });
 
   // 网络设备扫描命令
@@ -380,4 +538,140 @@ function parseNetworkAddress(address: string): { host: string; port: number } {
   }
 
   return { host, port };
+}
+
+// 获取采集配置的辅助函数
+async function getCaptureConfiguration(): Promise<any> {
+  try {
+    // 采样频率配置
+    const frequencyInput = await vscode.window.showInputBox({
+      prompt: '请输入采样频率 (Hz)',
+      value: '1000000',
+      validateInput: (value) => {
+        const freq = parseInt(value);
+        if (isNaN(freq) || freq < 1000 || freq > 100000000) {
+          return '采样频率必须在1kHz-100MHz之间';
+        }
+        return null;
+      }
+    });
+
+    if (!frequencyInput) return null;
+
+    // 采样数量配置
+    const samplesInput = await vscode.window.showInputBox({
+      prompt: '请输入采样数量',
+      value: '1000',
+      validateInput: (value) => {
+        const samples = parseInt(value);
+        if (isNaN(samples) || samples < 10 || samples > 1000000) {
+          return '采样数量必须在10-1000000之间';
+        }
+        return null;
+      }
+    });
+
+    if (!samplesInput) return null;
+
+    // 触发通道配置
+    const triggerChannelInput = await vscode.window.showInputBox({
+      prompt: '请输入触发通道 (0-23)',
+      value: '0',
+      validateInput: (value) => {
+        const channel = parseInt(value);
+        if (isNaN(channel) || channel < 0 || channel > 23) {
+          return '触发通道必须在0-23之间';
+        }
+        return null;
+      }
+    });
+
+    if (!triggerChannelInput) return null;
+
+    // 活动通道配置
+    const activeChannelsInput = await vscode.window.showInputBox({
+      prompt: '请输入活动通道 (例如: 0,1,2,3)',
+      value: '0,1,2,3',
+      validateInput: (value) => {
+        const channels = value.split(',').map(ch => parseInt(ch.trim()));
+        if (channels.some(ch => isNaN(ch) || ch < 0 || ch > 23)) {
+          return '通道号必须在0-23之间';
+        }
+        return null;
+      }
+    });
+
+    if (!activeChannelsInput) return null;
+
+    return {
+      frequency: parseInt(frequencyInput),
+      samples: parseInt(samplesInput),
+      triggerChannel: parseInt(triggerChannelInput),
+      activeChannels: activeChannelsInput.split(',').map(ch => parseInt(ch.trim()))
+    };
+  } catch (error) {
+    vscode.window.showErrorMessage(`获取采集配置失败: ${error}`);
+    return null;
+  }
+}
+
+// 创建采集会话的辅助函数
+function createCaptureSession(config: any): CaptureSession {
+  const session = new CaptureSession();
+  
+  // 基础配置
+  session.frequency = config.frequency;
+  session.postTriggerSamples = config.samples;
+  session.preTriggerSamples = Math.floor(config.samples * 0.1); // 10%预触发
+  session.triggerChannel = config.triggerChannel;
+  session.triggerType = TriggerType.Edge; // 使用边沿触发
+  
+  // 配置活动通道
+  session.captureChannels = config.activeChannels.map((channelNum: number) => {
+    const channel = new AnalyzerChannel(channelNum, `Channel ${channelNum + 1}`);
+    channel.hidden = false;
+    return channel;
+  });
+
+  return session;
+}
+
+// 保存采集数据的辅助函数
+async function saveCaptureData(session: CaptureSession): Promise<void> {
+  try {
+    // 生成文件名
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `capture_${timestamp}.lac`;
+    
+    // 获取工作区根目录
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      throw new Error('未打开工作区，无法保存文件');
+    }
+
+    // 创建文件路径
+    const filePath = path.join(workspaceFolder.uri.fsPath, fileName);
+    const fileUri = vscode.Uri.file(filePath);
+
+    // 转换为LAC格式
+    const lacData = LACFileFormat.createFromCaptureSession(session, 'VSCode Logic Analyzer');
+    const lacContent = JSON.stringify(lacData, null, 2);
+
+    // 写入文件
+    const encoder = new TextEncoder();
+    await vscode.workspace.fs.writeFile(fileUri, encoder.encode(lacContent));
+
+    // 询问是否打开文件
+    const action = await vscode.window.showInformationMessage(
+      `采集数据已保存到: ${fileName}`,
+      '打开文件',
+      '关闭'
+    );
+
+    if (action === '打开文件') {
+      await vscode.commands.executeCommand('vscode.open', fileUri);
+    }
+  } catch (error) {
+    throw new Error(`保存采集数据失败: ${error}`);
+  }
 }

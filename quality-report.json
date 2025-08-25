@@ -1,0 +1,2689 @@
+{
+  "timestamp": "2025-08-15T03:21:44.160Z",
+  "summary": {
+    "qualityScore": 84.2,
+    "todoCount": 18,
+    "anyTypeCount": 257,
+    "resourceLeakCount": 59,
+    "totalIssues": 334
+  },
+  "issues": [
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/extension.ts",
+      "line": 140,
+      "description": "any type assertion found: type: 'usb' as any,",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/extension.ts",
+      "line": 231,
+      "description": "any type usage found: const captureCompletedHandler = async (success: boolean, session: any, error?: string) => {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/extension.ts",
+      "line": 475,
+      "description": "any type usage found: async function connectToDevice(deviceId: string, params?: any): Promise<void> {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/extension.ts",
+      "line": 619,
+      "description": "any type usage found: function createCaptureSession(config: any): CaptureSession {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/main.ts",
+      "line": 12,
+      "description": "any type usage found: vscode: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/utils/DecoderBenchmark.ts",
+      "line": 96,
+      "description": "any type usage found: decoderInstance: any,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/utils/DecoderBenchmark.ts",
+      "line": 233,
+      "description": "any type usage found: decoders: Array<{ id: string; instance: any }>,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/utils/DecoderBenchmark.ts",
+      "line": 310,
+      "description": "any type usage found: private generateBenchmarkData(sampleCount: number, channelCount: number): any[] {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/utils/DecoderBenchmark.ts",
+      "line": 281,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 100));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/tools/TypeScriptCodeGenerator.ts",
+      "line": 376,
+      "description": "TODO comment found: return body || '// TODO: 实现方法逻辑';",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/tools/TypeScriptCodeGenerator.ts",
+      "line": 390,
+      "description": "TODO comment found: '// TODO: 根据原Python代码实现具体的解码逻辑',",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/tools/TypeScriptCodeGenerator.ts",
+      "line": 427,
+      "description": "any type usage found: private mapPythonTypeToTypeScript(pythonType: string, values?: any[]): string {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/tools/PythonDecoderAnalyzer.ts",
+      "line": 59,
+      "description": "any type usage found: default: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/tools/PythonDecoderAnalyzer.ts",
+      "line": 61,
+      "description": "any type usage found: values?: any[];",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/tools/PythonDecoderAnalyzer.ts",
+      "line": 378,
+      "description": "any type usage found: let parsedDefault: any = defaultValue.replace(/['\"]/g, '');",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/stage7-self-test.ts",
+      "line": 345,
+      "description": "any type assertion found: const generalConfigs = configurationManager.getConfigurationItemsByCategory('general' as any);",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/stage7-self-test.ts",
+      "line": 410,
+      "description": "any type assertion found: const sessionType = (workspaceManager as any).detectFileType('test.lacsession');",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/WorkspaceManager.ts",
+      "line": 97,
+      "description": "any type usage found: [key: string]: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/WorkspaceManager.ts",
+      "line": 191,
+      "description": "any type usage found: on(event: string | symbol, listener: (...args: any[]) => void): this {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/WorkspaceManager.ts",
+      "line": 196,
+      "description": "any type usage found: emit(event: string | symbol, ...args: any[]): boolean {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/WorkspaceManager.ts",
+      "line": 200,
+      "description": "any type usage found: off(event: string | symbol, listener: (...args: any[]) => void): this {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/WorkspaceManager.ts",
+      "line": 216,
+      "description": "any type usage found: settings?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/WorkspaceManager.ts",
+      "line": 607,
+      "description": "any type usage found: metadata?: any",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/WorkspaceManager.ts",
+      "line": 735,
+      "description": "any type usage found: } catch (error: any) {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/SignalMeasurementService.ts",
+      "line": 154,
+      "description": "any type usage found: options?: any",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/SignalMeasurementService.ts",
+      "line": 418,
+      "description": "any type usage found: options: any",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/SessionManager.ts",
+      "line": 30,
+      "description": "any type usage found: analysisResults?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/SessionManager.ts",
+      "line": 31,
+      "description": "any type usage found: measurementResults?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/SessionManager.ts",
+      "line": 72,
+      "description": "any type usage found: deviceInfo?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/SessionManager.ts",
+      "line": 77,
+      "description": "any type usage found: triggerInfo?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/SessionManager.ts",
+      "line": 180,
+      "description": "any type usage found: captureSettings?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/SessionManager.ts",
+      "line": 287,
+      "description": "any type usage found: async saveCaptureData(sessionId: string, captureData: any): Promise<void> {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/SessionManager.ts",
+      "line": 760,
+      "description": "any type usage found: private validateSessionData(sessionData: any): SessionOperationResult {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/SessionManager.ts",
+      "line": 901,
+      "description": "any type usage found: private createJsonReplacer(): (key: string, value: any) => any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/SessionManager.ts",
+      "line": 902,
+      "description": "any type usage found: return (key: string, value: any) => {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/SessionManager.ts",
+      "line": 917,
+      "description": "any type usage found: private createJsonReviver(): (key: string, value: any) => any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/SessionManager.ts",
+      "line": 918,
+      "description": "any type usage found: return (key: string, value: any) => {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "high",
+      "file": "src/services/SessionManager.ts",
+      "line": 848,
+      "description": "setInterval usage detected: this.autoSaveTimer = setInterval(async () => {",
+      "suggestion": "Ensure corresponding clearInterval in dispose/cleanup method"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/services/SessionManager.ts",
+      "line": 273,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 100));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/PulseTimingAnalyzer.ts",
+      "line": 181,
+      "description": "any type usage found: options?: any",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/NetworkStabilityService.ts",
+      "line": 36,
+      "description": "any type usage found: data?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/NetworkStabilityService.ts",
+      "line": 547,
+      "description": "any type usage found: data?: any,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/ExportPerformanceOptimizer.ts",
+      "line": 75,
+      "description": "any type usage found: data: any[],",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/ExportPerformanceOptimizer.ts",
+      "line": 76,
+      "description": "any type usage found: processor: (chunk: any[], chunkIndex: number) => Promise<string>,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/ExportPerformanceOptimizer.ts",
+      "line": 259,
+      "description": "any type assertion found: const memInfo = (performance as any).memory;",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/ExportPerformanceOptimizer.ts",
+      "line": 271,
+      "description": "any type assertion found: const memInfo = (performance as any).memory;",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/ExportPerformanceOptimizer.ts",
+      "line": 280,
+      "description": "any type assertion found: (window as any).gc();",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 187,
+      "description": "any type usage found: analysisData?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 189,
+      "description": "any type usage found: metadata?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 195,
+      "description": "any type usage found: data?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 204,
+      "description": "any type usage found: deviceInfo?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 263,
+      "description": "any type usage found: private dataConverters: Map<string, (input: any) => any> = new Map();",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 316,
+      "description": "any type usage found: this.dataConverters.set('captureSession', (input: any) => {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 335,
+      "description": "any type usage found: this.dataConverters.set('decoderResults', (input: any) => {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 349,
+      "description": "any type usage found: this.dataConverters.set('samples', (input: any) => {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 363,
+      "description": "any type usage found: this.dataConverters.set('channels', (input: any) => {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 389,
+      "description": "any type usage found: const result: any = {};",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 463,
+      "description": "any type usage found: private createDefaultCaptureSession(input: any): CaptureSession {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 605,
+      "description": "any type usage found: detectInputFormat(input: any): string {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 681,
+      "description": "any type usage found: addCustomConverter(name: string, converter: (input: any) => any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 702,
+      "description": "any type usage found: validateInput(input: any): { valid: boolean; errors: string[]; warnings: string[] } {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 864,
+      "description": "any type usage found: analysisData: any,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 897,
+      "description": "any type usage found: analysisData: any,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1133,
+      "description": "any type assertion found: samples: [] as any[],",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1150,
+      "description": "any type usage found: const samples: any[] = [];",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1165,
+      "description": "any type usage found: const chunkSamples: any[] = [];",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1171,
+      "description": "any type assertion found: channels: {} as any",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1458,
+      "description": "any type assertion found: results: {} as any",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1470,
+      "description": "any type assertion found: } as any;",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1548,
+      "description": "any type usage found: private async exportReportToHTML(analysisData: any, options: ExportOptions): Promise<ExportResult> {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1596,
+      "description": "any type usage found: private async exportReportToMarkdown(analysisData: any, options: ExportOptions): Promise<ExportResult> {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1631,
+      "description": "any type usage found: private async exportReportToPDF(analysisData: any, options: ExportOptions): Promise<ExportResult> {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1802,
+      "description": "any type usage found: private generateOverviewSection(analysisData: any): string {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1813,
+      "description": "any type usage found: private generatePerformanceSection(analysisData: any): string {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1822,
+      "description": "any type usage found: private generateStatisticsSection(analysisData: any): string {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1835,
+      "description": "any type usage found: private generateRecommendationsSection(analysisData: any): string {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1847,
+      "description": "any type usage found: private generateChartsSection(analysisData: any): string {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1862,
+      "description": "any type usage found: analysisData: any,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 1990,
+      "description": "any type usage found: analysisData: any,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 2200,
+      "description": "any type usage found: export function detectDataType(input: any): string {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 2211,
+      "description": "any type usage found: input: any,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/DataExportService.ts",
+      "line": 2246,
+      "description": "any type usage found: input: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/ConfigurationManager.ts",
+      "line": 142,
+      "description": "any type usage found: on(event: string | symbol, listener: (...args: any[]) => void): this {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/ConfigurationManager.ts",
+      "line": 147,
+      "description": "any type usage found: emit(event: string | symbol, ...args: any[]): boolean {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/ConfigurationManager.ts",
+      "line": 151,
+      "description": "any type usage found: off(event: string | symbol, listener: (...args: any[]) => void): this {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/ConfigurationManager.ts",
+      "line": 692,
+      "description": "any type usage found: } catch (fileError: any) {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/ConfigurationManager.ts",
+      "line": 839,
+      "description": "any type usage found: private isValidDeviceConfiguration(device: any): device is DeviceConfiguration {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/services/ConfigurationManager.ts",
+      "line": 896,
+      "description": "any type usage found: private isValidThemeConfiguration(theme: any): theme is ThemeConfiguration {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/providers/LACEditorProvider.ts",
+      "line": 251,
+      "description": "TODO comment found: // TODO: 实现实际的数据导出逻辑",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/providers/LACEditorProvider.ts",
+      "line": 209,
+      "description": "any type usage found: private parseLACFile(content: string): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/providers/LACEditorProvider.ts",
+      "line": 221,
+      "description": "any type usage found: private async saveLACFile(document: vscode.TextDocument, data: any): Promise<void> {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/providers/LACEditorProvider.ts",
+      "line": 238,
+      "description": "any type usage found: private async exportData(_data: any): Promise<void> {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/TriggerProcessor.ts",
+      "line": 224,
+      "description": "any type usage found: captureLimits: any",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/TriggerProcessor.ts",
+      "line": 277,
+      "description": "any type usage found: captureLimits: any",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/TriggerProcessor.ts",
+      "line": 330,
+      "description": "any type usage found: captureLimits: any",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/LACFileFormat.ts",
+      "line": 181,
+      "description": "any type usage found: private static sampleRegionReplacer(key: string, value: any): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/LACFileFormat.ts",
+      "line": 184,
+      "description": "any type usage found: return value.map((region: any) => {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/LACFileFormat.ts",
+      "line": 206,
+      "description": "any type usage found: private static sampleRegionReviver(key: string, value: any): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/LACFileFormat.ts",
+      "line": 209,
+      "description": "any type usage found: return value.map((region: any) => {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/DataCompression.ts",
+      "line": 55,
+      "description": "any type usage found: [key: string]: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/DataCompression.ts",
+      "line": 128,
+      "description": "any type usage found: let metadata: any = {};",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/DataCompression.ts",
+      "line": 195,
+      "description": "any type usage found: metadata?: any",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/DataCompression.ts",
+      "line": 256,
+      "description": "any type usage found: private compressRLE(data: Uint8Array): { data: Uint8Array; metadata: any } {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/DataCompression.ts",
+      "line": 295,
+      "description": "any type usage found: private decompressRLE(compressedData: Uint8Array | string, metadata?: any): Uint8Array {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/DataCompression.ts",
+      "line": 319,
+      "description": "any type usage found: private compressDelta(data: Uint8Array): { data: Uint8Array; metadata: any } {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/DataCompression.ts",
+      "line": 354,
+      "description": "any type usage found: private decompressDelta(compressedData: Uint8Array | string, metadata?: any): Uint8Array {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/DataCompression.ts",
+      "line": 379,
+      "description": "any type usage found: private compressDictionary(data: Uint8Array): { data: Uint8Array; metadata: any } {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/DataCompression.ts",
+      "line": 439,
+      "description": "any type usage found: private decompressDictionary(compressedData: Uint8Array | string, metadata?: any): Uint8Array {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/DataCompression.ts",
+      "line": 490,
+      "description": "any type usage found: private compressHuffman(data: Uint8Array): { data: Uint8Array; metadata: any } {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/models/DataCompression.ts",
+      "line": 542,
+      "description": "any type usage found: private decompressHuffman(compressedData: Uint8Array | string, metadata: any): Uint8Array {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/SigrokAdapter.ts",
+      "line": 652,
+      "description": "any type usage found: private buildCapabilities(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/SaleaeLogicDriver.ts",
+      "line": 307,
+      "description": "any type usage found: private parseDeviceCapabilities(capabilities: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/SaleaeLogicDriver.ts",
+      "line": 364,
+      "description": "any type usage found: private buildTriggerSettings(session: CaptureSession): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/SaleaeLogicDriver.ts",
+      "line": 460,
+      "description": "any type usage found: private parseSaleaeData(session: CaptureSession, dataResponse: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/SaleaeLogicDriver.ts",
+      "line": 534,
+      "description": "any type usage found: private async sendCommand(command: any): Promise<any> {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/SaleaeLogicDriver.ts",
+      "line": 579,
+      "description": "any type usage found: private buildCapabilities(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "high",
+      "file": "src/drivers/SaleaeLogicDriver.ts",
+      "line": 402,
+      "description": "setInterval usage detected: const checkInterval = setInterval(async () => {",
+      "suggestion": "Ensure corresponding clearInterval in dispose/cleanup method"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/drivers/SaleaeLogicDriver.ts",
+      "line": 569,
+      "description": "setTimeout usage detected: setTimeout(() => {",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/RigolSiglentDriver.ts",
+      "line": 716,
+      "description": "any type usage found: private buildCapabilities(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/NetworkLogicAnalyzerDriver.ts",
+      "line": 81,
+      "description": "any type usage found: private _deviceConfig: any = {};",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/NetworkLogicAnalyzerDriver.ts",
+      "line": 432,
+      "description": "any type usage found: private buildCaptureConfig(session: CaptureSession): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/NetworkLogicAnalyzerDriver.ts",
+      "line": 537,
+      "description": "any type usage found: private parseNetworkCaptureData(session: CaptureSession, dataResponse: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/NetworkLogicAnalyzerDriver.ts",
+      "line": 559,
+      "description": "any type usage found: private parseJSONData(session: CaptureSession, data: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/NetworkLogicAnalyzerDriver.ts",
+      "line": 563,
+      "description": "any type usage found: const channelData = data.channels.find((ch: any) => ch.number === channel.channelNumber);",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/NetworkLogicAnalyzerDriver.ts",
+      "line": 580,
+      "description": "any type usage found: private parseBinaryData(session: CaptureSession, data: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/NetworkLogicAnalyzerDriver.ts",
+      "line": 630,
+      "description": "any type usage found: private parseRawData(session: CaptureSession, data: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/NetworkLogicAnalyzerDriver.ts",
+      "line": 660,
+      "description": "any type usage found: private async sendNetworkCommand(command: any): Promise<any> {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/NetworkLogicAnalyzerDriver.ts",
+      "line": 679,
+      "description": "any type usage found: resolve: (value: any) => void,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/NetworkLogicAnalyzerDriver.ts",
+      "line": 720,
+      "description": "any type usage found: resolve: (value: any) => void,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/NetworkLogicAnalyzerDriver.ts",
+      "line": 723,
+      "description": "any type usage found: const responseHandler = (msg: Buffer, rinfo: any) => {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/NetworkLogicAnalyzerDriver.ts",
+      "line": 752,
+      "description": "any type usage found: private buildCapabilities(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "high",
+      "file": "src/drivers/NetworkLogicAnalyzerDriver.ts",
+      "line": 459,
+      "description": "setInterval usage detected: const checkInterval = setInterval(async () => {",
+      "suggestion": "Ensure corresponding clearInterval in dispose/cleanup method"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/MultiAnalyzerDriver.ts",
+      "line": 491,
+      "description": "any type assertion found: const deviceIndex = (args.session as any).deviceTag || 0;",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/MultiAnalyzerDriver.ts",
+      "line": 562,
+      "description": "any type usage found: override getLimits(channels: number[]): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/MultiAnalyzerDriver.ts",
+      "line": 607,
+      "description": "any type usage found: private buildCapabilities(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 621,
+      "description": "any type usage found: bursts: any[];",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 649,
+      "description": "any type usage found: resolve: (value: any) => void,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 650,
+      "description": "any type usage found: reject: (reason?: any) => void",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 701,
+      "description": "any type usage found: resolve: (value: any) => void,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 702,
+      "description": "any type usage found: reject: (reason?: any) => void",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 777,
+      "description": "any type usage found: bursts: any[];",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 811,
+      "description": "any type usage found: const bursts: any[] = [];",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 838,
+      "description": "any type usage found: bursts: any[]",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 908,
+      "description": "any type usage found: captureData: { samples: Uint32Array; timestamps: BigUint64Array; bursts: any[] }",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 931,
+      "description": "any type usage found: private buildCapabilities(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 217,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 2000));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 276,
+      "description": "setTimeout usage detected: const timeout = setTimeout(() => {",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 448,
+      "description": "setTimeout usage detected: const timeout = setTimeout(() => {",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 596,
+      "description": "setTimeout usage detected: const timeoutId = setTimeout(() => {",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 685,
+      "description": "setTimeout usage detected: const timeout = setTimeout(() => {",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 757,
+      "description": "setTimeout usage detected: const timeout = setTimeout(() => {",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 971,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 1)); // 短暂等待",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/drivers/LogicAnalyzerDriver.ts",
+      "line": 993,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 1)); // 短暂等待",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 80,
+      "description": "any type assertion found: driverClass: LogicAnalyzerDriver as any,",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 91,
+      "description": "any type assertion found: driverClass: SaleaeLogicDriver as any,",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 102,
+      "description": "any type assertion found: driverClass: RigolSiglentDriver as any,",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 113,
+      "description": "any type assertion found: driverClass: SigrokAdapter as any,",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 124,
+      "description": "any type assertion found: driverClass: NetworkLogicAnalyzerDriver as any,",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 317,
+      "description": "any type assertion found: if (DriverClass === NetworkLogicAnalyzerDriver as any) {",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 323,
+      "description": "any type assertion found: } else if (DriverClass === SigrokAdapter as any) {",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 331,
+      "description": "any type assertion found: return new (DriverClass as any)(connectionString);",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 404,
+      "description": "any type usage found: async connectToDevice(deviceId: string, params?: any): Promise<{ success: boolean; deviceInfo?: any; error?: string }> {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 594,
+      "description": "any type usage found: private isPicoAnalyzer(port: any): boolean {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 206,
+      "description": "setTimeout usage detected: setTimeout(() => {",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 685,
+      "description": "setTimeout usage detected: socket.setTimeout(timeout);",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 733,
+      "description": "setTimeout usage detected: socket.setTimeout(2000);",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/drivers/HardwareDriverManager.ts",
+      "line": 947,
+      "description": "setTimeout usage detected: socket.setTimeout(2000);",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/AnalyzerDriverBase.ts",
+      "line": 39,
+      "description": "any type usage found: public tag?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/AnalyzerDriverBase.ts",
+      "line": 167,
+      "description": "any type usage found: addStruct(struct: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/AnalyzerDriverBase.ts",
+      "line": 213,
+      "description": "any type usage found: private serializeStruct(struct: any): Uint8Array {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/types.ts",
+      "line": 33,
+      "description": "any type usage found: default?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/types.ts",
+      "line": 48,
+      "description": "any type usage found: value: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/types.ts",
+      "line": 132,
+      "description": "any type usage found: rawData?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/types.ts",
+      "line": 149,
+      "description": "any type usage found: rawData?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/decoders/StreamingDecoder.ts",
+      "line": 371,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, this.processingInterval));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/decoders/StreamingDecoder.ts",
+      "line": 383,
+      "description": "setTimeout usage detected: setTimeout(processNext, 0);",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/PerformanceOptimizer.ts",
+      "line": 108,
+      "description": "any type assertion found: externalMemory: (memory as any).externalMemory",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/PerformanceOptimizer.ts",
+      "line": 366,
+      "description": "any type assertion found: if (this.suggestGarbageCollection() && (global as any).gc) {",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/PerformanceOptimizer.ts",
+      "line": 367,
+      "description": "any type assertion found: (global as any).gc();",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/decoders/PerformanceOptimizer.ts",
+      "line": 336,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, this.batchConfig.batchInterval));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/decoders/PerformanceOptimizer.ts",
+      "line": 372,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 100));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/DecoderManager.ts",
+      "line": 412,
+      "description": "any type usage found: public getInput(inputName: string): any[] | null {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/DecoderManager.ts",
+      "line": 425,
+      "description": "any type usage found: public addOutput(outputName: string, output: any[]): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/DecoderManager.ts",
+      "line": 756,
+      "description": "any type assertion found: if (typeof (instance as any).dispose === 'function') {",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/DecoderManager.ts",
+      "line": 757,
+      "description": "any type assertion found: (instance as any).dispose();",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/DecoderManager.ts",
+      "line": 767,
+      "description": "any type assertion found: if (typeof (instance as any).dispose === 'function') {",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/DecoderManager.ts",
+      "line": 768,
+      "description": "any type assertion found: (instance as any).dispose();",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/database/HardwareCompatibilityDatabase.ts",
+      "line": 158,
+      "description": "any type assertion found: if ((error as any).code !== 'ENOENT') {",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/database/DatabaseManager.ts",
+      "line": 177,
+      "description": "any type assertion found: driverType: driverType.id as any,",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/database/DatabaseManager.ts",
+      "line": 184,
+      "description": "any type assertion found: if (driver && typeof (driver as any).discoverDevices === 'function') {",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/database/DatabaseManager.ts",
+      "line": 185,
+      "description": "any type assertion found: const devices = await (driver as any).discoverDevices();",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/database/DatabaseManager.ts",
+      "line": 371,
+      "description": "any type usage found: private inferCapabilities(_deviceInfo: DeviceInfo): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/database/DatabaseIntegration.ts",
+      "line": 57,
+      "description": "any type usage found: compatibilityInfo: any[];",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/database/DatabaseIntegration.ts",
+      "line": 68,
+      "description": "any type usage found: const compatibilityInfo: any[] = [];",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/database/DatabaseIntegration.ts",
+      "line": 118,
+      "description": "any type usage found: private generateSetupInstructions(deviceEntry: any): string[] {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/database/DatabaseIntegration.ts",
+      "line": 463,
+      "description": "any type usage found: async batchImportDevices(devices: any[], validateBeforeImport: boolean = true): Promise<{",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "high",
+      "file": "src/webview/utils/LayoutManager.ts",
+      "line": 259,
+      "description": "setInterval usage detected: this.autoSaveTimer = window.setInterval(() => {",
+      "suggestion": "Ensure corresponding clearInterval in dispose/cleanup method"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/webview/utils/LayoutManager.ts",
+      "line": 254,
+      "description": "addEventListener usage detected: window.addEventListener('beforeunload', () => {",
+      "suggestion": "Ensure corresponding removeEventListener in dispose method"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/VirtualizationRenderer.ts",
+      "line": 77,
+      "description": "any type usage found: private renderQueue: any[] = [];",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/VirtualizationRenderer.ts",
+      "line": 428,
+      "description": "any type usage found: let processedData: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/VirtualizationRenderer.ts",
+      "line": 494,
+      "description": "any type usage found: ): any[] {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/VirtualizationRenderer.ts",
+      "line": 538,
+      "description": "any type usage found: ): any[] {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/VirtualizationRenderer.ts",
+      "line": 579,
+      "description": "any type usage found: private executeWorkerTask(type: string, data: any): Promise<any> {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/VirtualizationRenderer.ts",
+      "line": 603,
+      "description": "any type usage found: private renderDataToTile(processedData: any, task: RenderTask): RenderTile {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/VirtualizationRenderer.ts",
+      "line": 640,
+      "description": "any type usage found: processedData: any,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/VirtualizationRenderer.ts",
+      "line": 665,
+      "description": "any type usage found: minMaxData: any[],",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/VirtualizationRenderer.ts",
+      "line": 698,
+      "description": "any type usage found: rleData: any[],",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/VirtualizationRenderer.ts",
+      "line": 840,
+      "description": "any type usage found: public getPerformanceStats(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/TimeAxisRenderer.ts",
+      "line": 517,
+      "description": "any type usage found: public exportConfig(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/TimeAxisRenderer.ts",
+      "line": 528,
+      "description": "any type usage found: public importConfig(data: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/MeasurementTools.ts",
+      "line": 432,
+      "description": "any type usage found: const results: any = {};",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/MeasurementTools.ts",
+      "line": 493,
+      "description": "any type usage found: public exportMeasurements(measurements: any[]): string {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/MarkerTools.ts",
+      "line": 77,
+      "description": "any type usage found: private eventListeners: Map<string, ((data: any) => void)[]> = new Map();",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/MarkerTools.ts",
+      "line": 610,
+      "description": "any type usage found: private emit(event: string, data: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/MarkerTools.ts",
+      "line": 617,
+      "description": "any type usage found: public on(event: string, listener: (data: any) => void): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/MarkerTools.ts",
+      "line": 624,
+      "description": "any type usage found: public off(event: string, listener: (data: any) => void): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/MarkerTools.ts",
+      "line": 637,
+      "description": "any type usage found: public exportMarkers(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/MarkerTools.ts",
+      "line": 645,
+      "description": "any type usage found: public importMarkers(data: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/webview/engines/MarkerTools.ts",
+      "line": 100,
+      "description": "addEventListener usage detected: this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));",
+      "suggestion": "Ensure corresponding removeEventListener in dispose method"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/webview/engines/MarkerTools.ts",
+      "line": 101,
+      "description": "addEventListener usage detected: this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));",
+      "suggestion": "Ensure corresponding removeEventListener in dispose method"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/webview/engines/MarkerTools.ts",
+      "line": 102,
+      "description": "addEventListener usage detected: this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));",
+      "suggestion": "Ensure corresponding removeEventListener in dispose method"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/webview/engines/MarkerTools.ts",
+      "line": 103,
+      "description": "addEventListener usage detected: this.canvas.addEventListener('click', this.handleClick.bind(this));",
+      "suggestion": "Ensure corresponding removeEventListener in dispose method"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/webview/engines/MarkerTools.ts",
+      "line": 104,
+      "description": "addEventListener usage detected: this.canvas.addEventListener('dblclick', this.handleDoubleClick.bind(this));",
+      "suggestion": "Ensure corresponding removeEventListener in dispose method"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/webview/engines/MarkerTools.ts",
+      "line": 105,
+      "description": "addEventListener usage detected: this.canvas.addEventListener('contextmenu', this.handleContextMenu.bind(this));",
+      "suggestion": "Ensure corresponding removeEventListener in dispose method"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/InteractionEngine.ts",
+      "line": 27,
+      "description": "any type usage found: data: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/InteractionEngine.ts",
+      "line": 485,
+      "description": "any type usage found: private emitEvent(type: string, data: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/InteractionEngine.ts",
+      "line": 489,
+      "description": "any type assertion found: type: type as any,",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/InteractionEngine.ts",
+      "line": 530,
+      "description": "any type usage found: public on(event: string, callback: (data: any) => void): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/EnhancedWaveformRenderer.ts",
+      "line": 28,
+      "description": "any type usage found: rawData?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/EnhancedWaveformRenderer.ts",
+      "line": 366,
+      "description": "any type usage found: const exportData: any = {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/EnhancedWaveformRenderer.ts",
+      "line": 407,
+      "description": "any type usage found: private exportToCsv(data: any): string {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/EnhancedWaveformRenderer.ts",
+      "line": 423,
+      "description": "any type usage found: private exportToText(data: any): string {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/types/AnalyzerTypes.ts",
+      "line": 449,
+      "description": "any type usage found: public tag?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/standards/HardwareDescriptorStandard.ts",
+      "line": 378,
+      "description": "any type usage found: static validate(descriptor: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/standards/HardwareDescriptorStandard.ts",
+      "line": 418,
+      "description": "any type usage found: private static validateDevice(device: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/standards/HardwareDescriptorStandard.ts",
+      "line": 430,
+      "description": "any type usage found: private static validateCapture(capture: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/drivers/standards/HardwareDescriptorStandard.ts",
+      "line": 445,
+      "description": "any type usage found: private static validatePerformance(performance: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/utils/DriverUtils.ts",
+      "line": 316,
+      "description": "TODO comment found: // TODO: 添加自定义初始化逻辑",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/utils/DriverUtils.ts",
+      "line": 320,
+      "description": "TODO comment found: // TODO: 重写需要自定义的方法",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/utils/DriverUtils.ts",
+      "line": 327,
+      "description": "TODO comment found: // TODO: 添加设备特定的方法",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/utils/DriverUtils.ts",
+      "line": 528,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 100));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 30,
+      "description": "any type usage found: handleCommand(command: string, parameters: any[]): Promise<any>;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 31,
+      "description": "any type usage found: handleResponse(response: any): any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 39,
+      "description": "any type usage found: addParameter(name: string, value: any): this;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 49,
+      "description": "any type usage found: data?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 103,
+      "description": "any type usage found: [key: string]: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 196,
+      "description": "any type usage found: frames: any[];",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 202,
+      "description": "any type usage found: metadata?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 505,
+      "description": "any type usage found: getProtocolConfigSuggestions(protocol: string, hardwareCapability: any): ProtocolConfigSuggestions {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 601,
+      "description": "any type usage found: buildCommand(protocolName: string, commandName: string, parameters: any[] = []): Buffer {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 628,
+      "description": "any type usage found: parseResponse(protocolName: string, data: Buffer): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 650,
+      "description": "any type usage found: validateMessage(protocolName: string, commandName: string, parameters: any[]): boolean {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 862,
+      "description": "any type usage found: const jsonObj: any = {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 884,
+      "description": "any type usage found: data?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 909,
+      "description": "any type usage found: createSuccess(data?: any, id?: string | number): string {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 910,
+      "description": "any type usage found: const response: any = {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 930,
+      "description": "any type usage found: const response: any = {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 981,
+      "description": "any type usage found: const result: any = { type };",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 1076,
+      "description": "setTimeout usage detected: setTimeout(() => reject(new Error(timeoutMessage || '操作超时')), timeoutMs)",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 1103,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, delay));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/tools/ProtocolHelper.ts",
+      "line": 1152,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, intervalMs));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/HardwareCapabilityBuilder.ts",
+      "line": 153,
+      "description": "any type usage found: parameters?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/HardwareCapabilityBuilder.ts",
+      "line": 828,
+      "description": "any type usage found: addTriggerType(type: string, options?: any): this {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/HardwareCapabilityBuilder.ts",
+      "line": 939,
+      "description": "any type usage found: setConnectionParams(params: any): this {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/HardwareCapabilityBuilder.ts",
+      "line": 949,
+      "description": "any type usage found: addConnectionType(type: string, options: any): this {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/HardwareCapabilityBuilder.ts",
+      "line": 1185,
+      "description": "any type usage found: private clockConfig: any = {};",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/HardwareCapabilityBuilder.ts",
+      "line": 1186,
+      "description": "any type usage found: private syncConfig: any = {};",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/HardwareCapabilityBuilder.ts",
+      "line": 1188,
+      "description": "any type usage found: private extractClockConfig(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/HardwareCapabilityBuilder.ts",
+      "line": 1192,
+      "description": "any type usage found: private extractSyncConfig(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/DriverTester.ts",
+      "line": 27,
+      "description": "any type usage found: deviceSimulator?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/DriverTester.ts",
+      "line": 28,
+      "description": "any type usage found: testData?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/tools/DriverTester.ts",
+      "line": 39,
+      "description": "any type usage found: details?: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/tools/DriverTester.ts",
+      "line": 231,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 100));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/tools/DriverTester.ts",
+      "line": 468,
+      "description": "setTimeout usage detected: setTimeout(() => reject(new Error('测试超时')), testCase.timeout)",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/testing/TestFramework.ts",
+      "line": 409,
+      "description": "any type assertion found: if (typeof (driver as any)[feature] === 'function') {",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/testing/TestFramework.ts",
+      "line": 422,
+      "description": "any type assertion found: if (typeof (driver as any)[feature] === 'function') {",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/testing/TestFramework.ts",
+      "line": 443,
+      "description": "any type assertion found: if (typeof (driver as any).sendNetworkConfig === 'function') {",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/testing/TestFramework.ts",
+      "line": 627,
+      "description": "any type usage found: generateBoundaryTestSession(driver: AnalyzerDriverBase, testCase: any): CaptureSession {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/testing/TestFramework.ts",
+      "line": 239,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 100));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/testing/TestFramework.ts",
+      "line": 303,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 100));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/testing/TestFramework.ts",
+      "line": 354,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 10));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/testing/AutomatedTestRunner.ts",
+      "line": 42,
+      "description": "any type usage found: smtpConfig: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/testing/AutomatedTestRunner.ts",
+      "line": 305,
+      "description": "any type usage found: (value): value is new (...args: any[]) => AnalyzerDriverBase =>",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/testing/AutomatedTestRunner.ts",
+      "line": 331,
+      "description": "any type usage found: private generateTestConnectionString(DriverClass: any): string {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/testing/AutomatedTestRunner.ts",
+      "line": 254,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 1000));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/SerialDriverTemplate.ts",
+      "line": 183,
+      "description": "TODO comment found: // TODO: 根据设备协议实现数据包解析",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/SerialDriverTemplate.ts",
+      "line": 523,
+      "description": "TODO comment found: // TODO: 根据设备的数据格式实现解析",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/templates/SerialDriverTemplate.ts",
+      "line": 63,
+      "description": "any type usage found: private _serialConfig: any;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/templates/SerialDriverTemplate.ts",
+      "line": 644,
+      "description": "any type usage found: private buildCapabilities(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/templates/NetworkDriverTemplate.ts",
+      "line": 87,
+      "description": "any type usage found: resolve: (response: any) => void;",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/templates/NetworkDriverTemplate.ts",
+      "line": 335,
+      "description": "any type usage found: private handleUDPMessage(message: Buffer, rinfo: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/templates/NetworkDriverTemplate.ts",
+      "line": 347,
+      "description": "any type usage found: private handleNetworkResponse(response: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/templates/NetworkDriverTemplate.ts",
+      "line": 597,
+      "description": "any type usage found: private parseCaptureData(session: CaptureSession, data: any): void {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/templates/NetworkDriverTemplate.ts",
+      "line": 600,
+      "description": "any type usage found: const channelData = data.channels.find((ch: any) => ch.number === channel.channelNumber);",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/templates/NetworkDriverTemplate.ts",
+      "line": 731,
+      "description": "any type usage found: private async sendNetworkCommand(command: any, timeoutMs: number = 10000): Promise<any> {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/templates/NetworkDriverTemplate.ts",
+      "line": 810,
+      "description": "any type usage found: private buildCapabilities(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 387,
+      "description": "TODO comment found: // TODO: 查询实际设备状态",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 431,
+      "description": "TODO comment found: // TODO: 实现采集逻辑",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 460,
+      "description": "TODO comment found: // TODO: 实现参数验证",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 539,
+      "description": "TODO comment found: // TODO: 实现采集监控",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 574,
+      "description": "TODO comment found: // TODO: 查询设备采集状态",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 591,
+      "description": "TODO comment found: // TODO: 实现数据读取",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 649,
+      "description": "TODO comment found: // TODO: 发送停止命令",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 667,
+      "description": "TODO comment found: // TODO: 实现引导加载程序模式",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 694,
+      "description": "TODO comment found: // TODO: 实现网络配置",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "todo",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 710,
+      "description": "TODO comment found: // TODO: 查询设备电压状态",
+      "suggestion": "Consider implementing or removing TODO items"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 727,
+      "description": "any type usage found: private buildCapabilities(): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 190,
+      "description": "setTimeout usage detected: const timeout = setTimeout(() => {",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 235,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 1000));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 269,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 500));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 562,
+      "description": "setTimeout usage detected: setTimeout(() => {",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 580,
+      "description": "setTimeout usage detected: setTimeout(() => resolve(true), 2000);",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/templates/GenericDriverTemplate.ts",
+      "line": 893,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 50));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/examples/ExampleSerialDriver.ts",
+      "line": 158,
+      "description": "any type assertion found: (channel as any).timestamps = Array.from(",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/examples/ExampleSerialDriver.ts",
+      "line": 165,
+      "description": "any type assertion found: (channel as any).statistics = {",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/examples/ExampleSerialDriver.ts",
+      "line": 172,
+      "description": "any type assertion found: console.log(`通道 ${channel.channelName} 统计:`, (channel as any).statistics);",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/examples/ExampleSerialDriver.ts",
+      "line": 186,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 50));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/examples/ExampleSerialDriver.ts",
+      "line": 296,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 500));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/examples/ExampleNetworkDriver.ts",
+      "line": 195,
+      "description": "any type usage found: captureCompletedHandler?: (args: any) => void",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/driver-sdk/examples/ExampleNetworkDriver.ts",
+      "line": 215,
+      "description": "any type usage found: private buildHTTPCaptureConfig(session: CaptureSession): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "high",
+      "file": "src/driver-sdk/examples/ExampleNetworkDriver.ts",
+      "line": 361,
+      "description": "setInterval usage detected: const interval = setInterval(() => {",
+      "suggestion": "Ensure corresponding clearInterval in dispose/cleanup method"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/examples/ExampleNetworkDriver.ts",
+      "line": 107,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 100));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/examples/ExampleNetworkDriver.ts",
+      "line": 148,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 50));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/examples/ExampleNetworkDriver.ts",
+      "line": 168,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 100));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/examples/ExampleNetworkDriver.ts",
+      "line": 187,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 50));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/examples/ExampleNetworkDriver.ts",
+      "line": 261,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 100));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/examples/ExampleNetworkDriver.ts",
+      "line": 298,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 2000)); // 模拟连接时间",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/examples/ExampleNetworkDriver.ts",
+      "line": 329,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 3000)); // 模拟扫描时间",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/examples/ExampleNetworkDriver.ts",
+      "line": 371,
+      "description": "setTimeout usage detected: setTimeout(() => {",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/examples/ExampleNetworkDriver.ts",
+      "line": 401,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 100));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "resource-leak",
+      "severity": "medium",
+      "file": "src/driver-sdk/examples/ExampleNetworkDriver.ts",
+      "line": 439,
+      "description": "setTimeout usage detected: await new Promise(resolve => setTimeout(resolve, 500));",
+      "suggestion": "Consider clearing timeout in cleanup or early exit paths"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/protocols/StreamingI2CDecoder.ts",
+      "line": 154,
+      "description": "any type usage found: chunk: any,",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/decoders/protocols/StreamingI2CDecoder.ts",
+      "line": 458,
+      "description": "any type usage found: private getOptionValue(options: DecoderOptionValue[], optionIndex: number, defaultValue: any): any {",
+      "suggestion": "Replace with specific type definition"
+    },
+    {
+      "type": "any-type",
+      "severity": "high",
+      "file": "src/webview/engines/__tests__/WaveformEngineIntegration.test.ts",
+      "line": 61,
+      "description": "any type assertion found: } as any;",
+      "suggestion": "Use proper type assertion or fix underlying type issue"
+    }
+  ],
+  "recommendations": [
+    "TODO标记过多，建议制定清理计划，优先处理高优先级项目",
+    "any类型使用频繁，建议加强TypeScript类型定义",
+    "存在潜在资源泄漏，建议实现统一的资源清理机制"
+  ]
+}

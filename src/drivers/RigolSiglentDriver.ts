@@ -69,6 +69,9 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
     reject: (error: Error) => void;
   }> = [];
   private _isProcessingCommand: boolean = false;
+  
+  // 定时器资源追踪
+  private _activeTimeouts: Set<NodeJS.Timeout> = new Set();
 
   constructor(connectionString: string) {
     super();
@@ -513,12 +516,16 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
     }, 500); // 每500ms检查一次状态
 
     // 设置超时保护
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (this._capturing) {
         clearInterval(checkInterval);
         this.handleCaptureError(session, '采集超时');
       }
+      this._activeTimeouts.delete(timeoutId);
     }, 60000); // 60秒超时
+    
+    // 跟踪超时定时器
+    this._activeTimeouts.add(timeoutId);
   }
 
   /**
@@ -636,6 +643,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
         if (responseData.includes('\\n')) {
           this._socket!.off('data', dataHandler);
           clearTimeout(timeoutId);
+          this._activeTimeouts.delete(timeoutId);
           resolve(responseData.trim());
 
           // 继续处理队列中的其他命令
@@ -649,8 +657,12 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
         this._socket!.off('data', dataHandler);
         reject(new Error(`SCPI命令超时: ${command}`));
         this._isProcessingCommand = false;
+        this._activeTimeouts.delete(timeoutId);
         setTimeout(() => this.processCommandQueue(), 10);
       }, 5000);
+      
+      // 跟踪超时定时器
+      this._activeTimeouts.add(timeoutId);
 
       // 如果是查询命令，设置数据接收器
       if (isQuery) {
@@ -671,6 +683,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
             this._socket!.off('data', dataHandler);
           }
           clearTimeout(timeoutId);
+          this._activeTimeouts.delete(timeoutId);
           reject(new Error(`发送SCPI命令失败: ${error.message}`));
           this._isProcessingCommand = false;
           setTimeout(() => this.processCommandQueue(), 10);
@@ -739,6 +752,12 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
    * 资源清理
    */
   override dispose(): void {
+    // 清理所有活跃的定时器
+    for (const timeoutId of this._activeTimeouts) {
+      clearTimeout(timeoutId);
+    }
+    this._activeTimeouts.clear();
+    
     this.disconnect();
     super.dispose();
   }

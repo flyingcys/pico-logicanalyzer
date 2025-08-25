@@ -432,16 +432,33 @@ export class DataStreamProcessor {
 /**
  * 数据流工厂类 - 用于创建不同类型的数据流
  */
+// 串口接口定义
+interface SerialPortLike {
+  readonly readable: boolean;
+  read(): Buffer | null;
+  on(event: string, callback: (data: Buffer) => void): void;
+  [Symbol.asyncIterator](): AsyncIterableIterator<Buffer>;
+}
+
+// 网络Socket接口定义
+interface SocketLike {
+  on(event: 'data', callback: (data: Buffer) => void): void;
+  on(event: 'end', callback: () => void): void;
+  on(event: 'error', callback: (error: Error) => void): void;
+}
+
 export class DataStreamFactory {
   /**
    * 从串口创建数据流
    */
-  public static createSerialStream(port: any): AsyncIterable<Uint8Array> {
+  public static createSerialStream(port: SerialPortLike): AsyncIterable<Uint8Array> {
     return {
       async *[Symbol.asyncIterator]() {
         // 这里需要根据实际的串口库实现
         // 例如使用 serialport 库
-        yield* port;
+        for await (const chunk of port) {
+          yield new Uint8Array(chunk);
+        }
       }
     };
   }
@@ -449,7 +466,7 @@ export class DataStreamFactory {
   /**
    * 从网络TCP连接创建数据流
    */
-  public static createNetworkStream(socket: any): ReadableStream<Uint8Array> {
+  public static createNetworkStream(socket: SocketLike): ReadableStream<Uint8Array> {
     return new ReadableStream({
       start(controller) {
         socket.on('data', (data: Buffer) => {
