@@ -6,13 +6,16 @@
 
 本项目已具备 VSCode 扩展入口、Vue3 Webview、硬件驱动抽象层、核心协议解码器、`.lac` 文件处理、数据导出服务和多层测试目录。当前仍处于 Beta/工程整备阶段，不应按生产就绪发布。
 
-最近一次质量基线验证结果（2026-04-27）：
+最近一次质量基线验证结果（2026-04-28）：
 
-- `npm run typecheck` 和 `npm run lint` 是当前基础门禁。
-- `npm run typecheck:strict` 是分阶段 strict gate，当前先覆盖核心类型模块 `src/models/AnalyzerTypes.ts` 与 `src/decoders/types.ts`。
+- `npm run typecheck` 通过，是当前基础类型门禁。
+- `npm run typecheck:strict` 通过，是分阶段 strict gate。
+- `npm run test:webview:unit -- --runInBand` 通过，2 个测试套件、37 个测试。
+- `npm run build:production` 通过，但 Webview 产物仍有 webpack 体积警告。
+- `npm run test:unit -- --silent` 仍需拆分定位长耗时或开放句柄。
 - `node scripts/ci-test-runner.js --layer=quick --dry-run` 用于本地验证 CI 执行计划，不会安装依赖或运行长测试。
 - 功能声明以 [功能状态矩阵](docs/功能状态矩阵.md) 和 [真实硬件认证矩阵](docs/真实硬件认证矩阵.md) 为准。
-- 详细差距和并行任务拆分见 [logicanalyzer 差距深度分析](docs/logicanalyzer-差距深度分析-2026-04-27.md)。
+- 详细差距见 [logicanalyzer 差距深度分析](docs/logicanalyzer-差距深度分析-2026-04-27.md)，下一阶段并行拆分见 [2026-04-28 并行 Worktree 对齐计划](docs/parallel-worktrees-2026-04-28.md)。
 
 ## 🎯 项目愿景
 
