@@ -1,4 +1,5 @@
 import { watch, type WatchStopHandle } from 'vue';
+import type { FrontendAnalyzerChannel } from '../stores/sessionStore';
 
 interface WaveformViewRange {
   firstSample: number;
@@ -7,6 +8,10 @@ interface WaveformViewRange {
 
 export interface WaveformViewportRenderer {
   updateVisibleSamples(firstSample: number, visibleSamples: number): void;
+  setChannels?(channels: FrontendAnalyzerChannel[] | null, sampleFrequency?: number): void;
+  setSampleFrequency?(frequency: number): void;
+  setPreSamples?(preSamples: number): void;
+  setBursts?(bursts: number[] | null): void;
 }
 
 interface WaveformStoreLike {
@@ -16,6 +21,13 @@ interface WaveformStoreLike {
 
 interface SessionStoreLike {
   totalSamples: number;
+}
+
+interface WaveformSessionLike extends SessionStoreLike {
+  sampleRate: number;
+  preTriggerSamples: number;
+  channels: FrontendAnalyzerChannel[];
+  bursts: number[] | null;
 }
 
 function normalizeViewRange(
@@ -82,8 +94,46 @@ export function createWaveformService(renderer: WaveformViewportRenderer) {
     }
   );
 
+  const applySession = (sessionStore: WaveformSessionLike): void => {
+    renderer.setSampleFrequency?.(sessionStore.sampleRate);
+    renderer.setPreSamples?.(sessionStore.preTriggerSamples);
+    renderer.setBursts?.(sessionStore.bursts);
+    renderer.setChannels?.(
+      sessionStore.channels.length > 0 ? sessionStore.channels : null,
+      sessionStore.sampleRate
+    );
+
+    if (sessionStore.totalSamples > 0) {
+      applyViewRange(
+        {
+          firstSample: 0,
+          visibleSamples: sessionStore.totalSamples
+        },
+        sessionStore.totalSamples
+      );
+    }
+  };
+
+  const bindSession = (sessionStore: WaveformSessionLike): WatchStopHandle => watch(
+    () => ({
+      sampleRate: sessionStore.sampleRate,
+      preTriggerSamples: sessionStore.preTriggerSamples,
+      totalSamples: sessionStore.totalSamples,
+      bursts: sessionStore.bursts ? sessionStore.bursts.join(',') : '',
+      channels: sessionStore.channels
+        .map(channel => `${channel.channelNumber}:${channel.hidden ? 1 : 0}:${channel.samples?.length ?? 0}`)
+        .join('|')
+    }),
+    () => applySession(sessionStore),
+    {
+      immediate: true
+    }
+  );
+
   return {
     applyViewRange,
-    bindViewRange
+    applySession,
+    bindViewRange,
+    bindSession
   };
 }
