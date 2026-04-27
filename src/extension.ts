@@ -7,6 +7,10 @@ import { NetworkStabilityService } from './services/NetworkStabilityService';
 import { AnalyzerDriverType, CaptureError, TriggerType } from './models/AnalyzerTypes';
 import { CaptureSession, AnalyzerChannel } from './models/CaptureModels';
 import { LACFileFormat } from './models/LACFileFormat';
+import {
+  SignalDescriptionLanguage,
+  SignalDslParseError
+} from './services/SignalDescriptionLanguage';
 
 // 服务依赖接口
 export interface ExtensionServices {
@@ -438,13 +442,53 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
     }
   );
 
+  const createSyntheticCaptureCommand = vscode.commands.registerCommand(
+    'logicAnalyzer.createSyntheticCapture',
+    async () => {
+      try {
+        const source = getSignalDslSource();
+        const session = SignalDescriptionLanguage.generateCaptureSession(source);
+        const saveUri = await vscode.window.showSaveDialog({
+          defaultUri: buildSyntheticCaptureDefaultUri(),
+          filters: {
+            'Logic Analyzer Capture': ['lac']
+          },
+          saveLabel: '保存合成采集'
+        });
+
+        if (!saveUri) {
+          return;
+        }
+
+        const result = await LACFileFormat.save(saveUri.fsPath, session, undefined, true);
+        if (!result.success) {
+          vscode.window.showErrorMessage(`合成采集保存失败: ${result.error}`);
+          return;
+        }
+
+        await vscode.commands.executeCommand('vscode.open', saveUri);
+        vscode.window.showInformationMessage(
+          `已生成合成采集: ${session.captureChannels.length} 个通道，${session.totalSamples} 个样本`
+        );
+      } catch (error) {
+        if (error instanceof SignalDslParseError) {
+          vscode.window.showErrorMessage(`Signal DSL 解析失败: ${error.message}`);
+          return;
+        }
+
+        vscode.window.showErrorMessage(`生成合成采集失败: ${error}`);
+      }
+    }
+  );
+
   context.subscriptions.push(
     openAnalyzerCommand,
     connectDeviceCommand,
     startCaptureCommand,
     scanNetworkDevicesCommand,
     networkDiagnosticsCommand,
-    configureWiFiCommand
+    configureWiFiCommand,
+    createSyntheticCaptureCommand
   );
 
   console.log('VSCode Logic Analyzer插件激活完成');
@@ -469,6 +513,24 @@ export function deactivate() {
   hardwareDriverManager.dispose().catch(error => {
     console.error('清理硬件驱动管理器失败:', error);
   });
+}
+
+function getSignalDslSource(): string {
+  const activeText = vscode.window.activeTextEditor?.document.getText().trim();
+  return activeText || SignalDescriptionLanguage.getDefaultTemplate();
+}
+
+function buildSyntheticCaptureDefaultUri(): vscode.Uri {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const fileName = `synthetic_capture_${timestamp}.lac`;
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+
+  if (workspaceFolder) {
+    return vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, fileName));
+  }
+
+  const tempDir = require('os').tmpdir();
+  return vscode.Uri.file(path.join(tempDir, fileName));
 }
 
 // 连接到指定设备的辅助函数

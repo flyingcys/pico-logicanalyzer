@@ -1,0 +1,363 @@
+import { AnalyzerChannel, CaptureSession } from '../models/CaptureModels';
+
+export type SignalWaveform =
+  | {
+      kind: 'clock';
+      period: number;
+      duty: number;
+      phase: number;
+    }
+  | {
+      kind: 'pattern';
+      bits: string;
+      repeat: boolean;
+      step: number;
+    }
+  | {
+      kind: 'constant';
+      value: 0 | 1;
+    }
+  | {
+      kind: 'pulse';
+      start: number;
+      width: number;
+      value: 0 | 1;
+      idle: 0 | 1;
+    };
+
+export interface SignalChannelStatement {
+  channelNumber: number;
+  name: string;
+  waveform: SignalWaveform;
+}
+
+export interface SignalProgram {
+  sampleRate: number;
+  sampleCount: number;
+  channels: SignalChannelStatement[];
+}
+
+export class SignalDslParseError extends Error {
+  public readonly lineNumber: number;
+
+  constructor(lineNumber: number, message: string) {
+    super(`line ${lineNumber}: ${message}`);
+    this.name = 'SignalDslParseError';
+    this.lineNumber = lineNumber;
+  }
+}
+
+export class SignalDescriptionLanguage {
+  public static parse(source: string): SignalProgram {
+    const program: Partial<SignalProgram> = {
+      channels: []
+    };
+
+    const lines = source.split(/\r?\n/);
+    for (let index = 0; index < lines.length; index++) {
+      const lineNumber = index + 1;
+      const line = this.stripComment(lines[index]).trim();
+
+      if (!line) {
+        continue;
+      }
+
+      const parts = line.split(/\s+/);
+      const keyword = parts[0].toLowerCase();
+
+      if (keyword === 'sample_rate' || keyword === 'samplerate' || keyword === 'rate' || keyword === 'frequency') {
+        if (parts.length !== 2) {
+          throw new SignalDslParseError(lineNumber, 'sample_rate expects exactly one value');
+        }
+        program.sampleRate = this.parsePositiveInteger(parts[1], lineNumber, 'sample_rate');
+        continue;
+      }
+
+      if (keyword === 'samples' || keyword === 'sample_count' || keyword === 'samplecount') {
+        if (parts.length !== 2) {
+          throw new SignalDslParseError(lineNumber, 'samples expects exactly one value');
+        }
+        program.sampleCount = this.parsePositiveInteger(parts[1], lineNumber, 'samples');
+        continue;
+      }
+
+      if (keyword === 'channel') {
+        program.channels!.push(this.parseChannel(line, lineNumber));
+        continue;
+      }
+
+      throw new SignalDslParseError(lineNumber, `unknown statement "${parts[0]}"`);
+    }
+
+    if (!program.sampleRate) {
+      throw new SignalDslParseError(1, 'missing sample_rate statement');
+    }
+
+    if (!program.sampleCount) {
+      throw new SignalDslParseError(1, 'missing samples statement');
+    }
+
+    if (!program.channels || program.channels.length === 0) {
+      throw new SignalDslParseError(1, 'at least one channel statement is required');
+    }
+
+    this.validateUniqueChannels(program.channels);
+
+    return program as SignalProgram;
+  }
+
+  public static generateCaptureSession(sourceOrProgram: string | SignalProgram): CaptureSession {
+    const program = typeof sourceOrProgram === 'string'
+      ? this.parse(sourceOrProgram)
+      : sourceOrProgram;
+
+    const session = new CaptureSession();
+    session.frequency = program.sampleRate;
+    session.preTriggerSamples = 0;
+    session.postTriggerSamples = program.sampleCount;
+    session.loopCount = 0;
+    session.measureBursts = false;
+    session.captureChannels = program.channels
+      .slice()
+      .sort((left, right) => left.channelNumber - right.channelNumber)
+      .map(statement => this.createAnalyzerChannel(statement, program.sampleCount));
+
+    return session;
+  }
+
+  public static getDefaultTemplate(): string {
+    return [
+      '# Logic Analyzer synthetic capture',
+      'sample_rate 1000000',
+      'samples 64',
+      'channel 0 CLK clock period=8 duty=0.5',
+      'channel 1 DATA pattern bits=10110010 repeat=true',
+      'channel 2 CS constant value=1',
+      'channel 3 IRQ pulse start=16 width=8 value=1'
+    ].join('\n');
+  }
+
+  private static parseChannel(line: string, lineNumber: number): SignalChannelStatement {
+    const match = /^channel\s+(\d+)\s+([A-Za-z_][A-Za-z0-9_-]*)\s+([A-Za-z_][A-Za-z0-9_-]*)(?:\s+(.*))?$/i.exec(line);
+    if (!match) {
+      throw new SignalDslParseError(lineNumber, 'channel syntax is: channel <0-23> <name> <clock|pattern|constant|pulse> key=value ...');
+    }
+
+    const channelNumber = this.parseInteger(match[1], lineNumber, 'channel number');
+    if (channelNumber < 0 || channelNumber > 23) {
+      throw new SignalDslParseError(lineNumber, 'channel number must be between 0 and 23');
+    }
+
+    return {
+      channelNumber,
+      name: match[2],
+      waveform: this.parseWaveform(match[3], this.parseOptions(match[4] || '', lineNumber), lineNumber)
+    };
+  }
+
+  private static parseWaveform(kindValue: string, options: Map<string, string>, lineNumber: number): SignalWaveform {
+    const kind = kindValue.toLowerCase();
+
+    if (kind === 'clock') {
+      return {
+        kind: 'clock',
+        period: this.parsePositiveInteger(this.requiredOption(options, 'period', lineNumber), lineNumber, 'period'),
+        duty: this.parseDuty(options.get('duty') || '0.5', lineNumber),
+        phase: this.parseNonNegativeInteger(options.get('phase') || '0', lineNumber, 'phase')
+      };
+    }
+
+    if (kind === 'pattern') {
+      const bits = this.requiredOption(options, 'bits', lineNumber);
+      if (!/^[01]+$/.test(bits)) {
+        throw new SignalDslParseError(lineNumber, 'pattern bits must contain only 0 and 1');
+      }
+
+      return {
+        kind: 'pattern',
+        bits,
+        repeat: this.parseBoolean(options.get('repeat') || 'false', lineNumber, 'repeat'),
+        step: this.parsePositiveInteger(options.get('step') || '1', lineNumber, 'step')
+      };
+    }
+
+    if (kind === 'constant') {
+      return {
+        kind: 'constant',
+        value: this.parseBit(this.requiredOption(options, 'value', lineNumber), lineNumber, 'value')
+      };
+    }
+
+    if (kind === 'pulse') {
+      const value = this.parseBit(options.get('value') || '1', lineNumber, 'value');
+      return {
+        kind: 'pulse',
+        start: this.parseNonNegativeInteger(this.requiredOption(options, 'start', lineNumber), lineNumber, 'start'),
+        width: this.parsePositiveInteger(this.requiredOption(options, 'width', lineNumber), lineNumber, 'width'),
+        value,
+        idle: this.parseBit(options.get('idle') || (value === 1 ? '0' : '1'), lineNumber, 'idle')
+      };
+    }
+
+    throw new SignalDslParseError(lineNumber, `unsupported waveform "${kindValue}"`);
+  }
+
+  private static parseOptions(rawOptions: string, lineNumber: number): Map<string, string> {
+    const options = new Map<string, string>();
+    if (!rawOptions.trim()) {
+      return options;
+    }
+
+    for (const token of rawOptions.trim().split(/\s+/)) {
+      const separator = token.indexOf('=');
+      if (separator <= 0 || separator === token.length - 1) {
+        throw new SignalDslParseError(lineNumber, `invalid option "${token}", expected key=value`);
+      }
+
+      const key = token.slice(0, separator).toLowerCase();
+      const value = token.slice(separator + 1).replace(/^["']|["']$/g, '');
+      options.set(key, value);
+    }
+
+    return options;
+  }
+
+  private static createAnalyzerChannel(statement: SignalChannelStatement, sampleCount: number): AnalyzerChannel {
+    const channel = new AnalyzerChannel(statement.channelNumber, statement.name);
+    const samples = new Uint8Array(sampleCount);
+
+    for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+      samples[sampleIndex] = this.sampleWaveform(statement.waveform, sampleIndex);
+    }
+
+    channel.samples = samples;
+    return channel;
+  }
+
+  private static sampleWaveform(waveform: SignalWaveform, sampleIndex: number): 0 | 1 {
+    if (waveform.kind === 'clock') {
+      const localIndex = ((sampleIndex + waveform.phase) % waveform.period + waveform.period) % waveform.period;
+      return localIndex < Math.max(1, Math.round(waveform.period * waveform.duty)) ? 1 : 0;
+    }
+
+    if (waveform.kind === 'pattern') {
+      const bitIndex = Math.floor(sampleIndex / waveform.step);
+      if (waveform.repeat) {
+        return waveform.bits[bitIndex % waveform.bits.length] === '1' ? 1 : 0;
+      }
+      return bitIndex < waveform.bits.length && waveform.bits[bitIndex] === '1' ? 1 : 0;
+    }
+
+    if (waveform.kind === 'constant') {
+      return waveform.value;
+    }
+
+    const inPulse = sampleIndex >= waveform.start && sampleIndex < waveform.start + waveform.width;
+    return inPulse ? waveform.value : waveform.idle;
+  }
+
+  private static stripComment(line: string): string {
+    const commentStart = line.indexOf('#');
+    return commentStart >= 0 ? line.slice(0, commentStart) : line;
+  }
+
+  private static requiredOption(options: Map<string, string>, key: string, lineNumber: number): string {
+    const value = options.get(key);
+    if (value === undefined || value === '') {
+      throw new SignalDslParseError(lineNumber, `missing required option "${key}"`);
+    }
+    return value;
+  }
+
+  private static parsePositiveInteger(value: string, lineNumber: number, fieldName: string): number {
+    const parsed = this.parseIntegerWithUnits(value, lineNumber, fieldName);
+    if (parsed <= 0) {
+      throw new SignalDslParseError(lineNumber, `${fieldName} must be greater than 0`);
+    }
+    return parsed;
+  }
+
+  private static parseNonNegativeInteger(value: string, lineNumber: number, fieldName: string): number {
+    const parsed = this.parseIntegerWithUnits(value, lineNumber, fieldName);
+    if (parsed < 0) {
+      throw new SignalDslParseError(lineNumber, `${fieldName} cannot be negative`);
+    }
+    return parsed;
+  }
+
+  private static parseInteger(value: string, lineNumber: number, fieldName: string): number {
+    if (!/^\d+$/.test(value)) {
+      throw new SignalDslParseError(lineNumber, `${fieldName} must be an integer`);
+    }
+    return Number(value);
+  }
+
+  private static parseIntegerWithUnits(value: string, lineNumber: number, fieldName: string): number {
+    const match = /^(\d+(?:\.\d+)?)(k|khz|m|mhz)?$/i.exec(value);
+    if (!match) {
+      throw new SignalDslParseError(lineNumber, `${fieldName} must be a number`);
+    }
+
+    const multiplier = this.getUnitMultiplier(match[2]);
+    const parsed = Number(match[1]) * multiplier;
+    if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
+      throw new SignalDslParseError(lineNumber, `${fieldName} must resolve to an integer`);
+    }
+
+    return parsed;
+  }
+
+  private static getUnitMultiplier(unit?: string): number {
+    if (!unit) {
+      return 1;
+    }
+
+    const normalized = unit.toLowerCase();
+    if (normalized === 'k' || normalized === 'khz') {
+      return 1000;
+    }
+    if (normalized === 'm' || normalized === 'mhz') {
+      return 1000000;
+    }
+    return 1;
+  }
+
+  private static parseDuty(value: string, lineNumber: number): number {
+    const duty = Number(value.endsWith('%') ? Number(value.slice(0, -1)) / 100 : value);
+    if (!Number.isFinite(duty) || duty <= 0 || duty >= 1) {
+      throw new SignalDslParseError(lineNumber, 'duty must be greater than 0 and less than 1');
+    }
+    return duty;
+  }
+
+  private static parseBoolean(value: string, lineNumber: number, fieldName: string): boolean {
+    const normalized = value.toLowerCase();
+    if (normalized === 'true' || normalized === 'yes' || normalized === '1') {
+      return true;
+    }
+    if (normalized === 'false' || normalized === 'no' || normalized === '0') {
+      return false;
+    }
+    throw new SignalDslParseError(lineNumber, `${fieldName} must be true or false`);
+  }
+
+  private static parseBit(value: string, lineNumber: number, fieldName: string): 0 | 1 {
+    if (value === '0') {
+      return 0;
+    }
+    if (value === '1') {
+      return 1;
+    }
+    throw new SignalDslParseError(lineNumber, `${fieldName} must be 0 or 1`);
+  }
+
+  private static validateUniqueChannels(channels: SignalChannelStatement[]): void {
+    const seen = new Set<number>();
+    for (const channel of channels) {
+      if (seen.has(channel.channelNumber)) {
+        throw new SignalDslParseError(1, `duplicate channel ${channel.channelNumber}`);
+      }
+      seen.add(channel.channelNumber);
+    }
+  }
+}

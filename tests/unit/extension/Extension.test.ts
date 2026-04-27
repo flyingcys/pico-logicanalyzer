@@ -10,21 +10,35 @@ import { activate, deactivate } from '../../../src/extension';
 jest.mock('vscode', () => ({
   commands: {
     registerCommand: jest.fn(),
+    executeCommand: jest.fn(),
   },
   window: {
     showInformationMessage: jest.fn(),
     showWarningMessage: jest.fn(),
     showErrorMessage: jest.fn(),
     showInputBox: jest.fn(),
+    showQuickPick: jest.fn(),
+    showSaveDialog: jest.fn(),
+    withProgress: jest.fn(),
     createWebviewPanel: jest.fn(),
   },
   workspace: {
     getConfiguration: jest.fn(),
+    workspaceFolders: [{ uri: { fsPath: '/workspace' } }],
+    fs: {
+      writeFile: jest.fn(),
+    },
+  },
+  Uri: {
+    file: jest.fn((fsPath: string) => ({ fsPath })),
+  },
+  ProgressLocation: {
+    Notification: 15,
   },
   ExtensionContext: class {
     subscriptions: any[] = [];
   },
-}));
+}), { virtual: true });
 jest.mock('../../../src/providers/LACEditorProvider', () => ({
   LACEditorProvider: {
     register: jest.fn().mockReturnValue({}),
@@ -33,6 +47,9 @@ jest.mock('../../../src/providers/LACEditorProvider', () => ({
 jest.mock('../../../src/drivers/HardwareDriverManager', () => ({
   hardwareDriverManager: {
     detectHardware: jest.fn().mockResolvedValue([]),
+    connectToDevice: jest.fn().mockResolvedValue({ success: true, deviceInfo: { name: 'Mock Device' } }),
+    getCurrentDevice: jest.fn().mockReturnValue(null),
+    getCurrentDeviceInfo: jest.fn().mockReturnValue(null),
     dispose: jest.fn().mockResolvedValue(undefined),
   },
 }));
@@ -98,7 +115,7 @@ describe('VSCode Extension 主入口测试', () => {
 
       // Assert
       expect(mockVSCode.window.showInformationMessage).toHaveBeenCalledWith(
-        '打开逻辑分析器界面!'
+        '逻辑分析器主界面已打开！'
       );
     });
 
@@ -272,8 +289,8 @@ describe('VSCode Extension 主入口测试', () => {
 
       // Assert - 验证所有组件都已注册
       expect(context.subscriptions.length).toBeGreaterThan(0);
-      // 源代码中实际注册了6个命令：openAnalyzer, connectDevice, startCapture, scanNetworkDevices, networkDiagnostics, configureWiFi
-      expect(mockVSCode.commands.registerCommand).toHaveBeenCalledTimes(6);
+      // 源代码中实际注册了7个命令，包含合成采集生成入口
+      expect(mockVSCode.commands.registerCommand).toHaveBeenCalledTimes(7);
 
       // Act - 去激活
       deactivate();

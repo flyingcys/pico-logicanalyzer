@@ -38,7 +38,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onLanguage:logicanalyzer"
+    "onLanguage:logicanalyzer",
+    "onCommand:logicAnalyzer.createSyntheticCapture"
   ],
   "galleryBanner": {
     "color": "#1e1e1e",
@@ -79,6 +80,12 @@
         "title": "Configure WiFi",
         "category": "Logic Analyzer",
         "icon": "$(broadcast)"
+      },
+      {
+        "command": "logicAnalyzer.createSyntheticCapture",
+        "title": "Create Synthetic Capture",
+        "category": "Logic Analyzer",
+        "icon": "$(symbol-event)"
       }
     ],
     "customEditors": [
