@@ -1,239 +1,524 @@
 <script setup lang="ts">
-import { computed, onUnmounted, watch } from 'vue';
-import { useWaveformViewport } from '../composables/useWaveformViewport';
-import { createWaveformService } from '../../core/services/waveformService';
-import { useSessionStore } from '../../core/stores/sessionStore';
-import { useWaveformStore } from '../../core/stores/waveformStore';
+  import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+  import { useWaveformViewport } from '../composables/useWaveformViewport';
+  import { createWaveformService } from '../../core/services/waveformService';
+  import { useSessionStore } from '../../core/stores/sessionStore';
+  import { useWaveformStore } from '../../core/stores/waveformStore';
 
-const sessionStore = useSessionStore();
-const waveformStore = useWaveformStore();
-const { containerRef, canvasRef, renderer } = useWaveformViewport();
+  const sessionStore = useSessionStore();
+  const waveformStore = useWaveformStore();
+  const { containerRef, canvasRef, renderer } = useWaveformViewport();
 
-const title = computed(() => sessionStore.fileName || 'Logic Analyzer');
-const hasRenderableSamples = computed(() =>
-  sessionStore.channels.some(channel => channel.samples && channel.samples.length > 0)
-);
-const statusTitle = computed(() => {
-  if (sessionStore.documentState === 'invalid') {
-    return '文件解析失败';
-  }
+  const title = computed(() => sessionStore.fileName || 'Logic Analyzer');
+  const hasSamples = computed(
+    () => waveformStore.totalSamples > 0 && waveformStore.channels.length > 0
+  );
+  const centerSample = computed(
+    () =>
+      waveformStore.viewRange.firstSample + Math.floor(waveformStore.viewRange.visibleSamples / 2)
+  );
+  const previewMax = computed(() =>
+    Math.max(0, waveformStore.totalSamples - waveformStore.viewRange.visibleSamples)
+  );
+  const previewStartPercent = computed(() => {
+    if (waveformStore.totalSamples <= 0) {
+      return 0;
+    }
 
-  if (sessionStore.documentState === 'settings-only') {
-    return '已加载采集设置';
-  }
+    return (waveformStore.viewRange.firstSample / waveformStore.totalSamples) * 100;
+  });
+  const previewWidthPercent = computed(() => {
+    if (waveformStore.totalSamples <= 0) {
+      return 100;
+    }
 
-  if (sessionStore.documentState === 'samples' && !hasRenderableSamples.value) {
-    return '样本不可渲染';
-  }
+    return Math.max(2, (waveformStore.viewRange.visibleSamples / waveformStore.totalSamples) * 100);
+  });
+  const measurementText = computed(() => {
+    const measurement = waveformStore.lastMeasurement;
+    if (!measurement) {
+      return '';
+    }
 
-  return '等待采集数据';
-});
-const statusDescription = computed(() => {
-  if (sessionStore.documentState === 'invalid') {
-    return '当前 .lac 内容不是有效 JSON，无法装载波形数据。';
-  }
+    const time = `${(measurement.timeSeconds * 1000).toFixed(3)} ms`;
+    const frequency = measurement.frequencyHz ? `${measurement.frequencyHz.toFixed(2)} Hz` : '-';
+    const duty =
+      measurement.dutyCycle !== null ? `${(measurement.dutyCycle * 100).toFixed(1)}%` : '-';
+    const pulse =
+      measurement.pulseWidthSeconds !== null
+        ? `${(measurement.pulseWidthSeconds * 1000).toFixed(3)} ms`
+        : '-';
 
-  if (sessionStore.documentState === 'settings-only') {
-    return '当前文件包含频率、通道和触发设置，但没有样本数组。';
-  }
+    return `${measurement.sampleCount} samples / ${time} / ${frequency} / ${duty} / ${pulse}`;
+  });
 
-  if (sessionStore.documentState === 'samples' && !hasRenderableSamples.value) {
-    return '检测到样本字段，但没有可见通道可用于 canvas 渲染。';
-  }
+  const draggingSelection = ref(false);
+  const selectionAnchor = ref(0);
 
-  return '打开 .lac 文件或完成一次采集后会在此显示数字波形。';
-});
-const sampleSummary = computed(() => {
-  if (!sessionStore.hasData) {
-    return '';
-  }
+  let stopBinding: (() => void) | null = null;
 
-  return `${sessionStore.channels.length} 个通道 · ${sessionStore.totalSamples} 个样本 · ${sessionStore.sampleRate.toLocaleString()} Hz`;
-});
+  const loadSessionIntoWaveformStore = () => {
+    const hasRenderableSamples = sessionStore.channels.some(
+      channel => channel.samples && channel.samples.length > 0
+    );
+    if (!sessionStore.hasData || !hasRenderableSamples) {
+      return;
+    }
 
-let stopBinding: (() => void) | null = null;
-let stopSessionBinding: (() => void) | null = null;
+    waveformStore.loadCaptureContext({
+      sampleRate: sessionStore.sampleRate,
+      channels: sessionStore.channels as any,
+      totalSamples: sessionStore.totalSamples,
+      preTriggerSamples: sessionStore.preTriggerSamples,
+      bursts: sessionStore.bursts ?? undefined
+    });
 
-watch(
-  renderer,
-  nextRenderer => {
-    stopBinding?.();
-    stopSessionBinding?.();
-    stopBinding = null;
-    stopSessionBinding = null;
+    if (sessionStore.selectedRegions.length > 0) {
+      waveformStore.restoreInteractions({
+        selectedRegions: sessionStore.selectedRegions.map(region => ({
+          id: `lac_${region.firstSample}_${region.lastSample}_${region.regionName}`,
+          name: region.regionName,
+          startSample: region.firstSample,
+          endSample: region.lastSample,
+          sampleCount: Math.max(0, region.lastSample - region.firstSample + 1),
+          color: region.color
+        }))
+      });
+    }
+  };
 
+  const syncRendererState = () => {
+    const nextRenderer = renderer.value;
     if (!nextRenderer) {
       return;
     }
 
-    const waveformService = createWaveformService(nextRenderer);
-    stopSessionBinding = waveformService.bindSession(sessionStore);
-    stopBinding = waveformService.bindViewRange(
-      waveformStore,
-      sessionStore
+    nextRenderer.beginUpdate();
+    nextRenderer.setChannels(
+      waveformStore.channels.length > 0 ? waveformStore.channels : null,
+      waveformStore.sampleRate || sessionStore.sampleRate
     );
-  },
-  {
-    immediate: true
-  }
-);
-
-onUnmounted(() => {
-  stopBinding?.();
-  stopSessionBinding?.();
-  stopBinding = null;
-  stopSessionBinding = null;
-});
-
-function handleWheel(event: WheelEvent): void {
-  if (!sessionStore.hasData || sessionStore.totalSamples <= 0) {
-    return;
-  }
-
-  event.preventDefault();
-
-  const rect = canvasRef.value?.getBoundingClientRect();
-  const width = rect?.width || 1;
-  const pointerRatio = rect
-    ? Math.max(0, Math.min(1, (event.clientX - rect.left) / width))
-    : 0.5;
-  const centerSample = waveformStore.viewRange.firstSample
-    + waveformStore.viewRange.visibleSamples * pointerRatio;
-
-  if (event.ctrlKey || event.metaKey) {
-    waveformStore.zoomAt(
-      centerSample,
-      event.deltaY < 0 ? 1.25 : 0.8,
-      sessionStore.totalSamples
+    nextRenderer.setSelection(waveformStore.selection);
+    nextRenderer.setMarkers(waveformStore.markers);
+    nextRenderer.clearRegions();
+    nextRenderer.addRegions(
+      waveformStore.regions.map(region => ({
+        firstSample: region.startSample,
+        lastSample: region.endSample,
+        sampleCount: region.sampleCount,
+        regionName: region.name,
+        regionColor: region.color
+      }))
     );
-    return;
-  }
+    nextRenderer.endUpdate();
+  };
 
-  const panSamples = Math.max(1, Math.round(waveformStore.viewRange.visibleSamples / 12));
-  waveformStore.panBySamples(event.deltaY > 0 || event.deltaX > 0 ? panSamples : -panSamples);
-}
+  const sampleFromPointer = (event: PointerEvent): number => {
+    const canvas = canvasRef.value;
+    if (!canvas || waveformStore.totalSamples <= 0) {
+      return 0;
+    }
 
-function jumpToTrigger(): void {
-  waveformStore.jumpToTrigger(sessionStore.preTriggerSamples, sessionStore.totalSamples);
-}
+    const rect = canvas.getBoundingClientRect();
+    const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
+    const sample =
+      waveformStore.viewRange.firstSample +
+      Math.floor(Math.max(0, Math.min(1, ratio)) * waveformStore.viewRange.visibleSamples);
+
+    return Math.max(0, Math.min(sample, waveformStore.totalSamples - 1));
+  };
+
+  const addMarker = () => {
+    if (!hasSamples.value) {
+      return;
+    }
+
+    waveformStore.addMarker(centerSample.value, 'user');
+  };
+
+  const createRegion = () => {
+    if (!hasSamples.value) {
+      return;
+    }
+
+    if (!waveformStore.selection) {
+      const start = waveformStore.viewRange.firstSample;
+      const end = Math.min(
+        waveformStore.totalSamples - 1,
+        start + Math.max(1, Math.floor(waveformStore.viewRange.visibleSamples / 4))
+      );
+      waveformStore.selectRange(start, end);
+    }
+
+    waveformStore.createRegionFromSelection();
+  };
+
+  const measureSelection = () => {
+    waveformStore.measureSelection(waveformStore.selection?.channelIndex ?? 0);
+  };
+
+  const copySelection = () => {
+    waveformStore.copySelection();
+  };
+
+  const cutSelection = () => {
+    waveformStore.cutSelection();
+  };
+
+  const pasteClipboard = () => {
+    waveformStore.pasteClipboard(centerSample.value, 'insert');
+  };
+
+  const deleteSelection = () => {
+    waveformStore.deleteSelection();
+  };
+
+  const zoomIn = () => waveformStore.zoom(2);
+  const zoomOut = () => waveformStore.zoom(0.5);
+  const fitToWindow = () =>
+    waveformStore.setViewRange(0, Math.max(1, waveformStore.totalSamples || 1));
+  const panLeft = () =>
+    waveformStore.pan(-Math.max(1, Math.floor(waveformStore.viewRange.visibleSamples / 10)));
+  const panRight = () =>
+    waveformStore.pan(Math.max(1, Math.floor(waveformStore.viewRange.visibleSamples / 10)));
+
+  const handleWaveformAction = (event: Event) => {
+    const action = (event as CustomEvent<string>).detail;
+    const actions: Record<string, () => void> = {
+      zoomIn,
+      zoomOut,
+      fitToWindow,
+      panLeft,
+      panRight,
+      addMarker,
+      createRegion,
+      measureSelection,
+      copySelection,
+      cutSelection,
+      pasteClipboard,
+      deleteSelection
+    };
+
+    actions[action]?.();
+  };
+
+  const handlePointerDown = (event: PointerEvent) => {
+    if (!hasSamples.value || event.button !== 0) {
+      return;
+    }
+
+    draggingSelection.value = true;
+    selectionAnchor.value = sampleFromPointer(event);
+    waveformStore.selectRange(selectionAnchor.value, selectionAnchor.value);
+    canvasRef.value?.setPointerCapture?.(event.pointerId);
+  };
+
+  const handlePointerMove = (event: PointerEvent) => {
+    if (!draggingSelection.value) {
+      return;
+    }
+
+    waveformStore.selectRange(selectionAnchor.value, sampleFromPointer(event));
+  };
+
+  const handlePointerUp = (event: PointerEvent) => {
+    if (!draggingSelection.value) {
+      return;
+    }
+
+    draggingSelection.value = false;
+    waveformStore.selectRange(selectionAnchor.value, sampleFromPointer(event));
+    waveformStore.measureSelection(waveformStore.selection?.channelIndex ?? 0);
+    canvasRef.value?.releasePointerCapture?.(event.pointerId);
+  };
+
+  const handlePreviewInput = (event: Event) => {
+    const value = Number((event.target as HTMLInputElement).value);
+    waveformStore.setViewRange(value, waveformStore.viewRange.visibleSamples);
+  };
+
+  watch(
+    () => ({
+      sampleRate: sessionStore.sampleRate,
+      totalSamples: sessionStore.totalSamples,
+      preTriggerSamples: sessionStore.preTriggerSamples,
+      bursts: sessionStore.bursts ? sessionStore.bursts.join(',') : '',
+      channels: sessionStore.channels
+        .map(channel => `${channel.channelNumber}:${channel.hidden ? 1 : 0}:${channel.samples?.length ?? 0}`)
+        .join('|'),
+      regions: sessionStore.selectedRegions
+        .map(region => `${region.firstSample}:${region.lastSample}:${region.regionName}`)
+        .join('|')
+    }),
+    loadSessionIntoWaveformStore,
+    {
+      immediate: true
+    }
+  );
+
+  watch(
+    renderer,
+    nextRenderer => {
+      stopBinding?.();
+      stopBinding = null;
+
+      if (!nextRenderer) {
+        return;
+      }
+
+      stopBinding = createWaveformService(nextRenderer).bindViewRange(waveformStore, sessionStore);
+      syncRendererState();
+    },
+    {
+      immediate: true
+    }
+  );
+
+  watch(
+    () => ({
+      sampleRate: waveformStore.sampleRate,
+      channels: waveformStore.channels,
+      selection: waveformStore.selection,
+      markers: waveformStore.markers,
+      regions: waveformStore.regions
+    }),
+    syncRendererState,
+    {
+      deep: true,
+      immediate: true
+    }
+  );
+
+  onMounted(() => {
+    window.addEventListener('waveform-action', handleWaveformAction);
+  });
+
+  onUnmounted(() => {
+    stopBinding?.();
+    stopBinding = null;
+    window.removeEventListener('waveform-action', handleWaveformAction);
+  });
 </script>
 
 <template>
-  <section
-    ref="containerRef"
-    class="waveform-stage"
-    @wheel="handleWheel"
-  >
+  <section ref="containerRef" class="waveform-stage">
     <canvas
       ref="canvasRef"
       class="waveform-stage__canvas"
+      @pointerdown="handlePointerDown"
+      @pointermove="handlePointerMove"
+      @pointerup="handlePointerUp"
+      @pointercancel="handlePointerUp"
     />
 
-    <div
-      v-if="!hasRenderableSamples"
-      class="waveform-stage__overlay"
-    >
-      <p class="waveform-stage__label">
-        {{ title }}
-      </p>
-      <h2 class="waveform-stage__title">
-        {{ statusTitle }}
-      </h2>
-      <p class="waveform-stage__description">
-        {{ statusDescription }}
-      </p>
+    <div class="waveform-stage__toolbar">
+      <div class="waveform-stage__titlebar">
+        <span class="waveform-stage__title">{{ title }}</span>
+        <span class="waveform-stage__meta">{{ waveformStore.totalSamples }} samples</span>
+      </div>
+      <div class="waveform-stage__actions">
+        <button class="tool-button" title="缩小" :disabled="!hasSamples" @click="zoomOut">-</button>
+        <button class="tool-button" title="放大" :disabled="!hasSamples" @click="zoomIn">+</button>
+        <button class="tool-button" title="适应窗口" :disabled="!hasSamples" @click="fitToWindow">
+          1:1
+        </button>
+        <button class="tool-button" title="添加标记" :disabled="!hasSamples" @click="addMarker">
+          M
+        </button>
+        <button class="tool-button" title="创建区域" :disabled="!hasSamples" @click="createRegion">
+          R
+        </button>
+        <button
+          class="tool-button"
+          title="测量选区"
+          :disabled="!waveformStore.selection"
+          @click="measureSelection"
+        >
+          Hz
+        </button>
+        <button
+          class="tool-button"
+          title="复制"
+          :disabled="!waveformStore.selection"
+          @click="copySelection"
+        >
+          C
+        </button>
+        <button
+          class="tool-button"
+          title="剪切"
+          :disabled="!waveformStore.selection"
+          @click="cutSelection"
+        >
+          X
+        </button>
+        <button
+          class="tool-button"
+          title="粘贴"
+          :disabled="!waveformStore.clipboard"
+          @click="pasteClipboard"
+        >
+          V
+        </button>
+        <button
+          class="tool-button"
+          title="删除"
+          :disabled="!waveformStore.selection"
+          @click="deleteSelection"
+        >
+          Del
+        </button>
+      </div>
     </div>
 
-    <div
-      v-else
-      class="waveform-stage__hud"
-    >
-      <span>{{ sampleSummary }}</span>
-      <button
-        type="button"
-        class="waveform-stage__trigger-button"
-        @click="jumpToTrigger"
-      >
-        跳转触发点
-      </button>
+    <div class="waveform-stage__preview">
+      <div class="waveform-stage__preview-track">
+        <div
+          class="waveform-stage__preview-window"
+          :style="{
+            left: `${previewStartPercent}%`,
+            width: `${previewWidthPercent}%`
+          }"
+        />
+      </div>
+      <input
+        class="waveform-stage__preview-input"
+        type="range"
+        min="0"
+        :max="previewMax"
+        :value="waveformStore.viewRange.firstSample"
+        :disabled="!hasSamples"
+        @input="handlePreviewInput"
+      />
+    </div>
+
+    <div v-if="measurementText" class="waveform-stage__measurement">
+      {{ measurementText }}
     </div>
   </section>
 </template>
 
 <style scoped>
-.waveform-stage {
-  position: relative;
-  min-height: 100%;
-  overflow: hidden;
-  background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(2, 6, 23, 0.98));
-}
+  .waveform-stage {
+    position: relative;
+    min-height: 100%;
+    overflow: hidden;
+    background: #111827;
+  }
 
-.waveform-stage__canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
+  .waveform-stage__canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
 
-.waveform-stage__overlay {
-  position: absolute;
-  left: 24px;
-  bottom: 24px;
-  width: min(100% - 48px, 720px);
-  padding: 20px 24px;
-  border: 1px dashed rgba(56, 189, 248, 0.36);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.86);
-  backdrop-filter: blur(8px);
-  pointer-events: none;
-}
+  .waveform-stage__toolbar {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 6px;
+    background: rgba(17, 24, 39, 0.88);
+  }
 
-.waveform-stage__label,
-.waveform-stage__description {
-  margin: 0;
-  color: #94a3b8;
-}
+  .waveform-stage__titlebar {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
 
-.waveform-stage__label {
-  text-transform: uppercase;
-  font-size: 12px;
-}
+  .waveform-stage__title {
+    overflow: hidden;
+    color: #f8fafc;
+    font-size: 13px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-.waveform-stage__title {
-  margin: 8px 0 12px;
-  color: #f8fafc;
-  font-size: 28px;
-  line-height: 1.2;
-}
+  .waveform-stage__meta {
+    color: #94a3b8;
+    font-size: 12px;
+    white-space: nowrap;
+  }
 
-.waveform-stage__hud {
-  position: absolute;
-  right: 16px;
-  top: 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  max-width: calc(100% - 32px);
-  padding: 8px 10px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 6px;
-  background: rgba(15, 23, 42, 0.78);
-  color: #cbd5e1;
-  font-size: 12px;
-}
+  .waveform-stage__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+  }
 
-.waveform-stage__trigger-button {
-  border: 1px solid rgba(56, 189, 248, 0.42);
-  border-radius: 4px;
-  background: rgba(8, 47, 73, 0.82);
-  color: #e0f2fe;
-  cursor: pointer;
-  font-size: 12px;
-  line-height: 1;
-  padding: 6px 8px;
-}
+  .tool-button {
+    min-width: 34px;
+    height: 28px;
+    border: 1px solid rgba(148, 163, 184, 0.26);
+    border-radius: 5px;
+    background: rgba(31, 41, 55, 0.92);
+    color: #e5e7eb;
+    font: 12px/1 monospace;
+  }
 
-.waveform-stage__trigger-button:hover {
-  background: rgba(14, 116, 144, 0.82);
-}
+  .tool-button:not(:disabled):hover {
+    border-color: rgba(56, 189, 248, 0.7);
+    color: #ffffff;
+  }
+
+  .tool-button:disabled {
+    color: #64748b;
+    cursor: not-allowed;
+  }
+
+  .waveform-stage__preview {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    height: 28px;
+  }
+
+  .waveform-stage__preview-track {
+    position: absolute;
+    inset: 8px 0;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 4px;
+    background: rgba(15, 23, 42, 0.82);
+  }
+
+  .waveform-stage__preview-window {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 3px;
+    background: rgba(56, 189, 248, 0.34);
+  }
+
+  .waveform-stage__preview-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    opacity: 0;
+  }
+
+  .waveform-stage__measurement {
+    position: absolute;
+    left: 12px;
+    bottom: 48px;
+    max-width: calc(100% - 24px);
+    padding: 6px 8px;
+    border-radius: 5px;
+    background: rgba(3, 7, 18, 0.78);
+    color: #d1fae5;
+    font: 12px/1.4 monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 </style>

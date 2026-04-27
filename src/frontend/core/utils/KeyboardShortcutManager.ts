@@ -106,6 +106,62 @@ export class KeyboardShortcutManager {
         enabled: true
       },
       {
+        id: 'add-marker',
+        keys: ['M'],
+        description: '添加用户标记',
+        category: '波形操作',
+        handler: () => this.triggerWaveformAction('addMarker'),
+        enabled: true
+      },
+      {
+        id: 'create-region',
+        keys: ['R'],
+        description: '创建区域',
+        category: '波形操作',
+        handler: () => this.triggerWaveformAction('createRegion'),
+        enabled: true
+      },
+      {
+        id: 'measure-selection',
+        keys: ['Ctrl', 'M'],
+        description: '测量选区',
+        category: '波形操作',
+        handler: () => this.triggerWaveformAction('measureSelection'),
+        enabled: true
+      },
+      {
+        id: 'copy-selection',
+        keys: ['Ctrl', 'C'],
+        description: '复制选区样本',
+        category: '编辑操作',
+        handler: () => this.triggerWaveformAction('copySelection'),
+        enabled: true
+      },
+      {
+        id: 'cut-selection',
+        keys: ['Ctrl', 'X'],
+        description: '剪切选区样本',
+        category: '编辑操作',
+        handler: () => this.triggerWaveformAction('cutSelection'),
+        enabled: true
+      },
+      {
+        id: 'paste-samples',
+        keys: ['Ctrl', 'V'],
+        description: '粘贴样本',
+        category: '编辑操作',
+        handler: () => this.triggerWaveformAction('pasteClipboard'),
+        enabled: true
+      },
+      {
+        id: 'delete-selection',
+        keys: ['Delete'],
+        description: '删除选区样本',
+        category: '编辑操作',
+        handler: () => this.triggerWaveformAction('deleteSelection'),
+        enabled: true
+      },
+      {
         id: 'pan-left',
         keys: ['ArrowLeft'],
         description: '向左移动',

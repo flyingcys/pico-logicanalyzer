@@ -11,6 +11,7 @@ import {
   ChannelInfo
 } from '../../../models/UnifiedDataFormat';
 import { AnalyzerChannel } from '../../../models/CaptureModels';
+import type { WaveformMarker, WaveformSelection } from '../stores/waveformStore';
 
 // 基于原版的接口定义
 export interface ISampleDisplay {
@@ -106,6 +107,8 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
 
   // IMarkerDisplay 接口实现
   public userMarker: number | null = null;
+  public markers: WaveformMarker[] = [];
+  public selection: WaveformSelection | null = null;
 
   // 其他关键属性
   public preSamples = 0; // 触发前样本数
@@ -119,8 +122,18 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
   private colors: AnalyzerColors = {
     bgChannelColors: ['#242424', '#1c1c1c'],
     palette: [
-      '#ff7333', '#33ff57', '#3357ff', '#ff33a1', '#ffbd33', '#33fff6',
-      '#bd33ff', '#57ff33', '#5733ff', '#33ffbd', '#ff33bd', '#ff5733'
+      '#ff7333',
+      '#33ff57',
+      '#3357ff',
+      '#ff33a1',
+      '#ffbd33',
+      '#33fff6',
+      '#bd33ff',
+      '#57ff33',
+      '#5733ff',
+      '#33ffbd',
+      '#ff33bd',
+      '#ff5733'
       // 简化调色板，实际可扩展至64色
     ],
     sampleLineColor: '#3c3c3c',
@@ -214,7 +227,9 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     if (interval) {
       const duration = this.formatTime(interval.duration);
       const sampleCount = interval.end - interval.start;
-      const tooltip = `State: ${interval.value ? 'High' : 'Low'}\nLength: ${duration} (${sampleCount} samples)`;
+      const tooltip = `State: ${
+        interval.value ? 'High' : 'Low'
+      }\nLength: ${duration} (${sampleCount} samples)`;
 
       this.showTooltip(tooltip, event.clientX, event.clientY);
     } else {
@@ -443,8 +458,12 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
   public render(): RenderStats {
     const startTime = performance.now();
 
-    if (!this.channels || this.channels.length === 0 ||
-        !this.channels[0].samples || this.channels[0].samples.length === 0) {
+    if (
+      !this.channels ||
+      this.channels.length === 0 ||
+      !this.channels[0].samples ||
+      this.channels[0].samples.length === 0
+    ) {
       return this.renderStats;
     }
 
@@ -495,6 +514,7 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     this.renderChannelLabels(visibleChannels, channelHeight);
 
     // 绘制区域高亮
+    this.renderSelection(sampleWidth, canvasHeight);
     this.renderRegions(sampleWidth, canvasHeight);
 
     // 准备通道渲染状态
@@ -502,13 +522,28 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
 
     // 主渲染循环 - 根据性能情况选择渲染策略
     if (usePerformanceOptimization) {
-      this.renderOptimized(visibleChannels, channelHeight, margin, sampleWidth, canvasWidth, canvasHeight);
+      this.renderOptimized(
+        visibleChannels,
+        channelHeight,
+        margin,
+        sampleWidth,
+        canvasWidth,
+        canvasHeight
+      );
     } else {
-      this.renderNormal(visibleChannels, channelHeight, margin, sampleWidth, canvasWidth, canvasHeight);
+      this.renderNormal(
+        visibleChannels,
+        channelHeight,
+        margin,
+        sampleWidth,
+        canvasWidth,
+        canvasHeight
+      );
     }
 
     // 渲染边框和分隔线
     this.renderBorders(channelCount, canvasHeight);
+    this.renderInteractionMarkers(canvasHeight, sampleWidth);
 
     // 更新统计信息
     const endTime = performance.now();
@@ -530,8 +565,10 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     canvasWidth: number,
     canvasHeight: number
   ): void {
-    const lastSample = Math.min(this.visibleSamples + this.firstSample,
-                                visibleChannels[0].samples!.length);
+    const lastSample = Math.min(
+      this.visibleSamples + this.firstSample,
+      visibleChannels[0].samples!.length
+    );
     const channelCount = visibleChannels.length;
     const renders: ChannelRenderStatus[] = new Array(channelCount);
 
@@ -608,8 +645,14 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
 
           if (renders[chan].value !== currentValue) {
             // 渲染之前的状态
-            this.renderChannelSegment(renders[chan], chan, visibleChannels[chan],
-                                    channelHeight, margin, sampleWidth);
+            this.renderChannelSegment(
+              renders[chan],
+              chan,
+              visibleChannels[chan],
+              channelHeight,
+              margin,
+              sampleWidth
+            );
 
             // 更新状态
             renders[chan] = {
@@ -626,8 +669,14 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
 
     // 渲染最后的状态段
     for (let chan = 0; chan < channelCount; chan++) {
-      this.renderChannelSegment(renders[chan], chan, visibleChannels[chan],
-                               channelHeight, margin, sampleWidth);
+      this.renderChannelSegment(
+        renders[chan],
+        chan,
+        visibleChannels[chan],
+        channelHeight,
+        margin,
+        sampleWidth
+      );
     }
 
     // 如果用户标记在最后一个样本位置
@@ -655,8 +704,10 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     canvasWidth: number,
     canvasHeight: number
   ): void {
-    const lastSample = Math.min(this.visibleSamples + this.firstSample,
-                                visibleChannels[0].samples!.length);
+    const lastSample = Math.min(
+      this.visibleSamples + this.firstSample,
+      visibleChannels[0].samples!.length
+    );
     const channelCount = visibleChannels.length;
 
     // 采样步长 - 跳过一些样本以提高性能
@@ -715,7 +766,10 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
    */
   private renderMarkerLines(canvasHeight: number, sampleWidth: number): void {
     // 绘制触发线
-    if (this.preSamples >= this.firstSample && this.preSamples < this.firstSample + this.visibleSamples) {
+    if (
+      this.preSamples >= this.firstSample &&
+      this.preSamples < this.firstSample + this.visibleSamples
+    ) {
       const lineX = (this.preSamples - this.firstSample) * sampleWidth;
       this.ctx.strokeStyle = this.colors.triggerLineColor;
       this.ctx.lineWidth = 2;
@@ -745,9 +799,11 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     }
 
     // 绘制用户标记线
-    if (this.userMarker !== null &&
-        this.userMarker >= this.firstSample &&
-        this.userMarker < this.firstSample + this.visibleSamples) {
+    if (
+      this.userMarker !== null &&
+      this.userMarker >= this.firstSample &&
+      this.userMarker < this.firstSample + this.visibleSamples
+    ) {
       const lineX = (this.userMarker - this.firstSample) * sampleWidth;
       this.ctx.strokeStyle = this.colors.userLineColor;
       this.ctx.lineWidth = 2;
@@ -758,6 +814,8 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
       this.ctx.stroke();
       this.ctx.setLineDash([]);
     }
+
+    this.renderInteractionMarkers(canvasHeight, sampleWidth);
   }
 
   /**
@@ -809,9 +867,9 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     if (channel.channelColor !== null && channel.channelColor !== undefined) {
       // 如果通道有自定义颜色，转换为CSS颜色
       const colorValue = channel.channelColor;
-      const r = (colorValue >> 16) & 0xFF;
-      const g = (colorValue >> 8) & 0xFF;
-      const b = colorValue & 0xFF;
+      const r = (colorValue >> 16) & 0xff;
+      const g = (colorValue >> 8) & 0xff;
+      const b = colorValue & 0xff;
       return `rgb(${r}, ${g}, ${b})`;
     }
 
@@ -825,11 +883,76 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
   private renderRegions(sampleWidth: number, canvasHeight: number): void {
     for (const region of this.regions) {
       const first = Math.min(region.firstSample, region.lastSample);
-      const start = (first - this.firstSample) * sampleWidth;
-      const end = sampleWidth * region.sampleCount;
+      const visibleStart = Math.max(first, this.firstSample);
+      const visibleEnd = Math.min(
+        Math.max(region.firstSample, region.lastSample),
+        this.firstSample + this.visibleSamples - 1
+      );
+
+      if (visibleEnd < visibleStart) {
+        continue;
+      }
+
+      const start = (visibleStart - this.firstSample) * sampleWidth;
+      const width = Math.max(sampleWidth, (visibleEnd - visibleStart + 1) * sampleWidth);
 
       this.ctx.fillStyle = region.regionColor;
-      this.ctx.fillRect(start, 0, end, canvasHeight);
+      this.ctx.fillRect(start, 0, width, canvasHeight);
+    }
+  }
+
+  private renderSelection(sampleWidth: number, canvasHeight: number): void {
+    if (!this.selection) {
+      return;
+    }
+
+    const first = Math.min(this.selection.startSample, this.selection.endSample);
+    const last = Math.max(this.selection.startSample, this.selection.endSample);
+    const visibleStart = Math.max(first, this.firstSample);
+    const visibleEnd = Math.min(last, this.firstSample + this.visibleSamples - 1);
+
+    if (visibleEnd < visibleStart) {
+      return;
+    }
+
+    const start = (visibleStart - this.firstSample) * sampleWidth;
+    const width = Math.max(sampleWidth, (visibleEnd - visibleStart + 1) * sampleWidth);
+
+    this.ctx.fillStyle = 'rgba(59, 130, 246, 0.20)';
+    this.ctx.fillRect(start, 0, width, canvasHeight);
+    this.ctx.strokeStyle = 'rgba(147, 197, 253, 0.9)';
+    this.ctx.lineWidth = 1;
+    this.ctx.setLineDash([4, 3]);
+    this.ctx.strokeRect(start, 0, width, canvasHeight);
+    this.ctx.setLineDash([]);
+  }
+
+  private renderInteractionMarkers(canvasHeight: number, sampleWidth: number): void {
+    for (const marker of this.markers) {
+      if (!marker.visible) {
+        continue;
+      }
+
+      if (
+        marker.sample < this.firstSample ||
+        marker.sample >= this.firstSample + this.visibleSamples
+      ) {
+        continue;
+      }
+
+      const lineX = (marker.sample - this.firstSample) * sampleWidth;
+      this.ctx.strokeStyle = marker.color;
+      this.ctx.fillStyle = marker.color;
+      this.ctx.lineWidth = marker.type === 'trigger' ? 2 : 1.5;
+      this.ctx.setLineDash(marker.type === 'user' ? [5, 3] : marker.type === 'burst' ? [2, 4] : []);
+      this.ctx.beginPath();
+      this.ctx.moveTo(lineX, 0);
+      this.ctx.lineTo(lineX, canvasHeight);
+      this.ctx.stroke();
+      this.ctx.setLineDash([]);
+
+      this.ctx.font = '11px monospace';
+      this.ctx.fillText(marker.name, lineX + 4, 14);
     }
   }
 
@@ -952,6 +1075,21 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     }
   }
 
+  public setMarkers(markers: WaveformMarker[]): void {
+    this.markers = markers.map(marker => ({ ...marker }));
+
+    if (!this.updating) {
+      this.invalidateVisual();
+    }
+  }
+
+  public setSelection(selection: WaveformSelection | null): void {
+    this.selection = selection ? { ...selection } : null;
+
+    if (!this.updating) {
+      this.invalidateVisual();
+    }
+  }
 
   /**
    * 渲染边框和分隔线
@@ -1037,6 +1175,8 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     this.channels = null;
     this.intervals = [];
     this.regions = [];
+    this.markers = [];
+    this.selection = null;
   }
 
   /**

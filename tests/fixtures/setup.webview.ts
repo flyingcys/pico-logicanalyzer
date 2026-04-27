@@ -34,15 +34,22 @@ if (typeof HTMLCanvasElement !== 'undefined') {
       moveTo: jest.fn(),
       lineTo: jest.fn(),
       stroke: jest.fn(),
+      strokeRect: jest.fn(),
+      fillRect: jest.fn(),
       fillText: jest.fn(),
       save: jest.fn(),
       restore: jest.fn(),
       scale: jest.fn(),
       translate: jest.fn(),
+      setLineDash: jest.fn(),
+      measureText: jest.fn((text: string) => ({ width: text.length * 6 })),
       strokeStyle: '#000000',
       fillStyle: '#000000',
       lineWidth: 1,
-      font: '12px Arial'
+      font: '12px Arial',
+      imageSmoothingEnabled: false,
+      lineCap: 'square',
+      lineJoin: 'miter'
     }))
   });
 
