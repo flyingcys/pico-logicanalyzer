@@ -566,6 +566,71 @@ await exporter.saveToFile(results, 'output.csv');
 3. 使用64位版本的VSCode
 4. 升级系统内存
 
+## 命令行采集
+
+扩展包同时提供 `logic-analyzer-capture` 命令，用于在没有 VSCode 图形界面的环境中执行一次采集并保存文件。它覆盖原版 `CLCapture` 的核心流程：指定设备、采样率、pre/post 样本数、通道、触发和输出文件。
+
+### 基本采集
+
+```bash
+logic-analyzer-capture capture \
+  --device COM3 \
+  --frequency 24000000 \
+  --pre 100 \
+  --post 1000 \
+  --channels 0,1,2,3 \
+  --trigger edge \
+  --trigger-channel 0 \
+  --output capture.lac \
+  --format lac
+```
+
+网络设备使用 `host:port`：
+
+```bash
+logic-analyzer-capture capture \
+  --device 192.168.1.20:4045 \
+  --frequency 1000000 \
+  --pre 0 \
+  --post 5000 \
+  --channels 0-7 \
+  --output capture.csv \
+  --format csv
+```
+
+### 配置文件
+
+可以把采集参数保存为 `.tcs` JSON 文件，便于脚本和 CI 复用：
+
+```bash
+logic-analyzer-capture write-config \
+  --file lab-capture.tcs \
+  --device COM3 \
+  --frequency 1000000 \
+  --pre 16 \
+  --post 1024 \
+  --channels 0,1 \
+  --output lab-capture.lac \
+  --format lac
+
+logic-analyzer-capture capture --config lab-capture.tcs
+```
+
+### 网络配置
+
+Pico W 网络参数可以通过串口设备写入：
+
+```bash
+logic-analyzer-capture network-config \
+  --device COM3 \
+  --ssid LabWifi \
+  --password secret \
+  --ip 192.168.1.50 \
+  --port 4045
+```
+
+当前命令行工具支持 `.lac` 和 `.csv` 输出。`--mock` 仅用于本地验证和文档示例，不代表真实硬件采集。
+
 ## 常见问题
 
 ### Q: 支持哪些操作系统？
