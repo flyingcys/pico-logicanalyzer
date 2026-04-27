@@ -219,6 +219,49 @@ describe('waveformService', () => {
       stop();
     });
   });
+
+  it('applySession 应把 sessionStore 的真实通道、采样率和触发位置装载到 renderer', async () => {
+    jest.resetModules();
+
+    await jest.isolateModulesAsync(async () => {
+      jest.unmock('vue');
+
+      const renderer = {
+        updateVisibleSamples: jest.fn(),
+        setChannels: jest.fn(),
+        setSampleFrequency: jest.fn(),
+        setPreSamples: jest.fn(),
+        setBursts: jest.fn()
+      };
+
+      const { createWaveformService } = await import(
+        '../../../src/frontend/core/services/waveformService'
+      );
+
+      const sessionStore = {
+        sampleRate: 24000000,
+        totalSamples: 4,
+        preTriggerSamples: 1,
+        bursts: [2],
+        channels: [
+          {
+            channelNumber: 0,
+            channelName: 'D0',
+            hidden: false,
+            samples: new Uint8Array([1, 0, 1, 0])
+          }
+        ]
+      };
+
+      createWaveformService(renderer).applySession(sessionStore);
+
+      expect(renderer.setSampleFrequency).toHaveBeenCalledWith(24000000);
+      expect(renderer.setPreSamples).toHaveBeenCalledWith(1);
+      expect(renderer.setBursts).toHaveBeenCalledWith([2]);
+      expect(renderer.setChannels).toHaveBeenCalledWith(sessionStore.channels, 24000000);
+      expect(renderer.updateVisibleSamples).toHaveBeenCalledWith(0, 4);
+    });
+  });
 });
 
 describe('bootstrap 初始化流程', () => {
@@ -294,6 +337,104 @@ describe('bootstrap 初始化流程', () => {
     expect(sessionStore.sampleRate).toBe(24000000);
     expect(sessionStore.totalSamples).toBe(100);
     expect(sessionStore.hasData).toBe(true);
+  });
+
+  it('sessionStore.applyDocument 应把原版 PascalCase .lac Samples 解包为前端通道样本', () => {
+    const actualPinia = jest.requireActual('pinia');
+    const { useSessionStore } = jest.requireActual('../../../src/frontend/core/stores/sessionStore');
+
+    actualPinia.setActivePinia(actualPinia.createPinia());
+
+    const sessionStore = useSessionStore();
+
+    sessionStore.applyDocument({
+      uri: 'file:///tmp/original-samples.lac',
+      fileName: 'original-samples.lac',
+      content: JSON.stringify({
+        Settings: {
+          Frequency: 24000000,
+          PreTriggerSamples: 1,
+          PostTriggerSamples: 3,
+          LoopCount: 0,
+          CaptureChannels: [
+            { ChannelNumber: 0, ChannelName: 'D0' },
+            { ChannelNumber: 1, ChannelName: 'D1' },
+            { ChannelNumber: 2, ChannelName: 'D2', Hidden: true }
+          ]
+        },
+        Samples: [
+          '00000000000000000000000000000001',
+          '00000000000000000000000000000002',
+          '00000000000000000000000000000003',
+          '00000000000000000000000000000000'
+        ],
+        SelectedRegions: [
+          {
+            FirstSample: 1,
+            LastSample: 3,
+            RegionName: '窗口',
+            R: 255,
+            G: 128,
+            B: 0,
+            A: 96
+          }
+        ]
+      })
+    });
+
+    expect(sessionStore.fileName).toBe('original-samples.lac');
+    expect(sessionStore.sampleRate).toBe(24000000);
+    expect(sessionStore.preTriggerSamples).toBe(1);
+    expect(sessionStore.postTriggerSamples).toBe(3);
+    expect(sessionStore.totalSamples).toBe(4);
+    expect(sessionStore.hasData).toBe(true);
+    expect(sessionStore.documentState).toBe('samples');
+    expect(sessionStore.channels).toHaveLength(3);
+    expect(sessionStore.channels[0].channelName).toBe('D0');
+    expect(Array.from(sessionStore.channels[0].samples!)).toEqual([1, 0, 1, 0]);
+    expect(Array.from(sessionStore.channels[1].samples!)).toEqual([0, 1, 1, 0]);
+    expect(sessionStore.channels[2].hidden).toBe(true);
+    expect(Array.from(sessionStore.channels[2].samples!)).toEqual([0, 0, 0, 0]);
+    expect(sessionStore.selectedRegions).toEqual([
+      {
+        firstSample: 1,
+        lastSample: 3,
+        regionName: '窗口',
+        color: 'rgba(255, 128, 0, 0.376)'
+      }
+    ]);
+  });
+
+  it('sessionStore.applyDocument 应把 settings-only 文档标记为无样本状态', () => {
+    const actualPinia = jest.requireActual('pinia');
+    const { useSessionStore } = jest.requireActual('../../../src/frontend/core/stores/sessionStore');
+
+    actualPinia.setActivePinia(actualPinia.createPinia());
+
+    const sessionStore = useSessionStore();
+
+    sessionStore.applyDocument({
+      uri: 'file:///tmp/settings-only.lac',
+      fileName: 'settings-only.lac',
+      content: JSON.stringify({
+        Settings: {
+          Frequency: 12000000,
+          PreTriggerSamples: 4,
+          PostTriggerSamples: 12,
+          CaptureChannels: [
+            { ChannelNumber: 0, ChannelName: 'D0' }
+          ]
+        }
+      })
+    });
+
+    expect(sessionStore.fileName).toBe('settings-only.lac');
+    expect(sessionStore.sampleRate).toBe(12000000);
+    expect(sessionStore.totalSamples).toBe(16);
+    expect(sessionStore.hasData).toBe(false);
+    expect(sessionStore.documentState).toBe('settings-only');
+    expect(sessionStore.channels).toHaveLength(1);
+    expect(sessionStore.channels[0].samples).toBeUndefined();
   });
 
   it('sessionStore.applyDocument 应兼容顶层结构并从 captureChannels.samples 判定数据存在', () => {
