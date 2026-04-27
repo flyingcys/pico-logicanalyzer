@@ -199,12 +199,24 @@ describe('MultiAnalyzerDriver 精准业务逻辑测试', () => {
       expect(LogicAnalyzerDriver).toHaveBeenCalledWith('device3');
 
       // 验证每个设备都设置了事件处理器
-      mockLogicDrivers.forEach(mockDriver => {
+      mockLogicDrivers.forEach((mockDriver, index) => {
         expect(mockDriver.on).toHaveBeenCalledWith(
           'captureCompleted',
           expect.any(Function)
         );
+        expect((mockDriver as any).tag).toBe(index);
       });
+    });
+
+    it('应该同步暴露设备初始化失败，而不是把 async 构造错误吞成未处理 Promise', () => {
+      (LogicAnalyzerDriver as jest.MockedClass<typeof LogicAnalyzerDriver>)
+        .mockImplementationOnce(() => {
+          throw new Error('Device initialization failed');
+        });
+
+      expect(() => new MultiAnalyzerDriver(['device1', 'device2'])).toThrow(
+        /设备连接失败.*Device initialization failed/
+      );
     });
   });
 
@@ -355,6 +367,21 @@ describe('MultiAnalyzerDriver 精准业务逻辑测试', () => {
       const result = await multiDriver.connect();
       expect(result.success).toBe(false);
       expect(result.error).toContain('设备 1 版本无效');
+    });
+
+    it('应该拒绝低于最低支持版本的设备', async () => {
+      Object.defineProperty(mockLogicDrivers[0], 'deviceVersion', {
+        get: () => 'V1_6',
+        configurable: true
+      });
+      Object.defineProperty(mockLogicDrivers[1], 'deviceVersion', {
+        get: () => 'V1_6',
+        configurable: true
+      });
+
+      const result = await multiDriver.connect();
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('设备 0 版本无效');
     });
   });
 
@@ -663,6 +690,51 @@ describe('MultiAnalyzerDriver 精准业务逻辑测试', () => {
       multiDriver = new MultiAnalyzerDriver(['device1', 'device2']);
     });
 
+    it.each([2, 3, 5])('应该按设备索引合并 %i 台设备的采集结果', (deviceCount) => {
+      mockLogicDrivers = [];
+      multiDriver = new MultiAnalyzerDriver(
+        Array.from({ length: deviceCount }, (_, index) => `device${index}`)
+      );
+      const sourceSession = createTestSession({
+        captureChannels: Array.from({ length: deviceCount }, (_, index) =>
+          createTestChannel(index * 24)
+        )
+      });
+      const mergedEvents: CaptureEventArgs[] = [];
+
+      (multiDriver as any)._capturing = true;
+      (multiDriver as any)._sourceSession = sourceSession;
+      (multiDriver as any)._currentCaptureHandler = (args: CaptureEventArgs) => mergedEvents.push(args);
+      (multiDriver as any)._deviceCaptures = Array.from({ length: deviceCount }, () => ({
+        completed: false,
+        session: null
+      }));
+
+      const handlers = mockLogicDrivers
+        .slice(0, deviceCount)
+        .map(driver => driver.on.mock.calls.find(call => call[0] === 'captureCompleted')![1]);
+
+      handlers.forEach((handler, index) => {
+        handler({
+          success: true,
+          session: createTestSession({
+            captureChannels: [
+              {
+                ...createTestChannel(0),
+                samples: new Uint8Array([index + 1])
+              }
+            ]
+          })
+        });
+      });
+
+      expect(mergedEvents).toHaveLength(1);
+      expect(mergedEvents[0].success).toBe(true);
+      expect(sourceSession.captureChannels.map(ch => ch.samples?.[0])).toEqual(
+        Array.from({ length: deviceCount }, (_, index) => index + 1)
+      );
+    });
+
     it('应该处理单个设备采集完成事件', () => {
       const handleDeviceCaptureCompleted = (multiDriver as any).handleDeviceCaptureCompleted.bind(multiDriver);
       
@@ -678,7 +750,6 @@ describe('MultiAnalyzerDriver 精准业务逻辑测试', () => {
         success: true,
         session: createTestSession()
       };
-      (eventArgs.session as any).deviceTag = 0;
 
       handleDeviceCaptureCompleted(eventArgs);
 
@@ -814,30 +885,6 @@ describe('MultiAnalyzerDriver 精准业务逻辑测试', () => {
   });
 
   describe('边界条件和异常处理', () => {
-    // IMPORTANT: 发现源码设计问题 - MultiAnalyzerDriver构造函数中调用async方法但没有await
-    // 这是 @src 源码中的真实问题，需要在源码层面修复
-    it.skip('应该处理设备初始化失败 - SKIP: 源码设计缺陷', () => {
-      // 源码问题：MultiAnalyzerDriver.constructor调用async initializeDevices但没有await
-      // 这导致async错误无法被构造函数正确处理
-      // 建议修复：将initializeDevices改为同步方法，或提供异步初始化接口
-      
-      // Mock LogicAnalyzerDriver构造函数抛出错误
-      (LogicAnalyzerDriver as jest.MockedClass<typeof LogicAnalyzerDriver>)
-        .mockImplementationOnce(() => {
-          throw new Error('Device initialization failed');
-        });
-
-      let caughtError: Error | null = null;
-      try {
-        new MultiAnalyzerDriver(['device1', 'device2']);
-      } catch (error) {
-        caughtError = error as Error;
-      }
-
-      expect(caughtError).not.toBeNull();
-      expect(caughtError?.message).toMatch(/设备连接失败.*Device initialization failed/);
-    });
-
     describe('正常初始化后的边界条件', () => {
       beforeEach(() => {
         multiDriver = new MultiAnalyzerDriver(['device1', 'device2']);

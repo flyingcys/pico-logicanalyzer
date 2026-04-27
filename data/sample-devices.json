@@ -4,6 +4,183 @@
   "lastUpdated": "2024-01-15T10:00:00.000Z",
   "entries": [
     {
+      "deviceId": "pico-logicanalyzer-original",
+      "manufacturer": "Pico LogicAnalyzer",
+      "model": "Pico Logic Analyzer",
+      "version": "1.x",
+      "category": "serial-la",
+      "identifiers": {
+        "vendorId": "1209",
+        "productId": "3020",
+        "serialPattern": "LA-*"
+      },
+      "driverCompatibility": {
+        "primaryDriver": "LogicAnalyzerDriver",
+        "alternativeDrivers": [],
+        "driverVersion": "1.0.0",
+        "compatibilityLevel": "full",
+        "knownIssues": [],
+        "workarounds": []
+      },
+      "capabilities": {
+        "channels": {
+          "digital": 24,
+          "analog": 0,
+          "maxVoltage": 5.0,
+          "inputImpedance": 1000000,
+          "thresholdVoltages": [3.3, 5.0]
+        },
+        "sampling": {
+          "maxRate": 100000000,
+          "minRate": 1000,
+          "supportedRates": [1000, 10000, 100000, 1000000, 10000000, 100000000],
+          "bufferSize": 24000,
+          "streamingSupport": false,
+          "compressionSupport": false
+        },
+        "triggers": {
+          "types": ["edge", "pattern", "fast", "blast"],
+          "maxChannels": 16,
+          "advancedTriggers": true,
+          "triggerPosition": true
+        },
+        "protocol": {
+          "supportedProtocols": ["uart", "spi", "i2c"],
+          "hardwareDecoding": false,
+          "customProtocols": false
+        },
+        "advanced": {
+          "memorySegmentation": false,
+          "externalClock": false,
+          "calibration": false,
+          "selfTest": false
+        }
+      },
+      "connectionOptions": {
+        "defaultConnectionString": "COM7",
+        "alternativeConnections": ["/dev/ttyACM0", "/dev/ttyACM1"],
+        "connectionParameters": {
+          "baudRate": 921600,
+          "dataBits": 8,
+          "stopBits": 1,
+          "parity": "none",
+          "timeout": 5000,
+          "dtr": true,
+          "rts": false
+        }
+      },
+      "testStatus": {
+        "lastTested": "2026-04-27T00:00:00.000Z",
+        "testResults": {
+          "driverValidation": 90,
+          "functionalTests": 0,
+          "performanceGrade": "B",
+          "reliability": "pending-hardware"
+        },
+        "certificationLevel": "fixture"
+      },
+      "communityFeedback": {
+        "userRating": 0,
+        "reportCount": 0,
+        "commonIssues": [],
+        "userComments": []
+      },
+      "metadata": {
+        "addedDate": "2026-04-27T00:00:00.000Z",
+        "lastUpdated": "2026-04-27T00:00:00.000Z",
+        "maintainer": "Logic Analyzer Team",
+        "documentationUrl": "docs/logicanalyzer/07-device-management.md",
+        "vendorUrl": "logicanalyzer/README.md",
+        "supportStatus": "active"
+      }
+    },
+    {
+      "deviceId": "raspberry-pi-pico-candidate",
+      "manufacturer": "Raspberry Pi",
+      "model": "Raspberry Pi Pico",
+      "version": "RP2040",
+      "category": "serial-candidate",
+      "identifiers": {
+        "vendorId": "2E8A",
+        "productId": "0003",
+        "serialPattern": "*"
+      },
+      "driverCompatibility": {
+        "primaryDriver": "LogicAnalyzerDriver",
+        "alternativeDrivers": ["SigrokAdapter"],
+        "driverVersion": "1.0.0",
+        "compatibilityLevel": "experimental",
+        "knownIssues": ["普通 Pico 只有在固件握手确认后才能作为逻辑分析器使用"],
+        "workarounds": ["连接后执行版本握手，确认返回 LOGIC_ANALYZER_Vx_y"]
+      },
+      "capabilities": {
+        "channels": {
+          "digital": 0,
+          "analog": 0,
+          "maxVoltage": 3.3,
+          "inputImpedance": 1000000,
+          "thresholdVoltages": [3.3]
+        },
+        "sampling": {
+          "maxRate": 0,
+          "minRate": 0,
+          "supportedRates": [],
+          "bufferSize": 0,
+          "streamingSupport": false,
+          "compressionSupport": false
+        },
+        "triggers": {
+          "types": [],
+          "maxChannels": 0,
+          "advancedTriggers": false,
+          "triggerPosition": false
+        },
+        "protocol": {
+          "supportedProtocols": [],
+          "hardwareDecoding": false,
+          "customProtocols": false
+        },
+        "advanced": {
+          "memorySegmentation": false,
+          "externalClock": false,
+          "calibration": false,
+          "selfTest": false
+        }
+      },
+      "connectionOptions": {
+        "defaultConnectionString": "COM8",
+        "alternativeConnections": ["/dev/ttyACM0"],
+        "connectionParameters": {
+          "requiresHandshake": true,
+          "timeout": 5000
+        }
+      },
+      "testStatus": {
+        "lastTested": "2026-04-27T00:00:00.000Z",
+        "testResults": {
+          "driverValidation": 45,
+          "functionalTests": 0,
+          "performanceGrade": "N/A",
+          "reliability": "candidate"
+        },
+        "certificationLevel": "candidate"
+      },
+      "communityFeedback": {
+        "userRating": 0,
+        "reportCount": 0,
+        "commonIssues": ["需要固件握手确认"],
+        "userComments": []
+      },
+      "metadata": {
+        "addedDate": "2026-04-27T00:00:00.000Z",
+        "lastUpdated": "2026-04-27T00:00:00.000Z",
+        "maintainer": "Logic Analyzer Team",
+        "documentationUrl": "docs/logicanalyzer/07-device-management.md",
+        "vendorUrl": "https://www.raspberrypi.com/products/raspberry-pi-pico/",
+        "supportStatus": "candidate"
+      }
+    },
+    {
       "deviceId": "example-usb-analyzer",
       "manufacturer": "Example Corp",
       "model": "USB Logic Analyzer Pro",
