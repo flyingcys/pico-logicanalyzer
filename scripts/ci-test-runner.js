@@ -87,6 +87,59 @@ const CI_CONFIG = {
   }
 };
 
+const QUALITY_COMMANDS = [
+  'npm run typecheck',
+  'npm run typecheck:strict',
+  'npm run lint',
+  'npm run test:ci:quick',
+  'npm run package:dry'
+];
+
+function parseArguments(args = process.argv.slice(2)) {
+  const layerArg = args.find(arg => arg.startsWith('--layer='));
+  return {
+    layer: layerArg ? layerArg.split('=')[1] : 'standard',
+    dryRun: args.includes('--dry-run'),
+    skipInstall: args.includes('--skip-install')
+  };
+}
+
+function createExecutionPlan(args = process.argv.slice(2)) {
+  const parsed = parseArguments(args);
+
+  if (!CI_CONFIG.testLayers[parsed.layer] && parsed.layer !== 'legacy') {
+    throw new Error(
+      `无效的测试层级: ${parsed.layer}。可用层级: ${Object.keys(CI_CONFIG.testLayers).join(', ')}, legacy`
+    );
+  }
+
+  return {
+    layer: parsed.layer,
+    dryRun: parsed.dryRun,
+    installDependencies: !parsed.dryRun && !parsed.skipInstall,
+    runTests: !parsed.dryRun,
+    runQualityCheck: !parsed.dryRun,
+    commands: QUALITY_COMMANDS
+  };
+}
+
+function formatDryRunReport(plan) {
+  const lines = [
+    'CI dry-run 执行计划',
+    `测试层级: ${plan.layer}`,
+    `安装依赖: ${plan.installDependencies ? '是' : '否'}`,
+    `运行测试: ${plan.runTests ? '是' : '否'}`,
+    `运行质量检查: ${plan.runQualityCheck ? '是' : '否'}`,
+    '关键命令:'
+  ];
+
+  for (const command of plan.commands) {
+    lines.push(`- ${command}`);
+  }
+
+  return lines.join('\n');
+}
+
 // 执行Shell命令并捕获输出
 function executeCommand(command, options = {}) {
   console.log(`🔧 执行: ${command}`);
@@ -600,17 +653,20 @@ async function main() {
   console.log(`📅 时间: ${new Date().toISOString()}`);
   
   // P2.3: 解析命令行参数获取测试层级
-  const args = process.argv.slice(2);
-  const layerArg = args.find(arg => arg.startsWith('--layer='));
-  const layer = layerArg ? layerArg.split('=')[1] : 'standard';
+  let plan;
+  try {
+    plan = createExecutionPlan(process.argv.slice(2));
+  } catch (error) {
+    console.log(`❌ ${error.message}`);
+    process.exit(1);
+  }
+  const { layer } = plan;
   
   console.log(`🎯 测试层级: ${layer}`);
   
-  // 验证层级有效性
-  if (!CI_CONFIG.testLayers[layer]) {
-    console.log(`❌ 无效的测试层级: ${layer}`);
-    console.log(`✅ 可用层级: ${Object.keys(CI_CONFIG.testLayers).join(', ')}`);
-    process.exit(1);
+  if (plan.dryRun) {
+    console.log(formatDryRunReport(plan));
+    process.exit(0);
   }
   
   // 1. 检查环境
@@ -620,7 +676,7 @@ async function main() {
   }
   
   // 2. 安装依赖
-  if (!installDependencies()) {
+  if (plan.installDependencies && !installDependencies()) {
     console.log('❌ 依赖安装失败');
     process.exit(1);
   }
@@ -681,4 +737,10 @@ if (require.main === module) {
   });
 }
 
-module.exports = { runCoreTests, checkEnvironment, installDependencies };
+module.exports = {
+  runCoreTests,
+  checkEnvironment,
+  installDependencies,
+  createExecutionPlan,
+  formatDryRunReport
+};

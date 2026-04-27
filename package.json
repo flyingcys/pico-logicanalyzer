@@ -9,13 +9,13 @@
     "email": "team@logicanalyzer-vscode.com"
   },
   "license": "MIT",
-  "homepage": "https://github.com/your-repo/vscode-logicanalyzer",
+  "homepage": "https://github.com/pico-logicanalyzer/vscode-logic-analyzer",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-repo/vscode-logicanalyzer.git"
+    "url": "https://github.com/pico-logicanalyzer/vscode-logic-analyzer.git"
   },
   "bugs": {
-    "url": "https://github.com/your-repo/vscode-logicanalyzer/issues"
+    "url": "https://github.com/pico-logicanalyzer/vscode-logic-analyzer/issues"
   },
   "keywords": [
     "logic analyzer",
@@ -240,7 +240,7 @@
     "lint:fix": "eslint src --ext .ts,.vue --fix",
     "format": "prettier --write \"src/**/*.{ts,vue,js,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,vue,js,json}\"",
-    "validate": "npm run typecheck && npm run lint && npm run format:check",
+    "validate": "npm run validate:local",
     "db:query": "ts-node scripts/manage-database.ts query",
     "db:stats": "ts-node scripts/manage-database.ts stats",
     "db:discover": "ts-node scripts/manage-database.ts discover",
@@ -257,8 +257,15 @@
     "package": "npm run build:production && printf 'y\\n' | vsce package --allow-missing-repository --allow-star-activation --no-dependencies --no-yarn",
     "package:test": "npm run package && code --install-extension *.vsix",
     "publish": "npm run release:check && npm run package && vsce publish",
-    "publish:dry": "npm run package && vsce package --dry-run",
-    "prepare": "husky"
+    "publish:dry": "npm run package:dry",
+    "prepare": "husky",
+    "typecheck:strict": "tsc --project tsconfig.strict.json --noEmit",
+    "test:ci:quick": "node scripts/ci-test-runner.js --layer=quick",
+    "test:ci:standard": "node scripts/ci-test-runner.js --layer=standard",
+    "test:ci:full": "node scripts/ci-test-runner.js --layer=full",
+    "validate:local": "npm run typecheck && npm run typecheck:strict && npm run lint && node scripts/ci-test-runner.js --layer=quick --dry-run",
+    "validate:ci": "npm run typecheck && npm run typecheck:strict && npm run lint && npm run test:ci:quick",
+    "package:dry": "vsce ls --no-dependencies --no-yarn"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^5.16.0",

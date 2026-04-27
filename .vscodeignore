@@ -2,6 +2,15 @@
 
 # 开发和构建相关
 node_modules/
+.git
+.git/
+.github/
+.husky/
+.vscode/
+.recovery-checkpoints/
+archive/
+*.backup
+src/
 src/**/*.ts
 !out/**
 .vscode-test/
@@ -31,6 +40,8 @@ scripts/
 
 # 其他开发文件
 .eslintcache
+.eslintignore
+.prettierignore
 build.sh
 .gitignore
 11.md

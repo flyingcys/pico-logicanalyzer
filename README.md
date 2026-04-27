@@ -6,12 +6,13 @@
 
 本项目已具备 VSCode 扩展入口、Vue3 Webview、硬件驱动抽象层、核心协议解码器、`.lac` 文件处理、数据导出服务和多层测试目录。当前仍处于 Beta/工程整备阶段，不应按生产就绪发布。
 
-最近一次代码审查验证结果（2026-04-27）：
+最近一次质量基线验证结果（2026-04-27）：
 
-- `npm run build` 可以完成打包，但 webpack 当前使用 `transpileOnly`，构建不会阻塞 TypeScript 类型错误。
-- `npm run typecheck` 失败，主要问题在 `driver-sdk/templates/GenericDriverTemplate.ts`、`src/extension.ts`、`src/models/UnifiedDataFormat.ts`、`src/services/DataExportService.ts`、`src/services/stage7-self-test.ts`、`src/utils/MemoryManager.ts`。
-- 部分测试仍引用已弃用的 `utest/mocks` 路径，测试迁移未完成。
-- 详细现状和下一步见 [当前现状与下一步计划](docs/current-status-and-next-steps-2026-04-27.md)。
+- `npm run typecheck` 和 `npm run lint` 是当前基础门禁。
+- `npm run typecheck:strict` 是分阶段 strict gate，当前先覆盖核心类型模块 `src/models/AnalyzerTypes.ts` 与 `src/decoders/types.ts`。
+- `node scripts/ci-test-runner.js --layer=quick --dry-run` 用于本地验证 CI 执行计划，不会安装依赖或运行长测试。
+- 功能声明以 [功能状态矩阵](docs/功能状态矩阵.md) 和 [真实硬件认证矩阵](docs/真实硬件认证矩阵.md) 为准。
+- 详细差距和并行任务拆分见 [logicanalyzer 差距深度分析](docs/logicanalyzer-差距深度分析-2026-04-27.md)。
 
 ## 🎯 项目愿景
 
@@ -29,14 +30,14 @@
 ## ✨ 主要特性
 
 ### 🔧 硬件支持
-- **多品牌兼容**: 支持 Saleae Logic、Kingst LA、Pico Logic 等主流硬件
+- **Pico Logic 基础驱动**: 已有协议和连接框架，真实采集闭环仍按实验性处理
+- **多品牌扩展框架**: Saleae、Rigol、Siglent、sigrok 适配仍需真实硬件认证
 - **统一接口**: 标准化的硬件抽象层，简化设备切换
-- **即插即用**: 自动检测和配置支持的逻辑分析器设备
 
 ### 📊 数据分析
-- **实时采集**: 高速数据捕获，支持最高 100MHz 采样率
-- **协议解码**: 内置 I2C、SPI、UART 等常用协议解码器
-- **波形显示**: 流畅的 60fps 波形渲染，支持百万数据点
+- **采集模型**: 提供采集会话、通道和 `.lac` 相关模型
+- **协议解码**: 内置 I2C、SPI、UART 解码器，后续需要 sigrok golden 对齐
+- **波形显示**: Vue3 Webview 和渲染框架已存在，真实大样本交互仍在迁移中
 
 ### 🌍 跨平台
 - **全平台支持**: Windows、macOS、Linux 完整兼容
@@ -57,6 +58,8 @@
 2. 前往扩展市场 (Ctrl+Shift+X)
 3. 搜索 "Logic Analyzer"
 4. 点击安装
+
+当前仓库仍处于 Beta/工程整备阶段。如需本地体验，请优先从源码构建 VSIX，而不是按生产发布插件使用。
 
 ### 连接设备
 
@@ -80,11 +83,15 @@
 
 | 厂商 | 型号 | 通道数 | 最大频率 | 状态 |
 |------|------|--------|----------|------|
-| Saleae | Logic 8 | 8 | 100MHz | ✅ 完整支持 |
-| Saleae | Logic Pro 16 | 16 | 500MHz | ✅ 完整支持 |
-| Kingst | LA1010 | 16 | 200MHz | 🔄 开发中 |
-| DreamSourceLab | DSLogic | 16 | 400MHz | 📋 计划中 |
-| Pico Logic | Custom | 24 | 100MHz | ✅ 完整支持 |
+| 厂商 | 型号 | 通道数 | 最大频率 | 状态 |
+|------|------|--------|----------|------|
+| Pico Logic | Pico / Pico W / Pico 2 系列 | 24 | 依固件能力 | 实验性，待真实硬件认证 |
+| Saleae | Logic 8 / Logic Pro 16 | 8 / 16 | 依设备能力 | 实验性适配，待认证 |
+| Rigol / Siglent | 含逻辑分析能力的示波器型号 | 依型号 | 依型号 | 实验性 SCPI 框架 |
+| sigrok | `sigrok-cli` 支持设备 | 依设备 | 依设备 | 实验性外部工具适配 |
+| Kingst / DreamSourceLab | 待定 | 待定 | 待定 | 规划中 |
+
+完整状态见 [真实硬件认证矩阵](docs/真实硬件认证矩阵.md)。
 
 ## 🔧 协议解码器
 
@@ -93,8 +100,7 @@
 - **I2C**: 完整的地址、数据解码，错误检测
 - **SPI**: 支持多种模式，可配置位序
 - **UART**: 波特率自动检测，奇偶校验支持
-- **1-Wire**: Dallas/Maxim 单总线协议
-- **CAN**: 基础帧格式解码
+- **更多协议**: CAN、LIN、I2S、USB、JTAG/SWD 等仍为规划中
 
 ### 自定义解码器
 
@@ -128,7 +134,7 @@ vscode-logicanalyzer/
 │   ├── decoders/          # 协议解码器
 │   ├── webview/           # Vue前端界面
 │   └── models/            # 数据模型
-├── test/                  # 测试文件
+├── tests/                 # 测试文件
 ├── docs/                  # 文档
 └── package.json
 ```
@@ -151,8 +157,14 @@ npm test
 # 类型检查
 npm run typecheck
 
+# 分阶段 strict gate
+npm run typecheck:strict
+
 # 代码检查
 npm run lint
+
+# 本地质量门禁
+npm run validate
 ```
 
 ### 添加新硬件支持
@@ -190,16 +202,17 @@ npm run lint
 - 🔄 发布检查和真实硬件回归验证
 
 ### v1.0.0-beta.0 (当前)
-- ✅ 测试框架和优化完成
-- ✅ 性能基准和内存检测
+- ✅ VSCode 扩展、Vue3 Webview、驱动抽象和基础解码器框架已建立
+- 🔄 strict gate、CI 和本地质量门禁恢复中
 - 🔄 文档与源码状态同步中
+- 🔄 真实硬件认证矩阵待补证据
 
 ## 🤝 贡献指南
 
 我们欢迎各种形式的贡献：
 
 ### 报告问题
-在 [Issues](https://github.com/your-repo/vscode-logicanalyzer/issues) 页面报告 bug 或请求新功能。
+在 [Issues](https://github.com/pico-logicanalyzer/vscode-logic-analyzer/issues) 页面报告 bug 或请求新功能。
 
 ### 提交代码
 1. Fork 本仓库
@@ -229,10 +242,10 @@ npm run lint
 
 ## 📞 联系方式
 
-- **项目主页**: [https://github.com/your-repo/vscode-logicanalyzer](https://github.com/your-repo/vscode-logicanalyzer)
+- **项目主页**: [https://github.com/pico-logicanalyzer/vscode-logic-analyzer](https://github.com/pico-logicanalyzer/vscode-logic-analyzer)
 - **文档站点**: [https://docs.logicanalyzer-vscode.com](https://docs.logicanalyzer-vscode.com)
-- **问题反馈**: [Issues](https://github.com/your-repo/vscode-logicanalyzer/issues)
-- **讨论社区**: [Discussions](https://github.com/your-repo/vscode-logicanalyzer/discussions)
+- **问题反馈**: [Issues](https://github.com/pico-logicanalyzer/vscode-logic-analyzer/issues)
+- **讨论社区**: [Discussions](https://github.com/pico-logicanalyzer/vscode-logic-analyzer/discussions)
 
 ---
 
