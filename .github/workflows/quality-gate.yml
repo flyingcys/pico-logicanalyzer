@@ -1,0 +1,51 @@
+name: 质量门禁
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+      - 'parallel/**'
+
+jobs:
+  quality:
+    name: typecheck / lint / tests / package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: TypeScript 基线检查
+        run: npm run typecheck
+
+      - name: Strict 分阶段检查
+        run: npm run typecheck:strict
+
+      - name: ESLint 检查
+        run: npm run lint
+
+      - name: Quick CI 测试
+        run: npm run test:ci:quick -- --skip-install
+
+      - name: Webview 单元测试
+        run: npm run test:webview:unit
+
+      - name: Driver 测试
+        run: npm run test:drivers -- --runInBand
+
+      - name: Decoder 测试
+        run: npm run test:decoders -- --runInBand
+
+      - name: VSIX 打包 dry run
+        run: npm run package:dry
