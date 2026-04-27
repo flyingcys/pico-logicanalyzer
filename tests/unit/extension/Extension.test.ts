@@ -30,7 +30,10 @@ jest.mock('vscode', () => ({
     },
   },
   Uri: {
-    file: jest.fn((fsPath: string) => ({ fsPath })),
+    file: jest.fn((fsPath: string) => ({
+      fsPath,
+      toString: () => `file://${fsPath}`
+    })),
   },
   ProgressLocation: {
     Notification: 15,
@@ -89,6 +92,14 @@ describe('VSCode Extension 主入口测试', () => {
       );
       expect(mockVSCode.commands.registerCommand).toHaveBeenCalledWith(
         'logicAnalyzer.startCapture',
+        expect.any(Function)
+      );
+      expect(mockVSCode.commands.registerCommand).toHaveBeenCalledWith(
+        'logicAnalyzer.stopCapture',
+        expect.any(Function)
+      );
+      expect(mockVSCode.commands.registerCommand).toHaveBeenCalledWith(
+        'logicAnalyzer.repeatCapture',
         expect.any(Function)
       );
     });
@@ -289,8 +300,7 @@ describe('VSCode Extension 主入口测试', () => {
 
       // Assert - 验证所有组件都已注册
       expect(context.subscriptions.length).toBeGreaterThan(0);
-      // 源代码中实际注册了7个命令，包含合成采集生成入口
-      expect(mockVSCode.commands.registerCommand).toHaveBeenCalledTimes(7);
+      expect(mockVSCode.commands.registerCommand).toHaveBeenCalledTimes(9);
 
       // Act - 去激活
       deactivate();

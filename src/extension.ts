@@ -12,6 +12,27 @@ import {
   SignalDslParseError
 } from './services/SignalDescriptionLanguage';
 
+interface CaptureWorkflowChannel {
+  number: number;
+  name?: string;
+  enabled?: boolean;
+}
+
+interface CaptureWorkflowConfig {
+  frequency: number;
+  preTriggerSamples: number;
+  postTriggerSamples: number;
+  triggerType: TriggerType | keyof typeof TriggerType | string;
+  triggerChannel: number;
+  triggerInverted?: boolean;
+  triggerPattern?: number;
+  triggerBitCount?: number;
+  loopCount?: number;
+  measureBursts?: boolean;
+  activeChannels?: number[];
+  channels?: CaptureWorkflowChannel[];
+}
+
 // 服务依赖接口
 export interface ExtensionServices {
   wifiDiscoveryService?: WiFiDeviceDiscovery;
@@ -21,6 +42,7 @@ export interface ExtensionServices {
 // 全局服务实例
 let wifiDiscoveryService: WiFiDeviceDiscovery;
 let networkStabilityService: NetworkStabilityService;
+let lastCaptureConfig: CaptureWorkflowConfig | null = null;
 
 export function activate(context: vscode.ExtensionContext, services?: ExtensionServices) {
   console.log('VSCode Logic Analyzer插件正在激活...');
@@ -208,88 +230,38 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
         return;
       }
 
-      // 创建采集会话
-      const captureSession = createCaptureSession(captureConfig);
-
-      // 显示进度条并开始采集
-      await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: '数据采集中...',
-        cancellable: true
-      }, async (progress, token) => {
-        return new Promise<void>((resolve, reject) => {
-          let progressValue = 0;
-
-          // 设置进度更新定时器
-          const progressTimer = setInterval(() => {
-            if (progressValue < 90) {
-              progressValue += 10;
-              progress.report({
-                increment: 10,
-                message: `采集进度: ${progressValue}%`
-              });
-            }
-          }, 500);
-
-          // 采集完成处理函数
-          const captureCompletedHandler = async (args: { success: boolean; session: CaptureSession }) => {
-            clearInterval(progressTimer);
-
-            if (args.success && args.session) {
-              progress.report({ increment: 10, message: '采集完成，正在处理数据...' });
-
-              try {
-                // 保存采集数据到工作区
-                await saveCaptureData(args.session);
-
-                vscode.window.showInformationMessage(
-                  `数据采集成功！共采集 ${args.session.totalSamples} 个样本`
-                );
-                resolve();
-              } catch (saveError) {
-                vscode.window.showErrorMessage(`保存采集数据失败: ${saveError}`);
-                reject(saveError);
-              }
-            } else {
-              clearInterval(progressTimer);
-              const errorMsg = '采集失败';
-              vscode.window.showErrorMessage(`数据采集失败: ${errorMsg}`);
-              reject(new Error(errorMsg));
-            }
-          };
-
-          // 取消处理
-          token.onCancellationRequested(() => {
-            clearInterval(progressTimer);
-            currentDevice.stopCapture().then(() => {
-              vscode.window.showInformationMessage('数据采集已取消');
-              resolve();
-            }).catch(error => {
-              vscode.window.showErrorMessage(`停止采集失败: ${error}`);
-              reject(error);
-            });
-          });
-
-          // 开始采集
-          currentDevice.startCapture(captureSession, captureCompletedHandler)
-            .then(result => {
-              if (result !== CaptureError.None) {
-                clearInterval(progressTimer);
-                const errorMsg = `采集启动失败，错误代码: ${result}`;
-                vscode.window.showErrorMessage(errorMsg);
-                reject(new Error(errorMsg));
-              }
-            })
-            .catch(error => {
-              clearInterval(progressTimer);
-              vscode.window.showErrorMessage(`启动采集异常: ${error}`);
-              reject(error);
-            });
-        });
-      });
+      await runCaptureWithProgress(captureConfig, { saveToWorkspace: true });
 
     } catch (error) {
       vscode.window.showErrorMessage(`数据采集失败: ${error}`);
+    }
+  });
+
+  const stopCaptureCommand = vscode.commands.registerCommand('logicAnalyzer.stopCapture', async () => {
+    const currentDevice = hardwareDriverManager.getCurrentDevice();
+    if (!currentDevice) {
+      vscode.window.showWarningMessage('当前没有已连接设备');
+      return;
+    }
+
+    const stopped = await currentDevice.stopCapture();
+    if (stopped) {
+      vscode.window.showInformationMessage('数据采集已停止');
+    } else {
+      vscode.window.showWarningMessage('当前没有正在进行的采集');
+    }
+  });
+
+  const repeatCaptureCommand = vscode.commands.registerCommand('logicAnalyzer.repeatCapture', async () => {
+    if (!lastCaptureConfig) {
+      vscode.window.showWarningMessage('没有可重复执行的采集配置');
+      return;
+    }
+
+    try {
+      await runCaptureWithProgress(lastCaptureConfig, { saveToWorkspace: true });
+    } catch (error) {
+      vscode.window.showErrorMessage(`重复采集失败: ${error}`);
     }
   });
 
@@ -485,6 +457,8 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
     openAnalyzerCommand,
     connectDeviceCommand,
     startCaptureCommand,
+    stopCaptureCommand,
+    repeatCaptureCommand,
     scanNetworkDevicesCommand,
     networkDiagnosticsCommand,
     configureWiFiCommand,
@@ -585,6 +559,108 @@ async function connectToNetworkDevice(host: string, port: number): Promise<void>
   }
 }
 
+async function runCaptureWithProgress(
+  config: CaptureWorkflowConfig,
+  options: { saveToWorkspace: boolean }
+): Promise<CaptureSession> {
+  const currentDevice = hardwareDriverManager.getCurrentDevice();
+  if (!currentDevice) {
+    throw new Error('请先连接逻辑分析器设备');
+  }
+
+  const captureSession = createCaptureSession(config);
+  lastCaptureConfig = cloneCaptureWorkflowConfig(config);
+
+  return vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: '数据采集中...',
+    cancellable: true
+  }, async (progress, token) => {
+    return new Promise<CaptureSession>((resolve, reject) => {
+      let progressValue = 0;
+      let finished = false;
+
+      const progressTimer = setInterval(() => {
+        if (progressValue < 90) {
+          progressValue += 10;
+          progress.report({
+            increment: 10,
+            message: `采集进度: ${progressValue}%`
+          });
+        }
+      }, 500);
+
+      const finish = () => {
+        finished = true;
+        clearInterval(progressTimer);
+      };
+
+      token.onCancellationRequested(() => {
+        if (finished) {
+          return;
+        }
+
+        finish();
+        currentDevice.stopCapture().then(() => {
+          vscode.window.showInformationMessage('数据采集已取消');
+          reject(new Error('数据采集已取消'));
+        }).catch(error => {
+          vscode.window.showErrorMessage(`停止采集失败: ${error}`);
+          reject(error);
+        });
+      });
+
+      const captureCompletedHandler = async (args: { success: boolean; session: CaptureSession }) => {
+        if (finished) {
+          return;
+        }
+
+        finish();
+
+        if (!args.success || !args.session) {
+          const errorMsg = '采集失败';
+          vscode.window.showErrorMessage(`数据采集失败: ${errorMsg}`);
+          reject(new Error(errorMsg));
+          return;
+        }
+
+        progress.report({ increment: 10, message: '采集完成，正在处理数据...' });
+
+        try {
+          if (options.saveToWorkspace) {
+            await saveCaptureData(args.session);
+          }
+
+          vscode.window.showInformationMessage(
+            `数据采集成功！共采集 ${args.session.totalSamples} 个样本`
+          );
+          resolve(args.session);
+        } catch (saveError) {
+          vscode.window.showErrorMessage(`保存采集数据失败: ${saveError}`);
+          reject(saveError);
+        }
+      };
+
+      currentDevice.startCapture(captureSession, captureCompletedHandler)
+        .then(result => {
+          if (result !== CaptureError.None && !finished) {
+            finish();
+            const errorMsg = `采集启动失败，错误代码: ${result}`;
+            vscode.window.showErrorMessage(errorMsg);
+            reject(new Error(errorMsg));
+          }
+        })
+        .catch(error => {
+          if (!finished) {
+            finish();
+            vscode.window.showErrorMessage(`启动采集异常: ${error}`);
+            reject(error);
+          }
+        });
+    });
+  });
+}
+
 // 解析网络地址的辅助函数
 function parseNetworkAddress(address: string): { host: string; port: number } {
   const parts = address.split(':');
@@ -603,7 +679,7 @@ function parseNetworkAddress(address: string): { host: string; port: number } {
 }
 
 // 获取采集配置的辅助函数
-async function getCaptureConfiguration(): Promise<any> {
+async function getCaptureConfiguration(): Promise<CaptureWorkflowConfig | null> {
   try {
     // 采样频率配置
     const frequencyInput = await vscode.window.showInputBox({
@@ -620,20 +696,40 @@ async function getCaptureConfiguration(): Promise<any> {
 
     if (!frequencyInput) return null;
 
-    // 采样数量配置
-    const samplesInput = await vscode.window.showInputBox({
-      prompt: '请输入采样数量',
-      value: '1000',
+    const preSamplesInput = await vscode.window.showInputBox({
+      prompt: '请输入触发前样本数量',
+      value: `${lastCaptureConfig?.preTriggerSamples ?? 100}`,
       validateInput: (value) => {
         const samples = parseInt(value);
-        if (isNaN(samples) || samples < 10 || samples > 1000000) {
-          return '采样数量必须在10-1000000之间';
+        if (isNaN(samples) || samples < 0 || samples > 1000000) {
+          return '触发前样本数量必须在0-1000000之间';
         }
         return null;
       }
     });
 
-    if (!samplesInput) return null;
+    if (!preSamplesInput) return null;
+
+    const postSamplesInput = await vscode.window.showInputBox({
+      prompt: '请输入触发后样本数量',
+      value: `${lastCaptureConfig?.postTriggerSamples ?? 1000}`,
+      validateInput: (value) => {
+        const samples = parseInt(value);
+        if (isNaN(samples) || samples < 1 || samples > 1000000) {
+          return '触发后样本数量必须在1-1000000之间';
+        }
+        return null;
+      }
+    });
+
+    if (!postSamplesInput) return null;
+
+    const triggerTypeItem = await vscode.window.showQuickPick(
+      ['Edge', 'Fast', 'Complex', 'Blast'],
+      { placeHolder: '选择触发模式' }
+    );
+
+    if (!triggerTypeItem) return null;
 
     // 触发通道配置
     const triggerChannelInput = await vscode.window.showInputBox({
@@ -665,11 +761,24 @@ async function getCaptureConfiguration(): Promise<any> {
 
     if (!activeChannelsInput) return null;
 
+    const channelNumbers = activeChannelsInput.split(',').map(ch => parseInt(ch.trim()));
+    const channels = channelNumbers.map(channelNumber => ({
+      number: channelNumber,
+      name: `Channel ${channelNumber + 1}`,
+      enabled: true
+    }));
+
     return {
       frequency: parseInt(frequencyInput),
-      samples: parseInt(samplesInput),
+      preTriggerSamples: parseInt(preSamplesInput),
+      postTriggerSamples: parseInt(postSamplesInput),
+      triggerType: triggerTypeItem,
       triggerChannel: parseInt(triggerChannelInput),
-      activeChannels: activeChannelsInput.split(',').map(ch => parseInt(ch.trim()))
+      triggerInverted: false,
+      loopCount: triggerTypeItem === 'Blast' ? 1 : 0,
+      measureBursts: triggerTypeItem === 'Blast',
+      channels,
+      activeChannels: channelNumbers
     };
   } catch (error) {
     vscode.window.showErrorMessage(`获取采集配置失败: ${error}`);
@@ -678,24 +787,77 @@ async function getCaptureConfiguration(): Promise<any> {
 }
 
 // 创建采集会话的辅助函数
-function createCaptureSession(config: any): CaptureSession {
+function createCaptureSession(config: CaptureWorkflowConfig): CaptureSession {
   const session = new CaptureSession();
 
   // 基础配置
   session.frequency = config.frequency;
-  session.postTriggerSamples = config.samples;
-  session.preTriggerSamples = Math.floor(config.samples * 0.1); // 10%预触发
+  session.postTriggerSamples = config.postTriggerSamples;
+  session.preTriggerSamples = config.preTriggerSamples;
   session.triggerChannel = config.triggerChannel;
-  session.triggerType = TriggerType.Edge; // 使用边沿触发
+  session.triggerType = parseTriggerType(config.triggerType);
+  session.triggerInverted = config.triggerInverted ?? false;
+  session.triggerPattern = config.triggerPattern ?? 0;
+  session.triggerBitCount = config.triggerBitCount ?? 1;
+  session.loopCount = config.loopCount ?? 0;
+  session.measureBursts = config.measureBursts ?? false;
 
   // 配置活动通道
-  session.captureChannels = config.activeChannels.map((channelNum: number) => {
-    const channel = new AnalyzerChannel(channelNum, `Channel ${channelNum + 1}`);
+  const channels = normalizeCaptureChannels(config);
+  session.captureChannels = channels.map(channelConfig => {
+    const channel = new AnalyzerChannel(
+      channelConfig.number,
+      channelConfig.name || `Channel ${channelConfig.number + 1}`
+    );
     channel.hidden = false;
     return channel;
   });
 
   return session;
+}
+
+function parseTriggerType(value: CaptureWorkflowConfig['triggerType']): TriggerType {
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  switch (value) {
+    case 'Fast':
+      return TriggerType.Fast;
+    case 'Complex':
+      return TriggerType.Complex;
+    case 'Blast':
+      return TriggerType.Blast;
+    case 'Edge':
+    default:
+      return TriggerType.Edge;
+  }
+}
+
+function normalizeCaptureChannels(config: CaptureWorkflowConfig): CaptureWorkflowChannel[] {
+  if (Array.isArray(config.channels) && config.channels.length > 0) {
+    return config.channels
+      .filter(channel => channel.enabled !== false)
+      .map(channel => ({
+        number: channel.number,
+        name: channel.name,
+        enabled: true
+      }));
+  }
+
+  return (config.activeChannels ?? [0, 1, 2, 3]).map(number => ({
+    number,
+    name: `Channel ${number + 1}`,
+    enabled: true
+  }));
+}
+
+function cloneCaptureWorkflowConfig(config: CaptureWorkflowConfig): CaptureWorkflowConfig {
+  return {
+    ...config,
+    channels: config.channels?.map(channel => ({ ...channel })),
+    activeChannels: config.activeChannels ? [...config.activeChannels] : undefined
+  };
 }
 
 // 保存采集数据的辅助函数

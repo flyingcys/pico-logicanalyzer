@@ -2,6 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { hardwareDriverManager } from '../drivers/HardwareDriverManager';
+import { CaptureError, TriggerType } from '../models/AnalyzerTypes';
+import { AnalyzerChannel, CaptureSession } from '../models/CaptureModels';
 import { LACFileFormat } from '../models/LACFileFormat';
 import { DataExportService, type ExportOptions } from '../services/DataExportService';
 import { NetworkStabilityService, type DiagnosticResult } from '../services/NetworkStabilityService';
@@ -17,6 +19,28 @@ type HostCommandResult<T = unknown> = {
   data?: T;
   error?: string;
 };
+
+type HostTriggerType = 'Edge' | 'Fast' | 'Complex' | 'Blast';
+
+interface HostCaptureChannelConfig {
+  number: number;
+  name?: string;
+  enabled?: boolean;
+}
+
+interface HostCaptureConfig {
+  frequency: number;
+  preTriggerSamples: number;
+  postTriggerSamples: number;
+  triggerType: HostTriggerType | string | number;
+  triggerChannel: number;
+  triggerInverted?: boolean;
+  triggerPattern?: number;
+  triggerBitCount?: number;
+  loopCount?: number;
+  measureBursts?: boolean;
+  channels: HostCaptureChannelConfig[];
+}
 
 export function createConnectedDeviceInfo({
   host,
@@ -52,6 +76,7 @@ export function createConnectedDeviceInfo({
 export class LACEditorProvider implements vscode.CustomTextEditorProvider {
   private wifiDiscoveryService?: WiFiDeviceDiscovery;
   private networkStabilityService?: NetworkStabilityService;
+  private lastCaptureConfig?: HostCaptureConfig;
 
   public static register(context: vscode.ExtensionContext): vscode.Disposable {
     const provider = new LACEditorProvider(context);
@@ -509,6 +534,12 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
             )
           };
 
+        case 'detectDevices':
+          return {
+            success: true,
+            data: await hardwareDriverManager.detectHardware(false)
+          };
+
         case 'stopScan':
           this.getWiFiDiscoveryService().stopScan();
           return { success: true };
@@ -532,12 +563,19 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
           return this.runNetworkDiagnostics(payload);
 
         case 'connectDevice':
-          await vscode.commands.executeCommand('logicAnalyzer.connectDevice');
-          return { success: true };
+          return this.connectDeviceFromPayload(payload);
 
         case 'startCapture':
-          await vscode.commands.executeCommand('logicAnalyzer.startCapture');
-          return { success: true };
+          return this.startCaptureForDocument(document, payload);
+
+        case 'repeatCapture':
+          return this.repeatCaptureForDocument(document);
+
+        case 'getStatus':
+          return {
+            success: true,
+            data: await this.createDeviceStatus()
+          };
 
         case 'exportData':
           await this.exportData(document, payload);
@@ -624,6 +662,304 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
           version: result.deviceInfo?.version
         })
       }
+    };
+  }
+
+  private async connectDeviceFromPayload(payload: unknown): Promise<HostCommandResult> {
+    const payloadRecord = this.isRecord(payload) ? payload : undefined;
+    const type = this.readString(payloadRecord, 'type');
+    const address = this.readString(payloadRecord, 'address');
+    const deviceId = this.readString(payloadRecord, 'deviceId');
+
+    if (type === 'network') {
+      const parsed = this.parseNetworkAddress(address || '');
+      if (!parsed) {
+        return {
+          success: false,
+          error: '网络地址格式无效，应为 host:port'
+        };
+      }
+
+      return this.connectToNetworkDevice({
+        host: parsed.host,
+        port: parsed.port
+      });
+    }
+
+    if (type === 'serial' && address) {
+      const result = await hardwareDriverManager.connectToDevice(address);
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || '串口设备连接失败'
+        };
+      }
+
+      return {
+        success: true,
+        data: await this.createDeviceStatus()
+      };
+    }
+
+    if (deviceId) {
+      const result = await hardwareDriverManager.connectToDevice(deviceId);
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || '设备连接失败'
+        };
+      }
+
+      return {
+        success: true,
+        data: await this.createDeviceStatus()
+      };
+    }
+
+    await vscode.commands.executeCommand('logicAnalyzer.connectDevice');
+    return {
+      success: true,
+      data: await this.createDeviceStatus()
+    };
+  }
+
+  private async startCaptureForDocument(
+    document: vscode.TextDocument,
+    payload: unknown
+  ): Promise<HostCommandResult> {
+    const currentDevice = hardwareDriverManager.getCurrentDevice();
+    if (!currentDevice) {
+      return {
+        success: false,
+        error: '请先连接逻辑分析器设备'
+      };
+    }
+
+    const config = this.readCaptureConfig(payload);
+    if (!config) {
+      return {
+        success: false,
+        error: '采集配置无效'
+      };
+    }
+
+    this.lastCaptureConfig = this.cloneCaptureConfig(config);
+    const session = await this.captureWithDevice(config);
+    const lacData = LACFileFormat.createFromCaptureSession(session);
+    await this.saveLACFile(document, lacData);
+
+    return {
+      success: true,
+      data: {
+        ...(await this.createDeviceStatus()),
+        capturedSession: {
+          totalSamples: session.totalSamples,
+          frequency: session.frequency,
+          channelCount: session.captureChannels.length
+        }
+      }
+    };
+  }
+
+  private async repeatCaptureForDocument(document: vscode.TextDocument): Promise<HostCommandResult> {
+    if (!this.lastCaptureConfig) {
+      return {
+        success: false,
+        error: '没有可重复执行的采集配置'
+      };
+    }
+
+    return this.startCaptureForDocument(document, {
+      config: this.lastCaptureConfig
+    });
+  }
+
+  private async captureWithDevice(config: HostCaptureConfig): Promise<CaptureSession> {
+    const currentDevice = hardwareDriverManager.getCurrentDevice();
+    if (!currentDevice) {
+      throw new Error('请先连接逻辑分析器设备');
+    }
+
+    const session = this.createCaptureSession(config);
+
+    return new Promise<CaptureSession>((resolve, reject) => {
+      let settled = false;
+      const finish = (callback: () => void) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        callback();
+      };
+
+      currentDevice.startCapture(session, args => {
+        finish(() => {
+          if (args.success && args.session) {
+            resolve(args.session as CaptureSession);
+          } else {
+            reject(new Error('采集失败'));
+          }
+        });
+      }).then(result => {
+        if (result !== CaptureError.None) {
+          finish(() => reject(new Error(`采集启动失败，错误代码: ${result}`)));
+        }
+      }).catch(error => {
+        finish(() => reject(error));
+      });
+    });
+  }
+
+  private createCaptureSession(config: HostCaptureConfig): CaptureSession {
+    const session = new CaptureSession();
+    session.frequency = config.frequency;
+    session.preTriggerSamples = config.preTriggerSamples;
+    session.postTriggerSamples = config.postTriggerSamples;
+    session.triggerType = this.parseTriggerType(config.triggerType);
+    session.triggerChannel = config.triggerChannel;
+    session.triggerInverted = config.triggerInverted ?? false;
+    session.triggerPattern = config.triggerPattern ?? 0;
+    session.triggerBitCount = config.triggerBitCount ?? 1;
+    session.loopCount = config.loopCount ?? 0;
+    session.measureBursts = config.measureBursts ?? false;
+    session.captureChannels = config.channels
+      .filter(channel => channel.enabled !== false)
+      .map(channel => {
+        const analyzerChannel = new AnalyzerChannel(
+          channel.number,
+          channel.name || `Channel ${channel.number + 1}`
+        );
+        analyzerChannel.hidden = false;
+        return analyzerChannel;
+      });
+
+    return session;
+  }
+
+  private readCaptureConfig(payload: unknown): HostCaptureConfig | null {
+    const payloadRecord = this.isRecord(payload) ? payload : undefined;
+    const configRecord = this.readNestedRecord(payloadRecord, 'config') ?? payloadRecord;
+    if (!configRecord) {
+      return null;
+    }
+
+    const frequency = this.readNumber(configRecord, 'frequency');
+    const preTriggerSamples = this.readNumber(configRecord, 'preTriggerSamples');
+    const postTriggerSamples = this.readNumber(configRecord, 'postTriggerSamples');
+    const triggerChannel = this.readNumber(configRecord, 'triggerChannel');
+    const triggerType = this.readString(configRecord, 'triggerType') ?? 'Edge';
+
+    if (
+      frequency === undefined ||
+      preTriggerSamples === undefined ||
+      postTriggerSamples === undefined ||
+      triggerChannel === undefined
+    ) {
+      return null;
+    }
+
+    const rawChannels = Array.isArray(configRecord.channels) ? configRecord.channels : [];
+    const channels = rawChannels
+      .filter(channel => this.isRecord(channel) && typeof channel.number === 'number')
+      .map(channel => ({
+        number: (channel as Record<string, unknown>).number as number,
+        name: typeof (channel as Record<string, unknown>).name === 'string'
+          ? (channel as Record<string, unknown>).name as string
+          : undefined,
+        enabled: typeof (channel as Record<string, unknown>).enabled === 'boolean'
+          ? (channel as Record<string, unknown>).enabled as boolean
+          : true
+      }));
+
+    if (channels.length === 0) {
+      return null;
+    }
+
+    return {
+      frequency,
+      preTriggerSamples,
+      postTriggerSamples,
+      triggerType,
+      triggerChannel,
+      triggerInverted: this.readBoolean(configRecord, 'triggerInverted') ?? false,
+      triggerPattern: this.readNumber(configRecord, 'triggerPattern') ?? 0,
+      triggerBitCount: this.readNumber(configRecord, 'triggerBitCount') ?? 1,
+      loopCount: this.readNumber(configRecord, 'loopCount') ?? 0,
+      measureBursts: this.readBoolean(configRecord, 'measureBursts') ?? false,
+      channels
+    };
+  }
+
+  private async createDeviceStatus(): Promise<Record<string, unknown>> {
+    const currentDevice = hardwareDriverManager.getCurrentDevice();
+    const currentDeviceInfo = hardwareDriverManager.getCurrentDeviceInfo();
+    const deviceInfo = currentDevice?.getDeviceInfo();
+
+    return {
+      isConnected: Boolean(currentDevice),
+      isCapturing: currentDevice?.isCapturing ?? false,
+      currentDevice: currentDeviceInfo,
+      limits: deviceInfo ? {
+        minFrequency: currentDevice?.minFrequency ?? 0,
+        maxFrequency: deviceInfo.maxFrequency,
+        blastFrequency: deviceInfo.blastFrequency,
+        channelCount: deviceInfo.channels,
+        modeLimits: deviceInfo.modeLimits.map(limit => ({
+          minPreSamples: limit.minPreSamples,
+          maxPreSamples: limit.maxPreSamples,
+          minPostSamples: limit.minPostSamples,
+          maxPostSamples: limit.maxPostSamples,
+          maxTotalSamples: limit.maxTotalSamples
+        }))
+      } : null,
+      lastCaptureConfig: this.lastCaptureConfig ?? null
+    };
+  }
+
+  private readBoolean(value: unknown, key: string): boolean | undefined {
+    if (!this.isRecord(value) || typeof value[key] !== 'boolean') {
+      return undefined;
+    }
+
+    return value[key] as boolean;
+  }
+
+  private parseTriggerType(value: HostCaptureConfig['triggerType']): TriggerType {
+    if (typeof value === 'number') {
+      return value;
+    }
+
+    switch (value) {
+      case 'Fast':
+        return TriggerType.Fast;
+      case 'Complex':
+        return TriggerType.Complex;
+      case 'Blast':
+        return TriggerType.Blast;
+      case 'Edge':
+      default:
+        return TriggerType.Edge;
+    }
+  }
+
+  private cloneCaptureConfig(config: HostCaptureConfig): HostCaptureConfig {
+    return {
+      ...config,
+      channels: config.channels.map(channel => ({ ...channel }))
+    };
+  }
+
+  private parseNetworkAddress(address: string): { host: string; port: number } | null {
+    const [host, portText] = address.split(':');
+    const port = Number.parseInt(portText, 10);
+    if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
+      return null;
+    }
+
+    return {
+      host,
+      port
     };
   }
 
