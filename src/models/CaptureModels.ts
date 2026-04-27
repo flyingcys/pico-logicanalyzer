@@ -248,8 +248,10 @@ export class OutputPacket {
    * 添加ASCII字符串
    */
   public addString(newString: string): void {
-    const encoder = new TextEncoder();
-    const bytes = encoder.encode(newString);
+    const bytes = Array.from(newString, char => {
+      const code = char.charCodeAt(0);
+      return code <= 0x7F ? code : 0x3F;
+    });
     this.addBytes(bytes);
   }
 
@@ -348,11 +350,11 @@ export class CaptureRequestBuilder {
     view.setUint16(offset, session.triggerPattern, true); // triggerValue: ushort, little endian
     offset += 2;
 
-    // channels: byte[24] - 通道配置数组
+    // channels: byte[24] - C# 协议写入捕获通道号列表，不是 bit mask
     const channelArray = new Uint8Array(24);
-    session.captureChannels.forEach(ch => {
-      if (ch.channelNumber >= 0 && ch.channelNumber < 24) {
-        channelArray[ch.channelNumber] = 1;
+    session.captureChannels.forEach((ch, index) => {
+      if (index < 24 && ch.channelNumber >= 0 && ch.channelNumber < 24) {
+        channelArray[index] = ch.channelNumber;
       }
     });
     for (let i = 0; i < 24; i++) {
