@@ -43,7 +43,7 @@ export function getDecoderRegistryInfo(): {
   const stats = decoderManager.getStatistics();
 
   return {
-    regularDecoders: [], // 将来添加常规解码器时填充
+    regularDecoders: ['i2c', 'spi', 'uart'],
     streamingDecoders: ['streaming_i2c'],
     totalCount: stats.registeredDecoders + stats.registeredStreamingDecoders
   };

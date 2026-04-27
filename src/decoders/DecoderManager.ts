@@ -21,6 +21,8 @@ import {
   ChannelData
 } from './types';
 
+export type DecoderExecutionMode = 'regular' | 'streaming';
+
 /**
  * 解码器执行结果
  */
@@ -114,12 +116,14 @@ export class DecoderManager {
       const { I2CDecoder } = require('./protocols/I2CDecoder');
       const { SPIDecoder } = require('./protocols/SPIDecoder');
       const { UARTDecoder } = require('./protocols/UARTDecoder');
+      const { StreamingI2CDecoder } = require('./protocols/StreamingI2CDecoder');
 
       this.registerDecoder('i2c', I2CDecoder);
       this.registerDecoder('spi', SPIDecoder);
       this.registerDecoder('uart', UARTDecoder);
+      this.registerStreamingDecoder('streaming_i2c', StreamingI2CDecoder);
 
-      console.log('内置解码器注册完成: i2c, spi, uart');
+      console.log('内置解码器注册完成: i2c, spi, uart, streaming_i2c');
     } catch (error) {
       console.warn('内置解码器注册失败:', error);
     }
@@ -331,14 +335,13 @@ export class DecoderManager {
       return;
     }
 
-    // 设置当前输入输出
-    this.currentInputs = inputs;
-    this.currentOutputs = null;
+    const mappedChannels = this.mapChannelsForDecoder(channels, branch.channels, branch.decoder);
+    branch.decoder.setExecutionContext(inputs);
 
     try {
       // 执行解码
       const startTime = performance.now();
-      const decoderResults = branch.decoder.decode(sampleRate, channels, branch.options);
+      const decoderResults = branch.decoder.decode(sampleRate, mappedChannels, branch.options);
       const endTime = performance.now();
 
       if (decoderResults && decoderResults.length > 0) {
@@ -358,8 +361,9 @@ export class DecoderManager {
 
       // 合并输出数据用于子分支
       let newInputs = inputs;
-      if (this.currentOutputs) {
-        newInputs = this.mergeOutputs(newInputs, this.currentOutputs);
+      const outputs = branch.decoder.getExecutionOutputs();
+      if (outputs.size > 0) {
+        newInputs = this.mergeOutputs(newInputs, outputs);
       }
 
       // 递归执行子分支
@@ -368,6 +372,8 @@ export class DecoderManager {
       }
     } catch (error) {
       console.error(`Error executing decoder ${branch.name}:`, error);
+    } finally {
+      branch.decoder.clearExecutionContext();
     }
   }
 
@@ -430,6 +436,51 @@ export class DecoderManager {
   }
 
   /**
+   * 根据解码器通道映射重排输入通道。
+   */
+  private mapChannelsForDecoder(
+    channels: ChannelData[],
+    channelMapping: DecoderSelectedChannel[],
+    decoder: DecoderBase
+  ): ChannelData[] {
+    if (!channelMapping || channelMapping.length === 0) {
+      return channels;
+    }
+
+    const maxDecoderIndex = channelMapping.reduce(
+      (max, mapping) => Math.max(max, mapping.decoderIndex),
+      -1
+    );
+    const sampleLength = Math.max(...channels.map(channel => channel.samples?.length || 0), 0);
+    const mappedChannels: ChannelData[] = [];
+
+    for (let index = 0; index <= maxDecoderIndex; index++) {
+      const metadata = decoder.channels.find(channel => channel.index === index);
+      mappedChannels[index] = {
+        channelNumber: index,
+        channelName: metadata?.name || `Decoder Channel ${index}`,
+        samples: new Uint8Array(sampleLength)
+      };
+    }
+
+    for (const mapping of channelMapping) {
+      const source = channels[mapping.captureIndex];
+      if (!source) {
+        continue;
+      }
+
+      const metadata = decoder.channels.find(channel => channel.index === mapping.decoderIndex);
+      mappedChannels[mapping.decoderIndex] = {
+        channelNumber: mapping.decoderIndex,
+        channelName: mapping.name || metadata?.name || source.channelName,
+        samples: source.samples
+      };
+    }
+
+    return mappedChannels;
+  }
+
+  /**
    * 执行单个解码器
    * 简化的解码器执行接口
    * @param decoderId 解码器ID
@@ -460,8 +511,15 @@ export class DecoderManager {
         };
       }
 
+      const effectiveMapping = channelMapping.length > 0
+        ? channelMapping
+        : decoder.channels.map((channel, index) => ({
+          captureIndex: index,
+          decoderIndex: channel.index ?? index
+        }));
+
       // 验证配置
-      if (!decoder.validateOptions(options, channelMapping, channels)) {
+      if (!decoder.validateOptions(options, effectiveMapping, channels)) {
         return {
           decoderName: decoderId,
           results: [],
@@ -472,7 +530,8 @@ export class DecoderManager {
       }
 
       // 执行解码
-      const results = decoder.decode(sampleRate, channels, options);
+      const mappedChannels = this.mapChannelsForDecoder(channels, effectiveMapping, decoder);
+      const results = decoder.decode(sampleRate, mappedChannels, options);
       const endTime = performance.now();
 
       const totalSamples = Math.max(...channels.map(ch => ch.samples?.length || 0));
@@ -729,6 +788,21 @@ export class DecoderManager {
    */
   public getSupportedCategories(): string[] {
     return ['serial', 'bus', 'memory', 'audio', 'network', 'display', 'sensor'];
+  }
+
+  /**
+   * 明确常规/流式解码器的默认切换规则。
+   */
+  public getRecommendedExecutionMode(decoderId: string, totalSamples: number): DecoderExecutionMode {
+    if (
+      decoderId === 'i2c' &&
+      totalSamples > 1_000_000 &&
+      this.streamingDecoders.has('streaming_i2c')
+    ) {
+      return 'streaming';
+    }
+
+    return 'regular';
   }
 
   /**
