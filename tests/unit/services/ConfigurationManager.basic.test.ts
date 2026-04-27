@@ -8,19 +8,21 @@
  * - 专注基础配置管理：读写→验证→分类管理
  */
 
+import { vi } from 'vitest';
+
 // Mock配置 - 需要在导入之前定义
-jest.mock('vscode', () => ({
+vi.mock('vscode', () => ({
   workspace: {
     workspaceFolders: [{ uri: { fsPath: '/test/workspace' } }],
-    getConfiguration: jest.fn(() => ({ 
-      get: jest.fn(),
-      update: jest.fn().mockResolvedValue(undefined)
+    getConfiguration: vi.fn(() => ({
+      get: vi.fn(),
+      update: vi.fn().mockResolvedValue(undefined)
     })),
-    onDidChangeConfiguration: jest.fn()
+    onDidChangeConfiguration: vi.fn()
   },
   window: {
-    showInformationMessage: jest.fn(),
-    showErrorMessage: jest.fn()
+    showInformationMessage: vi.fn(),
+    showErrorMessage: vi.fn()
   },
   ConfigurationTarget: {
     Global: 1,
@@ -35,7 +37,7 @@ describe('ConfigurationManager 基础功能测试', () => {
   let configManager: ConfigurationManager;
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     configManager = new ConfigurationManager();
     await configManager.initialize();
   });

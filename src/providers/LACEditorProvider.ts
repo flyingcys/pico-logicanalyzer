@@ -138,6 +138,21 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
 
     // 生成随机nonce用于CSP
     const nonce = getNonce();
+    const documentData = {
+      uri: document.uri.toString(),
+      fileName: path.basename(document.uri.fsPath),
+      content: document.getText()
+    };
+    const bootstrap = JSON.stringify({
+      host: 'vscode',
+      document: documentData,
+      capabilities: {
+        canSave: true,
+        canExport: true,
+        canStartCapture: true,
+        canConnectDevice: true
+      }
+    }).replace(/</g, '\\u003c');
 
     return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -162,11 +177,8 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
     <script nonce="${nonce}">
         // 传递VSCode API给Vue应用
         window.vscode = acquireVsCodeApi();
-        window.documentData = {
-            uri: '${document.uri.toString()}',
-            fileName: '${path.basename(document.uri.fsPath)}',
-            content: ${JSON.stringify(document.getText())}
-        };
+        window.__FRONTEND_BOOTSTRAP__ = ${bootstrap};
+        window.documentData = window.__FRONTEND_BOOTSTRAP__.document;
     </script>
     <script nonce="${nonce}" src="${webviewUri}"></script>
 </body>

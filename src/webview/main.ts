@@ -5,19 +5,6 @@ import 'element-plus/dist/index.css';
 import App from './App.vue';
 import i18n from './i18n';
 
-// 类型声明
-declare global {
-  // eslint-disable-next-line no-unused-vars
-  interface Window {
-    vscode: any;
-    documentData: {
-      uri: string;
-      fileName: string;
-      content: string;
-    };
-  }
-}
-
 // 创建Vue应用
 const app = createApp(App);
 

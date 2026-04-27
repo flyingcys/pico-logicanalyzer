@@ -58,7 +58,12 @@
       "@models/*": ["src/models/*"],
       "@utils/*": ["src/utils/*"],
       "@components/*": ["src/webview/components/*"],
-      "@stores/*": ["src/webview/stores/*"]
+      "@stores/*": ["src/webview/stores/*"],
+      "@frontend/*": ["src/frontend/*"],
+      "@frontend-app/*": ["src/frontend/app/*"],
+      "@frontend-core/*": ["src/frontend/core/*"],
+      "@frontend-platform/*": ["src/frontend/platform/*"],
+      "@frontend-shared/*": ["src/frontend/shared/*"]
     },
     
     // 实验性功能
@@ -72,6 +77,8 @@
   },
   "include": [
     "src/**/*",
+    "src/frontend/**/*.vue",
+    "src/webview/shims-vue.d.ts",
     "types/**/*"
   ],
   "exclude": [

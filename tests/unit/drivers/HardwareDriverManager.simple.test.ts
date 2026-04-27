@@ -3,15 +3,16 @@
  * 错误驱动学习 - 验证根本问题
  */
 
+import { vi } from 'vitest';
 import { HardwareDriverManager } from '../../../src/drivers/HardwareDriverManager';
 
 // 最小化Mock - 只Mock驱动构造函数
-jest.mock('../../../src/drivers/LogicAnalyzerDriver');
-jest.mock('../../../src/drivers/SaleaeLogicDriver');
-jest.mock('../../../src/drivers/RigolSiglentDriver');
-jest.mock('../../../src/drivers/SigrokAdapter');
-jest.mock('../../../src/drivers/NetworkLogicAnalyzerDriver');
-jest.mock('../../../src/drivers/MultiAnalyzerDriver');
+vi.mock('../../../src/drivers/LogicAnalyzerDriver');
+vi.mock('../../../src/drivers/SaleaeLogicDriver');
+vi.mock('../../../src/drivers/RigolSiglentDriver');
+vi.mock('../../../src/drivers/SigrokAdapter');
+vi.mock('../../../src/drivers/NetworkLogicAnalyzerDriver');
+vi.mock('../../../src/drivers/MultiAnalyzerDriver');
 
 describe('HardwareDriverManager 基础功能验证', () => {
   let manager: HardwareDriverManager;

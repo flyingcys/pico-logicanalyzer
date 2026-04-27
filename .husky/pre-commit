@@ -1,6 +1,5 @@
-# Pre-commit hooks - non-blocking mode
-# 测试质量检查（不阻止提交）
-node scripts/test-quality-check.js || echo "警告: 质量检查失败，但允许提交"
+#!/usr/bin/env sh
 
-# 运行核心测试（不阻止提交）
-npx jest tests/unit/drivers/LogicAnalyzerDriver.core.test.ts --verbose || echo "警告: 核心测试失败，但允许提交"
+npm run test:type-check
+npm run test:unit
+npm run test:webview

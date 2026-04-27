@@ -8,6 +8,7 @@
  * - 专注核心数据流：创建→保存→加载→管理
  */
 
+import { vi } from 'vitest';
 import { SessionManager, SessionData } from '../../../src/services/SessionManager';
 import { CaptureSession, AnalyzerChannel } from '../../../src/models/CaptureModels';
 import { TriggerType } from '../../../src/models/AnalyzerTypes';
@@ -15,38 +16,38 @@ import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 
 // Mock VSCode API
-jest.mock('vscode', () => ({
+vi.mock('vscode', () => ({
   window: {
-    showSaveDialog: jest.fn(),
-    showOpenDialog: jest.fn()
+    showSaveDialog: vi.fn(),
+    showOpenDialog: vi.fn()
   },
   workspace: {
     workspaceFolders: [{ uri: { fsPath: '/test/workspace' } }],
-    getConfiguration: jest.fn(() => ({
-      get: jest.fn(() => []),
-      update: jest.fn()
+    getConfiguration: vi.fn(() => ({
+      get: vi.fn(() => []),
+      update: vi.fn()
     }))
   },
-  Uri: { file: jest.fn(path => ({ fsPath: path })) },
+  Uri: { file: vi.fn((path) => ({ fsPath: path })) },
   ConfigurationTarget: { Global: 1 }
 }));
 
 // Mock 文件系统
-jest.mock('fs/promises', () => ({
-  mkdir: jest.fn(),
-  writeFile: jest.fn(),
-  readFile: jest.fn(),
-  stat: jest.fn(() => ({ mtime: new Date() })),
-  access: jest.fn(),
-  readdir: jest.fn(() => []),
-  copyFile: jest.fn()
+vi.mock('fs/promises', () => ({
+  mkdir: vi.fn(),
+  writeFile: vi.fn(),
+  readFile: vi.fn(),
+  stat: vi.fn(() => ({ mtime: new Date() })),
+  access: vi.fn(),
+  readdir: vi.fn(() => []),
+  copyFile: vi.fn()
 }));
 
 describe('SessionManager 核心功能测试', () => {
   let sessionManager: SessionManager;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     sessionManager = new SessionManager({
       autoSave: false, // 禁用自动保存避免定时器干扰
       backupEnabled: true,
@@ -115,10 +116,10 @@ describe('SessionManager 核心功能测试', () => {
       expect(sessionManager.hasUnsavedChanges()).toBe(true);
       
       // 模拟保存成功
-      (vscode.window.showSaveDialog as jest.Mock).mockResolvedValue({ fsPath: '/test/session.lacsession' });
-      (fs.writeFile as jest.Mock).mockResolvedValue(undefined);
-      (fs.mkdir as jest.Mock).mockResolvedValue(undefined);
-      (fs.access as jest.Mock).mockRejectedValue(new Error('文件不存在'));
+      vi.mocked(vscode.window.showSaveDialog).mockResolvedValue({ fsPath: '/test/session.lacsession' } as any);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined as any);
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined as any);
+      vi.mocked(fs.access).mockRejectedValue(new Error('文件不存在'));
       
       const session = sessionManager.getCurrentSession()!;
       const result = await sessionManager.saveSession(session);
@@ -153,9 +154,9 @@ describe('SessionManager 核心功能测试', () => {
       captureSession.frequency = 1000000;
       const sessionData = sessionManager.createNewSession(captureSession, '保存测试');
       
-      (fs.mkdir as jest.Mock).mockResolvedValue(undefined);
-      (fs.writeFile as jest.Mock).mockResolvedValue(undefined);
-      (fs.access as jest.Mock).mockRejectedValue(new Error('文件不存在'));
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined as any);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined as any);
+      vi.mocked(fs.access).mockRejectedValue(new Error('文件不存在'));
       
       const result = await sessionManager.saveSession(sessionData, '/test/save-test.lacsession');
       
@@ -171,7 +172,7 @@ describe('SessionManager 核心功能测试', () => {
     it('应该能够处理保存失败', async () => {
       const session = sessionManager.createNewSession(new CaptureSession());
       
-      (fs.writeFile as jest.Mock).mockRejectedValue(new Error('磁盘空间不足'));
+      vi.mocked(fs.writeFile).mockRejectedValue(new Error('磁盘空间不足'));
       
       const result = await sessionManager.saveSession(session, '/test/fail.lacsession');
       
@@ -182,7 +183,7 @@ describe('SessionManager 核心功能测试', () => {
     it('应该支持用户取消保存', async () => {
       const session = sessionManager.createNewSession(new CaptureSession());
       
-      (vscode.window.showSaveDialog as jest.Mock).mockResolvedValue(undefined);
+      vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(undefined);
       
       const result = await sessionManager.saveSession(session);
       
@@ -209,8 +210,8 @@ describe('SessionManager 核心功能测试', () => {
         }
       };
       
-      (fs.access as jest.Mock).mockResolvedValue(undefined);
-      (fs.readFile as jest.Mock).mockResolvedValue(JSON.stringify(testSessionData));
+      vi.mocked(fs.access).mockResolvedValue(undefined as any);
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(testSessionData) as any);
       
       const result = await sessionManager.loadSession('/test/load-test.lacsession');
       
@@ -222,7 +223,7 @@ describe('SessionManager 核心功能测试', () => {
     });
 
     it('应该能够处理加载失败', async () => {
-      (fs.access as jest.Mock).mockRejectedValue(new Error('文件不存在'));
+      vi.mocked(fs.access).mockRejectedValue(new Error('文件不存在'));
       
       const result = await sessionManager.loadSession('/test/nonexistent.lacsession');
       
@@ -231,7 +232,7 @@ describe('SessionManager 核心功能测试', () => {
     });
 
     it('应该支持用户取消加载', async () => {
-      (vscode.window.showOpenDialog as jest.Mock).mockResolvedValue(undefined);
+      vi.mocked(vscode.window.showOpenDialog).mockResolvedValue(undefined);
       
       const result = await sessionManager.loadSession();
       
@@ -251,8 +252,8 @@ describe('SessionManager 核心功能测试', () => {
     it('应该能够执行自动保存', async () => {
       await sessionManager.createSession({ name: '自动保存测试' });
       
-      (fs.mkdir as jest.Mock).mockResolvedValue(undefined);
-      (fs.writeFile as jest.Mock).mockResolvedValue(undefined);
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined as any);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined as any);
       
       const result = await sessionManager.autoSave();
       
@@ -263,7 +264,7 @@ describe('SessionManager 核心功能测试', () => {
 
   describe('会话历史管理', () => {
     it('应该能够获取空的会话历史', async () => {
-      (fs.access as jest.Mock).mockRejectedValue(new Error('目录不存在'));
+      vi.mocked(fs.access).mockRejectedValue(new Error('目录不存在'));
       
       const history = await sessionManager.getSessionHistory('test-session');
       

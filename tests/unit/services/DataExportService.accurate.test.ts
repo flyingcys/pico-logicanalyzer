@@ -11,15 +11,17 @@
  * 将DataExportService覆盖率从当前状态提升至75%+
  */
 
+import { vi } from 'vitest';
+
 // Mock配置 - 最小化Mock，专注真实业务逻辑验证
-jest.mock('fs/promises', () => ({
-  writeFile: jest.fn(),
-  readFile: jest.fn(),
-  access: jest.fn()
+vi.mock('fs/promises', () => ({
+  writeFile: vi.fn(),
+  readFile: vi.fn(),
+  access: vi.fn()
 }));
 
 // Mock ServiceLifecycleBase以避免不必要的依赖
-jest.mock('../../../src/common/ServiceLifecycle', () => ({
+vi.mock('../../../src/common/ServiceLifecycle', () => ({
   ServiceLifecycleBase: class MockServiceLifecycleBase {
     constructor(public serviceName: string) {}
     updateMetadata(metadata: any) {}
@@ -31,9 +33,9 @@ jest.mock('../../../src/common/ServiceLifecycle', () => ({
 }));
 
 // Mock ExportPerformanceOptimizer
-jest.mock('../../../src/services/ExportPerformanceOptimizer', () => ({
+vi.mock('../../../src/services/ExportPerformanceOptimizer', () => ({
   exportPerformanceOptimizer: {
-    optimizeExport: jest.fn()
+    optimizeExport: vi.fn()
   }
 }));
 
@@ -55,7 +57,7 @@ import { CaptureSession, AnalyzerChannel } from '../../../src/models/CaptureMode
 import { DecoderResult } from '../../../src/decoders/types';
 import * as fs from 'fs/promises';
 
-const mockFs = fs as jest.Mocked<typeof fs>;
+const mockFs = vi.mocked(fs);
 
 describe('DataExportService 精准业务逻辑测试', () => {
   let dataExportServiceInstance: DataExportService;
@@ -110,7 +112,7 @@ describe('DataExportService 精准业务逻辑测试', () => {
   };
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     dataExportServiceInstance = new DataExportService();
     await dataExportServiceInstance.initialize();
   });
@@ -152,7 +154,7 @@ describe('DataExportService 精准业务逻辑测试', () => {
     });
 
     it('应该支持自定义转换器的添加和移除', () => {
-      const customConverter = jest.fn((input) => input);
+      const customConverter = vi.fn((input) => input);
       
       dataExportServiceInstance.addCustomConverter('test', customConverter);
       expect(dataExportServiceInstance.getAvailableConverters()).toContain('test');
@@ -421,7 +423,7 @@ describe('DataExportService 精准业务逻辑测试', () => {
 
     it('应该正确处理分块处理逻辑', async () => {
       const testSession = createTestCaptureSession();
-      const progressCallback = jest.fn();
+      const progressCallback = vi.fn();
       const options: ExportOptions = {
         filename: 'test.csv',
         timeRange: 'all',
