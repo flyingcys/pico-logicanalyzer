@@ -71,6 +71,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
   private _tcpSocket: Socket | undefined = undefined;
   private _currentStream: NodeJS.ReadWriteStream | undefined = undefined;
   private _lineParser: ReadlineParser | undefined = undefined;
+  private _lineParserAttached: boolean = false;
   private _isConnected: boolean = false;
 
   constructor(private connectionString: string) {
@@ -131,6 +132,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     this._tcpSocket = undefined;
     this._currentStream = undefined;
     this._lineParser = undefined;
+    this._lineParserAttached = false;
   }
 
   /**
@@ -160,15 +162,12 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     }
 
     try {
-      this._capturing = true;
-
       // 创建采集请求（基于C# ComposeRequest方法的逻辑）
       const mode = this.getCaptureMode(session.captureChannels.map(ch => ch.channelNumber));
       const requestedSamples = session.preTriggerSamples + (session.postTriggerSamples * (session.loopCount + 1));
 
       // 验证设置参数
       if (!this.validateSettings(session, requestedSamples)) {
-        this._capturing = false;
         return CaptureError.BadParams;
       }
 
@@ -182,10 +181,18 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
       const data = packet.serialize();
       await this.writeData(data);
 
+      const startResponse = await this.waitForResponse('CAPTURE_STARTED', 10000);
+      if (startResponse !== 'CAPTURE_STARTED') {
+        return CaptureError.HardwareError;
+      }
+
       // 设置捕获完成处理器
       if (captureCompletedHandler) {
         this.once('captureCompleted', captureCompletedHandler);
       }
+
+      this._capturing = true;
+      this.pauseTextParserForBinaryCapture();
 
       // 开始读取数据（异步）
       this.startDataReading(session);
@@ -193,7 +200,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
       return CaptureError.None;
     } catch (error) {
       this._capturing = false;
-      return CaptureError.UnexpectedError;
+      return CaptureError.HardwareError;
     }
   }
 
@@ -203,7 +210,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    */
   async stopCapture(): Promise<boolean> {
     if (!this._capturing) {
-      return true;
+      return false;
     }
 
     try {
@@ -254,17 +261,15 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    * 获取电压状态
    */
   override async getVoltageStatus(): Promise<string> {
+    if (!this._isNetwork) {
+      return 'UNSUPPORTED';
+    }
+
     if (!this._isConnected || !this._currentStream) {
       return 'DISCONNECTED';
     }
 
     try {
-      // 对于串口设备，模拟返回电压状态以兼容测试
-      if (!this._isNetwork) {
-        // 模拟电池电压读取，返回合理的电压值
-        return '3.3V';
-      }
-
       const packet = new OutputPacket();
       packet.addByte(3); // 修复：电压查询命令应该是3
 
@@ -313,22 +318,13 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
           let offset = 0;
 
           // AccessPointName - 33字节
-          const apNameBytes = new TextEncoder().encode(accessPointName);
-          for (let i = 0; i < 33; i++) {
-            view.setUint8(offset++, i < apNameBytes.length ? apNameBytes[i] : 0);
-          }
+          offset = LogicAnalyzerDriver.writeFixedAscii(view, offset, accessPointName, 33);
 
           // Password - 64字节
-          const passwordBytes = new TextEncoder().encode(password);
-          for (let i = 0; i < 64; i++) {
-            view.setUint8(offset++, i < passwordBytes.length ? passwordBytes[i] : 0);
-          }
+          offset = LogicAnalyzerDriver.writeFixedAscii(view, offset, password, 64);
 
           // IPAddress - 16字节
-          const ipBytes = new TextEncoder().encode(ipAddress);
-          for (let i = 0; i < 16; i++) {
-            view.setUint8(offset++, i < ipBytes.length ? ipBytes[i] : 0);
-          }
+          offset = LogicAnalyzerDriver.writeFixedAscii(view, offset, ipAddress, 16);
 
           // Port - 2字节
           view.setUint16(offset, port, true); // little-endian
@@ -370,6 +366,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         this._currentStream = this._serialPort as NodeJS.ReadWriteStream;
         this._lineParser = new ReadlineParser({ delimiter: '\n' });
         this._serialPort!.pipe(this._lineParser);
+        this._lineParserAttached = true;
 
         this._isNetwork = false;
 
@@ -404,6 +401,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         this._currentStream = this._tcpSocket as NodeJS.ReadWriteStream;
         this._lineParser = new ReadlineParser({ delimiter: '\n' });
         this._tcpSocket!.pipe(this._lineParser);
+        this._lineParserAttached = true;
 
         this._isNetwork = true;
 
@@ -546,6 +544,44 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     });
   }
 
+  private static writeFixedAscii(view: DataView, offset: number, value: string, length: number): number {
+    for (let i = 0; i < length; i++) {
+      const code = i < value.length ? value.charCodeAt(i) : 0;
+      view.setUint8(offset++, code <= 0x7f ? code : 0x3f);
+    }
+    return offset;
+  }
+
+  private pauseTextParserForBinaryCapture(): void {
+    if (!this._lineParser || !this._lineParserAttached) {
+      return;
+    }
+
+    const stream = this._currentStream as unknown as {
+      unpipe?: (destination?: NodeJS.WritableStream) => void;
+    };
+
+    if (typeof stream?.unpipe === 'function') {
+      stream.unpipe(this._lineParser);
+      this._lineParserAttached = false;
+    }
+  }
+
+  private resumeTextParserAfterBinaryCapture(): void {
+    if (!this._lineParser || this._lineParserAttached) {
+      return;
+    }
+
+    const stream = this._currentStream as unknown as {
+      pipe?: (destination: NodeJS.WritableStream) => NodeJS.WritableStream;
+    };
+
+    if (typeof stream?.pipe === 'function') {
+      stream.pipe(this._lineParser);
+      this._lineParserAttached = true;
+    }
+  }
+
   /**
    * 开始数据读取（采集过程）
    * 基于C# ReadCapture方法的完整实现
@@ -556,12 +592,6 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         throw new Error('通信流未初始化');
       }
 
-      // 等待采集开始确认
-      const startResponse = await this.waitForResponse('CAPTURE_STARTED', 10000);
-      if (startResponse !== 'CAPTURE_STARTED') {
-        throw new Error('采集启动失败');
-      }
-
       // 读取采集数据
       const captureData = await this.readCaptureData(session);
 
@@ -569,6 +599,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
       this.extractSamplesToChannels(session, captureData);
 
       this._capturing = false;
+      this.resumeTextParserAfterBinaryCapture();
 
       const eventArgs: CaptureEventArgs = {
         success: true,
@@ -578,6 +609,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
       this.emitCaptureCompleted(eventArgs);
     } catch (error) {
       this._capturing = false;
+      this.resumeTextParserAfterBinaryCapture();
 
       const eventArgs: CaptureEventArgs = {
         success: false,
@@ -593,6 +625,11 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    */
   private async waitForResponse(expectedResponse: string, timeout: number): Promise<string> {
     return new Promise((resolve, reject) => {
+      if (!this._lineParser) {
+        reject(new Error('文本响应读取器未初始化'));
+        return;
+      }
+
       const timeoutId = setTimeout(() => {
         this._lineParser!.off('data', dataHandler);
         reject(new Error(`等待响应超时: ${expectedResponse}`));
@@ -671,6 +708,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
 
         if (receivedData.length >= expectedTotalLength) {
           this._currentStream!.off('data', dataHandler);
+          clearTimeout(timeout);
           try {
             const result = this.parseCaptureData(receivedData, session, mode, dataLength);
             resolve(result);
@@ -741,6 +779,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
       // 检查是否收集完所有数据
       if (dataLength !== null && receivedBuffer.length >= bufferLength) {
         this._currentStream!.off('data', dataHandler);
+        clearTimeout(timeout);
 
         try {
           // 创建完整的数据缓冲区（包含长度头部）
@@ -976,6 +1015,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
           this._currentStream = this._tcpSocket as NodeJS.ReadWriteStream;
           this._lineParser = new ReadlineParser({ delimiter: '\n' });
           this._tcpSocket!.pipe(this._lineParser);
+          this._lineParserAttached = true;
           resolve();
         });
 
@@ -1002,6 +1042,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
           this._currentStream = this._serialPort as NodeJS.ReadWriteStream;
           this._lineParser = new ReadlineParser({ delimiter: '\n' });
           this._serialPort!.pipe(this._lineParser);
+          this._lineParserAttached = true;
           resolve();
         });
       });
@@ -1094,14 +1135,14 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         channelNumbers.every(ch => ch >= 0 && ch <= effectiveChannelCount - 1) &&
         session.triggerChannel >= 0 &&
         session.triggerChannel <= effectiveChannelCount &&
-        session.preTriggerSamples >= captureLimits.minPreSamples &&
+        session.preTriggerSamples >= 0 &&
         session.postTriggerSamples >= captureLimits.minPostSamples &&
-        session.preTriggerSamples <= captureLimits.maxPreSamples &&
-        session.postTriggerSamples <= captureLimits.maxPostSamples &&
+        session.preTriggerSamples <= 0 &&
+        session.postTriggerSamples <= captureLimits.maxTotalSamples &&
         requestedSamples <= captureLimits.maxTotalSamples &&
-        session.frequency >= effectiveMinFrequency &&
-        session.frequency <= effectiveMaxFrequency &&
-        session.loopCount >= 0 && session.loopCount <= 255
+        session.frequency >= effectiveBlastFrequency &&
+        session.frequency <= effectiveBlastFrequency &&
+        session.loopCount === 0
       );
     } else {
       // Complex 或 Fast 触发
@@ -1142,17 +1183,54 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     const effectiveBufferSize = this._bufferSize || 96000;
     const totalSamples = Math.floor(effectiveBufferSize / (mode === 0 ? 1 : (mode === 1 ? 2 : 4)));
 
-    // 确保maxPreSamples + maxPostSamples不超过totalSamples
     const maxPreSamples = Math.floor(totalSamples / 10);
-    const maxPostSamples = totalSamples - maxPreSamples - 10; // 预留一些缓冲空间
+    const maxPostSamples = totalSamples - 2;
 
     return {
       minPreSamples: 2,
       maxPreSamples,
       minPostSamples: 2,
-      maxPostSamples: Math.max(maxPostSamples, 2), // 确保不小于最小值
-      maxTotalSamples: totalSamples
+      maxPostSamples,
+      maxTotalSamples: 2 + maxPostSamples
     };
+  }
+
+  async blink(): Promise<boolean> {
+    if (this._isNetwork || !this._isConnected || !this._currentStream) {
+      return false;
+    }
+
+    try {
+      const packet = new OutputPacket();
+      packet.addByte(5);
+      await this.writeData(packet.serialize());
+      return await this.waitForResponse('BLINKON', 10000) === 'BLINKON';
+    } catch {
+      return false;
+    }
+  }
+
+  async stopBlink(): Promise<boolean> {
+    if (this._isNetwork || !this._isConnected || !this._currentStream) {
+      return false;
+    }
+
+    try {
+      const packet = new OutputPacket();
+      packet.addByte(6);
+      await this.writeData(packet.serialize());
+      return await this.waitForResponse('BLINKOFF', 10000) === 'BLINKOFF';
+    } catch {
+      return false;
+    }
+  }
+
+  async Blink(): Promise<boolean> {
+    return this.blink();
+  }
+
+  async StopBlink(): Promise<boolean> {
+    return this.stopBlink();
   }
 
   /**

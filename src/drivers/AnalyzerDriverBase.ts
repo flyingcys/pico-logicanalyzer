@@ -273,10 +273,11 @@ export class CaptureRequest {
     request.measure = config.measureBursts ? 1 : 0;
     request.captureMode = config.captureMode || CaptureMode.Channels_8;
 
-    // 设置通道数组 - 将指定的通道位置设置为1
-    for (const channelIndex of config.captureChannels) {
-      if (channelIndex >= 0 && channelIndex < 24) {
-        request.channels[channelIndex] = 1;
+    // C# 固件协议要求这里写入捕获通道号列表，而不是 bit mask。
+    for (let i = 0; i < config.captureChannels.length && i < 24; i++) {
+      const channelNumber = config.captureChannels[i];
+      if (channelNumber >= 0 && channelNumber < 24) {
+        request.channels[i] = channelNumber;
       }
     }
 
