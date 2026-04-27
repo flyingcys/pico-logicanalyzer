@@ -1,5 +1,6 @@
 import { AnalyzerDriverBase } from './AnalyzerDriverBase';
 import { LogicAnalyzerDriver } from './LogicAnalyzerDriver';
+import { VersionValidator } from './VersionValidator';
 import {
   AnalyzerDriverType,
   CaptureError,
@@ -82,7 +83,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
   /**
    * 初始化所有设备
    */
-  private async initializeDevices(connectionStrings: string[]): Promise<void> {
+  private initializeDevices(connectionStrings: string[]): void {
     try {
       // 连接所有设备
       for (let i = 0; i < connectionStrings.length; i++) {
@@ -91,8 +92,11 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
       }
 
       // 为每个设备设置捕获完成事件处理器
-      for (const device of this._connectedDevices) {
-        device.on('captureCompleted', this.handleDeviceCaptureCompleted.bind(this));
+      for (let index = 0; index < this._connectedDevices.length; index++) {
+        const device = this._connectedDevices[index];
+        device.on('captureCompleted', (args: CaptureEventArgs) =>
+          this.handleDeviceCaptureCompleted(index, args)
+        );
       }
 
     } catch (error) {
@@ -191,10 +195,20 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
     // 假设版本格式类似 "V1_23" 或 "ANALYZER_V1_23"
     const match = versionString.match(/V(\d+)_(\d+)/);
     if (match) {
+      const major = parseInt(match[1], 10);
+      const minor = parseInt(match[2], 10);
+
+      if (isNaN(major) || isNaN(minor)) {
+        return { major: 0, minor: 0, isValid: false };
+      }
+
+      const isSupported = major > VersionValidator.MAJOR_VERSION ||
+        (major === VersionValidator.MAJOR_VERSION && minor >= VersionValidator.MINOR_VERSION);
+
       return {
-        major: parseInt(match[1], 10),
-        minor: parseInt(match[2], 10),
-        isValid: true
+        major,
+        minor,
+        isValid: isSupported
       };
     }
 
@@ -290,9 +304,9 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
         }
 
         // 创建从设备采集会话
-        const slaveSession = this.createSlaveSession(session, channels, offset);
+        const slaveSession = this.createSlaveSession(session, channels, offset, i);
 
-        this._connectedDevices[i].tag = channelsCapturing;
+        this._connectedDevices[i].tag = i;
         const error = await this._connectedDevices[i].startCapture(slaveSession);
 
         if (error !== CaptureError.None) {
@@ -374,17 +388,12 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
   private createSlaveSession(
     originalSession: CaptureSession,
     channels: number[],
-    offset: number
+    offset: number,
+    deviceIndex: number = 0
   ): CaptureSession {
     const slaveSession: CaptureSession = {
-      ...originalSession,
-      captureChannels: channels.map(ch => ({
-        channelNumber: ch,
-        channelName: `Channel ${ch + 1}`,
-        textualChannelNumber: `CH${ch}`,
-        hidden: false,
-        clone() { return { ...this }; }
-      })),
+      ...this.cloneSessionShell(originalSession),
+      captureChannels: this.cloneDeviceChannels(originalSession, channels, deviceIndex),
       triggerChannel: 24, // 使用外部触发
       triggerType: TriggerType.Edge,
       preTriggerSamples: originalSession.preTriggerSamples + offset,
@@ -405,17 +414,60 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
     channels: number[]
   ): CaptureSession {
     const masterSession: CaptureSession = {
-      ...originalSession,
-      captureChannels: channels.map(ch => ({
-        channelNumber: ch,
-        channelName: `Channel ${ch + 1}`,
-        textualChannelNumber: `CH${ch}`,
-        hidden: false,
-        clone() { return { ...this }; }
-      }))
+      ...this.cloneSessionShell(originalSession),
+      captureChannels: this.cloneDeviceChannels(originalSession, channels, 0)
     };
 
     return masterSession;
+  }
+
+  private cloneSessionShell(session: CaptureSession): CaptureSession {
+    const clonedSession = session.cloneSettings ? session.cloneSettings() : session.clone();
+
+    return {
+      ...clonedSession,
+      clone() {
+        return {
+          ...this,
+          captureChannels: this.captureChannels.map(ch => ch.clone())
+        };
+      },
+      cloneSettings() {
+        return {
+          ...this,
+          captureChannels: this.captureChannels.map(ch => ch.clone())
+        };
+      }
+    };
+  }
+
+  private cloneDeviceChannels(
+    originalSession: CaptureSession,
+    localChannels: number[],
+    deviceIndex: number
+  ): any[] {
+    const maxChannelsPerDevice = Math.min(...this._connectedDevices.map(d => d.channelCount));
+    const sourceChannels = originalSession.captureChannels;
+
+    return localChannels.map(localChannel => {
+      const globalChannel = deviceIndex * maxChannelsPerDevice + localChannel;
+      const sourceChannel = sourceChannels.find(ch =>
+        ch.channelNumber === globalChannel ||
+        (deviceIndex === 0 && ch.channelNumber === localChannel)
+      );
+      const clonedChannel = sourceChannel?.clone ? sourceChannel.clone() : { ...sourceChannel };
+
+      return {
+        ...clonedChannel,
+        channelNumber: localChannel,
+        textualChannelNumber: clonedChannel?.textualChannelNumber ?? `CH${localChannel}`,
+        channelName: clonedChannel?.channelName ?? `Channel ${localChannel + 1}`,
+        hidden: clonedChannel?.hidden ?? false,
+        clone() {
+          return { ...this };
+        }
+      };
+    });
   }
 
   /**
@@ -463,7 +515,12 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
   /**
    * 处理单个设备的采集完成事件
    */
-  private handleDeviceCaptureCompleted(args: CaptureEventArgs): void {
+  private handleDeviceCaptureCompleted(deviceIndexOrArgs: number | CaptureEventArgs, maybeArgs?: CaptureEventArgs): void {
+    const deviceIndex = typeof deviceIndexOrArgs === 'number'
+      ? deviceIndexOrArgs
+      : ((deviceIndexOrArgs.session as any).deviceTag ?? 0);
+    const args = typeof deviceIndexOrArgs === 'number' ? maybeArgs! : deviceIndexOrArgs;
+
     // 同步锁定
     if (!this._capturing || !this._sourceSession) {
       return;
@@ -487,8 +544,9 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
       return;
     }
 
-    // 获取设备索引
-    const deviceIndex = (args.session as any).deviceTag || 0;
+    if (!this._deviceCaptures[deviceIndex]) {
+      return;
+    }
 
     this._deviceCaptures[deviceIndex].session = args.session;
     this._deviceCaptures[deviceIndex].completed = true;

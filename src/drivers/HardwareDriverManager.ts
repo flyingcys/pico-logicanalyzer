@@ -23,6 +23,15 @@ export interface DetectedDevice {
   driverType: AnalyzerDriverType; // 驱动类型
   capabilities?: AnalyzerDeviceInfo; // 设备能力描述
   confidence: number; // 检测置信度 (0-100)
+  vendorId?: string;
+  productId?: string;
+  serialNumber?: string;
+  parentId?: string;
+  devicePath?: string;
+  assignedIndex?: number;
+  verificationRequired?: boolean;
+  known?: boolean;
+  discoveredBy?: string;
 }
 
 /**
@@ -58,6 +67,7 @@ export class HardwareDriverManager extends EventEmitter {
   private cacheTimeout = 30000; // 30秒缓存超时
   private currentDevice: AnalyzerDriverBase | null = null;
   private connectedDeviceInfo: DetectedDevice | null = null;
+  private knownDevices = new Map<string, DetectedDevice>();
 
   constructor() {
     super();
@@ -253,6 +263,10 @@ export class HardwareDriverManager extends EventEmitter {
    * 精确匹配
    */
   private isExactMatch(device: DetectedDevice, driver: DriverRegistration): boolean {
+    if (!this.isDriverCompatibleWithConnection(device, driver)) {
+      return false;
+    }
+
     return driver.supportedDevices.some(
       supported =>
         device.id.includes(supported) || device.name.toLowerCase().includes(supported.toLowerCase())
@@ -273,6 +287,21 @@ export class HardwareDriverManager extends EventEmitter {
                driver.id === 'network-analyzer';
       case 'usb':
         return driver.id === 'sigrok-adapter';
+      default:
+        return false;
+    }
+  }
+
+  private isDriverCompatibleWithConnection(device: DetectedDevice, driver: DriverRegistration): boolean {
+    switch (device.type) {
+      case 'serial':
+        return driver.id === 'pico-logic-analyzer' || driver.id === 'sigrok-adapter';
+      case 'network':
+        return driver.id === 'saleae-logic' ||
+               driver.id === 'rigol-siglent' ||
+               driver.id === 'network-analyzer';
+      case 'usb':
+        return driver.id === 'saleae-logic' || driver.id === 'sigrok-adapter';
       default:
         return false;
     }
@@ -368,14 +397,108 @@ export class HardwareDriverManager extends EventEmitter {
     const uniqueDevices = new Map<string, DetectedDevice>();
 
     for (const device of devices) {
-      const existing = uniqueDevices.get(device.connectionString);
-      if (!existing || device.confidence > existing.confidence) {
-        uniqueDevices.set(device.connectionString, device);
+      const enrichedDevice = this.applyKnownDeviceMetadata(device);
+      const key = enrichedDevice.connectionString;
+      const existing = uniqueDevices.get(key);
+      if (!existing || this.compareDetectedDevices(enrichedDevice, existing) < 0) {
+        uniqueDevices.set(key, enrichedDevice);
       }
     }
 
-    // 按置信度排序
-    return Array.from(uniqueDevices.values()).sort((a, b) => b.confidence - a.confidence);
+    return Array.from(uniqueDevices.values()).sort((a, b) => this.compareDetectedDevices(a, b));
+  }
+
+  /**
+   * 记住设备，用于多设备稳定排序和后续快速选择
+   */
+  rememberDevice(device: DetectedDevice): DetectedDevice {
+    const deviceKey = this.getDeviceIdentityKey(device);
+    const rememberedDevice: DetectedDevice = {
+      ...device,
+      known: true,
+      assignedIndex: device.assignedIndex ?? this.knownDevices.size
+    };
+
+    this.knownDevices.set(deviceKey, rememberedDevice);
+    this.emit('deviceRemembered', rememberedDevice);
+    return rememberedDevice;
+  }
+
+  /**
+   * 忘记设备，支持按 id、连接串或稳定身份键删除
+   */
+  forgetDevice(deviceIdOrKey: string): boolean {
+    let removed = this.knownDevices.delete(deviceIdOrKey);
+
+    if (!removed) {
+      for (const [key, device] of this.knownDevices.entries()) {
+        if (device.id === deviceIdOrKey || device.connectionString === deviceIdOrKey) {
+          this.knownDevices.delete(key);
+          removed = true;
+          break;
+        }
+      }
+    }
+
+    if (removed) {
+      this.emit('deviceForgotten', deviceIdOrKey);
+    }
+
+    return removed;
+  }
+
+  getKnownDevices(): DetectedDevice[] {
+    return Array.from(this.knownDevices.values()).sort((a, b) => this.compareDetectedDevices(a, b));
+  }
+
+  private applyKnownDeviceMetadata(device: DetectedDevice): DetectedDevice {
+    const knownDevice = this.knownDevices.get(this.getDeviceIdentityKey(device)) ||
+      Array.from(this.knownDevices.values()).find(
+        known => known.id === device.id || known.connectionString === device.connectionString
+      );
+
+    if (!knownDevice) {
+      return device;
+    }
+
+    return {
+      ...device,
+      assignedIndex: knownDevice.assignedIndex,
+      known: true
+    };
+  }
+
+  private getDeviceIdentityKey(device: DetectedDevice): string {
+    const vendorId = HardwareDriverManager.normalizeUsbId(device.vendorId);
+    const productId = HardwareDriverManager.normalizeUsbId(device.productId);
+    const serialNumber = device.serialNumber?.trim();
+
+    if (vendorId && productId && serialNumber) {
+      return `usb:${vendorId}:${productId}:${serialNumber}`;
+    }
+
+    if (vendorId && productId && device.parentId) {
+      return `usb:${vendorId}:${productId}:parent:${device.parentId}`;
+    }
+
+    return `${device.type}:${device.connectionString}`;
+  }
+
+  private compareDetectedDevices(a: DetectedDevice, b: DetectedDevice): number {
+    const aIndex = a.assignedIndex ?? Number.MAX_SAFE_INTEGER;
+    const bIndex = b.assignedIndex ?? Number.MAX_SAFE_INTEGER;
+    if (aIndex !== bIndex) return aIndex - bIndex;
+
+    if (a.confidence !== b.confidence) return b.confidence - a.confidence;
+
+    const aIdentity = this.getDeviceIdentityKey(a);
+    const bIdentity = this.getDeviceIdentityKey(b);
+    return aIdentity.localeCompare(bIdentity);
+  }
+
+  private static normalizeUsbId(value?: string): string | undefined {
+    if (!value) return undefined;
+    return value.replace(/^0x/i, '').toUpperCase().padStart(4, '0');
   }
 
   /**
@@ -564,40 +687,76 @@ export class SerialDetector implements IDeviceDetector {
   readonly name = 'Serial Port Detector';
 
   async detect(): Promise<DetectedDevice[]> {
-    const devices: DetectedDevice[] = [];
-
     try {
       // 使用serialport库检测串口设备
       const { SerialPort } = require('serialport');
       const ports = await SerialPort.list();
-
-      for (const port of ports) {
-        // 检测Pico逻辑分析器特征
-        if (this.isPicoAnalyzer(port)) {
-          devices.push({
-            id: `serial-${port.path}`,
-            name: `Logic Analyzer (${port.path})`,
-            type: 'serial',
-            connectionString: port.path,
-            driverType: AnalyzerDriverType.Serial,
-            confidence: 80
-          });
-        }
-      }
+      return SerialDetector.fromSerialPorts(ports);
     } catch (error) {
       console.warn('Serial port detection failed:', error);
+      return [];
     }
-
-    return devices;
   }
 
-  private isPicoAnalyzer(port: any): boolean {
-    // 检测Pico设备的特征
-    return (
-      port.vendorId === '2E8A' || // Raspberry Pi Foundation
-      port.productId === '0003' || // Pico
-      (port.manufacturer && port.manufacturer.includes('Pico'))
-    );
+  static fromSerialPorts(ports: any[]): DetectedDevice[] {
+    return ports
+      .map((port, index) => ({ device: SerialDetector.classifyPort(port), index }))
+      .filter((entry): entry is { device: DetectedDevice; index: number } => entry.device !== null)
+      .sort((a, b) => b.device.confidence - a.device.confidence || a.index - b.index)
+      .map(entry => entry.device);
+  }
+
+  private static classifyPort(port: any): DetectedDevice | null {
+    const vendorId = SerialDetector.normalizeUsbId(port.vendorId);
+    const productId = SerialDetector.normalizeUsbId(port.productId);
+    const serialNumber = port.serialNumber || SerialDetector.extractSerialNumber(port.pnpId);
+    const parentId = SerialDetector.extractParentId(port.pnpId);
+    const isOriginalAnalyzer = vendorId === '1209' && productId === '3020';
+    const isRaspberryPiPico = vendorId === '2E8A' && productId === '0003';
+    const manufacturer = String(port.manufacturer || '');
+    const product = String(port.productId || '');
+
+    if (!isOriginalAnalyzer && !isRaspberryPiPico && !manufacturer.toLowerCase().includes('pico')) {
+      return null;
+    }
+
+    const confidence = isOriginalAnalyzer ? 100 : isRaspberryPiPico ? 45 : 35;
+    const verificationRequired = !isOriginalAnalyzer;
+    const deviceName = isOriginalAnalyzer ? 'Pico Logic Analyzer' : 'Raspberry Pi Pico Candidate';
+
+    return {
+      id: serialNumber ? `serial-${vendorId}-${productId}-${serialNumber}` : `serial-${port.path}`,
+      name: `${deviceName} (${port.path})`,
+      type: 'serial',
+      connectionString: port.path,
+      connectionPath: port.path,
+      driverType: AnalyzerDriverType.Serial,
+      confidence,
+      vendorId,
+      productId: productId || product,
+      serialNumber,
+      parentId,
+      devicePath: port.path,
+      verificationRequired,
+      discoveredBy: 'serial'
+    };
+  }
+
+  private static normalizeUsbId(value?: string): string | undefined {
+    if (!value) return undefined;
+    return value.replace(/^0x/i, '').toUpperCase().padStart(4, '0');
+  }
+
+  private static extractParentId(pnpId?: string): string | undefined {
+    if (!pnpId) return undefined;
+    const parts = pnpId.split('\\').filter(Boolean);
+    return parts.length > 1 ? parts[parts.length - 1] : undefined;
+  }
+
+  private static extractSerialNumber(pnpId?: string): string | undefined {
+    const parentId = SerialDetector.extractParentId(pnpId);
+    if (!parentId || parentId.includes('&')) return undefined;
+    return parentId;
   }
 }
 

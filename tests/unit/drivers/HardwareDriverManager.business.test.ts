@@ -85,7 +85,7 @@ jest.mock('../../../src/drivers/MultiAnalyzerDriver', () => ({
 jest.doMock('../../../src/drivers/HardwareDriverManager', () => jest.requireActual('../../../src/drivers/HardwareDriverManager'));
 
 // 在Mock配置完成后，导入真实的HardwareDriverManager
-const { HardwareDriverManager } = jest.requireActual('../../../src/drivers/HardwareDriverManager');
+const { HardwareDriverManager, SerialDetector } = jest.requireActual('../../../src/drivers/HardwareDriverManager');
 
 describe('HardwareDriverManager 业务逻辑专项测试', () => {
   let manager: InstanceType<typeof HardwareDriverManager>;
@@ -212,6 +212,106 @@ describe('HardwareDriverManager 业务逻辑专项测试', () => {
       
       expect(devices).toEqual([]);
       expect(emptyDetector.detect).toHaveBeenCalled();
+    });
+
+    it('应该优先精准识别原版 Pico LogicAnalyzer VID/PID 1209/3020，并把普通 Pico 降级为待握手候选', async () => {
+      const ports = [
+        {
+          path: '/dev/ttyACM0',
+          vendorId: '1209',
+          productId: '3020',
+          serialNumber: 'LA-001',
+          manufacturer: 'Pico Logic Analyzer'
+        },
+        {
+          path: '/dev/ttyACM1',
+          vendorId: '2E8A',
+          productId: '0003',
+          serialNumber: 'RP2040-DEV',
+          manufacturer: 'Raspberry Pi'
+        }
+      ];
+
+      const devices = SerialDetector.fromSerialPorts(ports);
+
+      expect(devices).toHaveLength(2);
+      expect(devices[0]).toMatchObject({
+        connectionString: '/dev/ttyACM0',
+        vendorId: '1209',
+        productId: '3020',
+        serialNumber: 'LA-001',
+        confidence: 100,
+        verificationRequired: false
+      });
+      expect(devices[1]).toMatchObject({
+        connectionString: '/dev/ttyACM1',
+        vendorId: '2E8A',
+        productId: '0003',
+        verificationRequired: true
+      });
+      expect(devices[1].confidence).toBeLessThan(devices[0].confidence);
+    });
+
+    it('应该从 Windows pnpId 和 Linux tty 属性中提取稳定的序列号与 ParentId', async () => {
+      const devices = SerialDetector.fromSerialPorts([
+        {
+          path: 'COM7',
+          vendorId: '1209',
+          productId: '3020',
+          pnpId: 'USB\\VID_1209&PID_3020\\LA-WIN-001'
+        },
+        {
+          path: '/dev/ttyACM2',
+          vendorId: '0x1209',
+          productId: '0x3020',
+          serialNumber: 'LA-LINUX-001'
+        }
+      ]);
+
+      expect(devices.map((device: any) => device.serialNumber)).toEqual([
+        'LA-WIN-001',
+        'LA-LINUX-001'
+      ]);
+      expect(devices[0].parentId).toBe('LA-WIN-001');
+      expect(devices.every((device: any) => device.vendorId === '1209' && device.productId === '3020')).toBe(true);
+    });
+
+    it('应该根据 VID/PID、序列号和端口路径生成稳定排序，并优先已知设备 assignedIndex', async () => {
+      const first = {
+        id: 'serial-/dev/ttyACM1',
+        name: 'Logic Analyzer (/dev/ttyACM1)',
+        type: 'serial' as const,
+        connectionString: '/dev/ttyACM1',
+        driverType: AnalyzerDriverType.Serial,
+        confidence: 100,
+        vendorId: '1209',
+        productId: '3020',
+        serialNumber: 'LA-B'
+      };
+      const second = {
+        ...first,
+        id: 'serial-/dev/ttyACM0',
+        connectionString: '/dev/ttyACM0',
+        serialNumber: 'LA-A'
+      };
+
+      manager.rememberDevice({ ...first, assignedIndex: 0 });
+      manager.rememberDevice({ ...second, assignedIndex: 1 });
+
+      (manager as any).detectors = [
+        {
+          name: 'Fixture Detector',
+          detect: jest.fn().mockResolvedValue([second, first])
+        }
+      ];
+
+      const devices = await manager.detectHardware(false);
+
+      expect(devices.map((device: any) => device.serialNumber)).toEqual(['LA-B', 'LA-A']);
+      expect(devices.map((device: any) => device.assignedIndex)).toEqual([0, 1]);
+
+      expect(manager.forgetDevice(first.id)).toBe(true);
+      expect(manager.getKnownDevices().map((device: any) => device.id)).toEqual([second.id]);
     });
 
     it('应该正确匹配pico设备', async () => {
