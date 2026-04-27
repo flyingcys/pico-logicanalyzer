@@ -45,6 +45,9 @@
     "theme": "dark"
   },
   "main": "./out/extension.js",
+  "bin": {
+    "logic-analyzer-capture": "./out/cli/index.js"
+  },
   "contributes": {
     "commands": [
       {
@@ -174,10 +177,11 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build:production",
-    "build": "npm run clean && webpack --mode development",
+    "build": "npm run clean && webpack --mode development && npm run build:cli",
+    "build:cli": "tsc src/cli/index.ts --outDir out --rootDir src --module commonjs --target ES2020 --esModuleInterop --skipLibCheck --declaration false --sourceMap true",
     "build:webview": "webpack --mode development --config webpack.config.js --config-name webview",
     "build:frontend:html": "webpack --mode development --config webpack.config.js --config-name webview",
-    "build:production": "npm run clean && cross-env NODE_ENV=production webpack --mode production",
+    "build:production": "npm run clean && cross-env NODE_ENV=production webpack --mode production && npm run build:cli",
     "build:analyze": "npm run clean && cross-env NODE_ENV=production ANALYZE=true webpack --mode production",
     "compile": "npm run build",
     "watch": "npm run clean && webpack --mode development --watch",
@@ -197,6 +201,7 @@
     "test:integration": "jest --testPathPattern=integration --runInBand",
     "test:e2e": "jest --testPathPattern=e2e --runInBand --detectOpenHandles",
     "test:performance": "jest --testPathPattern=performance --runInBand --forceExit",
+    "test:cli": "jest --config tests/unit/cli/jest.config.js --runInBand",
     "test:drivers": "jest --testPathPattern=drivers",
     "test:decoders": "jest --testPathPattern=decoders",
     "test:webview": "jest --testPathPattern=webview",

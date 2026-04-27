@@ -2704,6 +2704,31 @@ pico-logic-analyzer/
 
 ---
 
+## CLI 与终端自动化
+
+命令行入口位于 `src/cli/index.ts`，核心编排在 `src/cli/CaptureCli.ts`，可复用工具位于 `src/tools/`：
+
+- `CliCaptureConfig.ts`：解析通道列表、触发类型、`.tcs` 配置文件，并生成 `CaptureSession`。
+- `CliCaptureRunner.ts`：提供真实 `LogicAnalyzerDriver` runner 和测试用 mock runner。
+- `CliCaptureExporter.ts`：输出 CLI 专用 `.lac` / `.csv` 文件。
+
+构建后入口为：
+
+```bash
+node out/cli/index.js --help
+node out/cli/index.js capture --mock --device mock --frequency 1000000 --pre 0 --post 16 --channels 0,1 --output sample.csv --format csv
+```
+
+包入口通过 `package.json` 的 `bin.logic-analyzer-capture` 暴露。新增或修改 CLI 行为时应先补 `tests/unit/cli/` 下的测试，然后运行：
+
+```bash
+npm run test:cli
+```
+
+### TUI 边界
+
+本阶段只实现可脚本化的 CLI 和可复用 runner，不实现完整 Terminal.Gui 等价 TUI。后续 TUI 应复用 `CliCaptureConfig`、`CliCaptureRunner` 和 `CliCaptureExporter`，只在新的终端交互层处理菜单、表单、键盘导航和状态展示。TUI 不应直接写驱动协议，也不应绕过 CLI 配置校验。
+
 ## 📞 联系信息
 
 ### 开发团队
