@@ -10,5 +10,8 @@ module.exports = {
       tsconfig: '<rootDir>/tsconfig.json',
       diagnostics: false
     }]
-  }
+  },
+  modulePathIgnorePatterns: ['<rootDir>/.worktree/'],
+  testPathIgnorePatterns: ['<rootDir>/.worktree/'],
+  watchPathIgnorePatterns: ['<rootDir>/.worktree/']
 };
