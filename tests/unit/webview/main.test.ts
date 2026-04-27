@@ -452,6 +452,89 @@ describe('bootstrap 初始化流程', () => {
   });
 });
 
+describe('deviceStore 采集工作流状态', () => {
+  it('applyStatus 应保存设备、limits 和采集状态', async () => {
+    const actualPinia = jest.requireActual('pinia');
+    const { useDeviceStore } = jest.requireActual('../../../src/frontend/core/stores/deviceStore');
+
+    actualPinia.setActivePinia(actualPinia.createPinia());
+    const store = useDeviceStore();
+
+    store.applyStatus({
+      isConnected: true,
+      isCapturing: false,
+      currentDevice: {
+        id: 'manual-/dev/ttyUSB0',
+        name: 'Manual Device',
+        connectionPath: '/dev/ttyUSB0',
+        type: 'serial'
+      },
+      limits: {
+        minFrequency: 1000,
+        maxFrequency: 24000000,
+        channelCount: 24,
+        modeLimits: [
+          {
+            minPreSamples: 2,
+            maxPreSamples: 100,
+            minPostSamples: 2,
+            maxPostSamples: 1000,
+            maxTotalSamples: 1002
+          }
+        ]
+      },
+      lastCaptureConfig: {
+        frequency: 1000000,
+        preTriggerSamples: 100,
+        postTriggerSamples: 1000,
+        triggerType: 'Edge',
+        triggerChannel: 0,
+        triggerInverted: false,
+        loopCount: 0,
+        measureBursts: false,
+        channels: [
+          {
+            number: 0,
+            name: 'SDA',
+            enabled: true
+          }
+        ]
+      }
+    });
+
+    expect(store.isConnected).toBe(true);
+    expect(store.deviceLabel).toBe('Manual Device');
+    expect(store.limits?.channelCount).toBe(24);
+    expect(store.captureConfig.channels[0]).toEqual({
+      number: 0,
+      name: 'SDA',
+      enabled: true
+    });
+  });
+
+  it('frequencyJitterLevel 应按设备 limits 标记频率风险', async () => {
+    const actualPinia = jest.requireActual('pinia');
+    const { useDeviceStore } = jest.requireActual('../../../src/frontend/core/stores/deviceStore');
+
+    actualPinia.setActivePinia(actualPinia.createPinia());
+    const store = useDeviceStore();
+
+    store.applyStatus({
+      isConnected: true,
+      isCapturing: false,
+      limits: {
+        minFrequency: 1000,
+        maxFrequency: 1000000,
+        channelCount: 8,
+        modeLimits: []
+      }
+    });
+    store.captureConfig.frequency = 995000;
+
+    expect(store.frequencyJitterLevel).toBe('high');
+  });
+});
+
 describe('vscodeHost 实现', () => {
   beforeEach(() => {
     jest.clearAllMocks();

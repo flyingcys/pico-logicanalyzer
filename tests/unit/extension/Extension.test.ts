@@ -10,6 +10,7 @@ import { activate, deactivate } from '../../../src/extension';
 jest.mock('vscode', () => ({
   commands: {
     registerCommand: jest.fn(),
+    executeCommand: jest.fn(),
   },
   window: {
     showInformationMessage: jest.fn(),
@@ -17,14 +18,28 @@ jest.mock('vscode', () => ({
     showErrorMessage: jest.fn(),
     showInputBox: jest.fn(),
     createWebviewPanel: jest.fn(),
+    withProgress: jest.fn(),
   },
   workspace: {
     getConfiguration: jest.fn(),
+    workspaceFolders: undefined,
+    fs: {
+      writeFile: jest.fn(),
+    },
+  },
+  Uri: {
+    file: jest.fn((fsPath: string) => ({
+      fsPath,
+      toString: () => `file://${fsPath}`
+    })),
+  },
+  ProgressLocation: {
+    Notification: 15,
   },
   ExtensionContext: class {
     subscriptions: any[] = [];
   },
-}));
+}), { virtual: true });
 jest.mock('../../../src/providers/LACEditorProvider', () => ({
   LACEditorProvider: {
     register: jest.fn().mockReturnValue({}),
@@ -74,6 +89,14 @@ describe('VSCode Extension 主入口测试', () => {
         'logicAnalyzer.startCapture',
         expect.any(Function)
       );
+      expect(mockVSCode.commands.registerCommand).toHaveBeenCalledWith(
+        'logicAnalyzer.stopCapture',
+        expect.any(Function)
+      );
+      expect(mockVSCode.commands.registerCommand).toHaveBeenCalledWith(
+        'logicAnalyzer.repeatCapture',
+        expect.any(Function)
+      );
     });
 
     it('应该注册LAC文件编辑器提供程序', () => {
@@ -98,7 +121,7 @@ describe('VSCode Extension 主入口测试', () => {
 
       // Assert
       expect(mockVSCode.window.showInformationMessage).toHaveBeenCalledWith(
-        '打开逻辑分析器界面!'
+        '逻辑分析器主界面已打开！'
       );
     });
 
@@ -272,8 +295,7 @@ describe('VSCode Extension 主入口测试', () => {
 
       // Assert - 验证所有组件都已注册
       expect(context.subscriptions.length).toBeGreaterThan(0);
-      // 源代码中实际注册了6个命令：openAnalyzer, connectDevice, startCapture, scanNetworkDevices, networkDiagnostics, configureWiFi
-      expect(mockVSCode.commands.registerCommand).toHaveBeenCalledTimes(6);
+      expect(mockVSCode.commands.registerCommand).toHaveBeenCalledTimes(8);
 
       // Act - 去激活
       deactivate();
