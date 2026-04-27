@@ -61,6 +61,7 @@
       '文件操作': Document,
       '波形操作': Monitor,
       '通道控制': Grid,
+      '编辑操作': Document,
       '面板控制': Setting,
       '帮助': QuestionFilled
     };

@@ -1,111 +1,475 @@
 <script setup lang="ts">
-import { computed, onUnmounted, watch } from 'vue';
-import { useWaveformViewport } from '../composables/useWaveformViewport';
-import { createWaveformService } from '../../core/services/waveformService';
-import { useSessionStore } from '../../core/stores/sessionStore';
-import { useWaveformStore } from '../../core/stores/waveformStore';
+  import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+  import { useWaveformViewport } from '../composables/useWaveformViewport';
+  import { createWaveformService } from '../../core/services/waveformService';
+  import { useSessionStore } from '../../core/stores/sessionStore';
+  import { useWaveformStore } from '../../core/stores/waveformStore';
 
-const sessionStore = useSessionStore();
-const waveformStore = useWaveformStore();
-const { containerRef, canvasRef, renderer } = useWaveformViewport();
+  const sessionStore = useSessionStore();
+  const waveformStore = useWaveformStore();
+  const { containerRef, canvasRef, renderer } = useWaveformViewport();
 
-const title = computed(() => sessionStore.fileName || 'Logic Analyzer');
+  const title = computed(() => sessionStore.fileName || 'Logic Analyzer');
+  const hasSamples = computed(
+    () => waveformStore.totalSamples > 0 && waveformStore.channels.length > 0
+  );
+  const centerSample = computed(
+    () =>
+      waveformStore.viewRange.firstSample + Math.floor(waveformStore.viewRange.visibleSamples / 2)
+  );
+  const previewMax = computed(() =>
+    Math.max(0, waveformStore.totalSamples - waveformStore.viewRange.visibleSamples)
+  );
+  const previewStartPercent = computed(() => {
+    if (waveformStore.totalSamples <= 0) {
+      return 0;
+    }
 
-let stopBinding: (() => void) | null = null;
+    return (waveformStore.viewRange.firstSample / waveformStore.totalSamples) * 100;
+  });
+  const previewWidthPercent = computed(() => {
+    if (waveformStore.totalSamples <= 0) {
+      return 100;
+    }
 
-watch(
-  renderer,
-  nextRenderer => {
-    stopBinding?.();
-    stopBinding = null;
+    return Math.max(2, (waveformStore.viewRange.visibleSamples / waveformStore.totalSamples) * 100);
+  });
+  const measurementText = computed(() => {
+    const measurement = waveformStore.lastMeasurement;
+    if (!measurement) {
+      return '';
+    }
 
+    const time = `${(measurement.timeSeconds * 1000).toFixed(3)} ms`;
+    const frequency = measurement.frequencyHz ? `${measurement.frequencyHz.toFixed(2)} Hz` : '-';
+    const duty =
+      measurement.dutyCycle !== null ? `${(measurement.dutyCycle * 100).toFixed(1)}%` : '-';
+    const pulse =
+      measurement.pulseWidthSeconds !== null
+        ? `${(measurement.pulseWidthSeconds * 1000).toFixed(3)} ms`
+        : '-';
+
+    return `${measurement.sampleCount} samples / ${time} / ${frequency} / ${duty} / ${pulse}`;
+  });
+
+  const draggingSelection = ref(false);
+  const selectionAnchor = ref(0);
+
+  let stopBinding: (() => void) | null = null;
+
+  const syncRendererState = () => {
+    const nextRenderer = renderer.value;
     if (!nextRenderer) {
       return;
     }
 
-    stopBinding = createWaveformService(nextRenderer).bindViewRange(
-      waveformStore,
-      sessionStore
+    nextRenderer.beginUpdate();
+    nextRenderer.setChannels(
+      waveformStore.channels.length > 0 ? waveformStore.channels : null,
+      waveformStore.sampleRate || sessionStore.sampleRate
     );
-  },
-  {
-    immediate: true
-  }
-);
+    nextRenderer.setSelection(waveformStore.selection);
+    nextRenderer.setMarkers(waveformStore.markers);
+    nextRenderer.clearRegions();
+    nextRenderer.addRegions(
+      waveformStore.regions.map(region => ({
+        firstSample: region.startSample,
+        lastSample: region.endSample,
+        sampleCount: region.sampleCount,
+        regionName: region.name,
+        regionColor: region.color
+      }))
+    );
+    nextRenderer.endUpdate();
+  };
 
-onUnmounted(() => {
-  stopBinding?.();
-  stopBinding = null;
-});
+  const sampleFromPointer = (event: PointerEvent): number => {
+    const canvas = canvasRef.value;
+    if (!canvas || waveformStore.totalSamples <= 0) {
+      return 0;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
+    const sample =
+      waveformStore.viewRange.firstSample +
+      Math.floor(Math.max(0, Math.min(1, ratio)) * waveformStore.viewRange.visibleSamples);
+
+    return Math.max(0, Math.min(sample, waveformStore.totalSamples - 1));
+  };
+
+  const addMarker = () => {
+    if (!hasSamples.value) {
+      return;
+    }
+
+    waveformStore.addMarker(centerSample.value, 'user');
+  };
+
+  const createRegion = () => {
+    if (!hasSamples.value) {
+      return;
+    }
+
+    if (!waveformStore.selection) {
+      const start = waveformStore.viewRange.firstSample;
+      const end = Math.min(
+        waveformStore.totalSamples - 1,
+        start + Math.max(1, Math.floor(waveformStore.viewRange.visibleSamples / 4))
+      );
+      waveformStore.selectRange(start, end);
+    }
+
+    waveformStore.createRegionFromSelection();
+  };
+
+  const measureSelection = () => {
+    waveformStore.measureSelection(waveformStore.selection?.channelIndex ?? 0);
+  };
+
+  const copySelection = () => {
+    waveformStore.copySelection();
+  };
+
+  const cutSelection = () => {
+    waveformStore.cutSelection();
+  };
+
+  const pasteClipboard = () => {
+    waveformStore.pasteClipboard(centerSample.value, 'insert');
+  };
+
+  const deleteSelection = () => {
+    waveformStore.deleteSelection();
+  };
+
+  const zoomIn = () => waveformStore.zoom(2);
+  const zoomOut = () => waveformStore.zoom(0.5);
+  const fitToWindow = () =>
+    waveformStore.setViewRange(0, Math.max(1, waveformStore.totalSamples || 1));
+  const panLeft = () =>
+    waveformStore.pan(-Math.max(1, Math.floor(waveformStore.viewRange.visibleSamples / 10)));
+  const panRight = () =>
+    waveformStore.pan(Math.max(1, Math.floor(waveformStore.viewRange.visibleSamples / 10)));
+
+  const handleWaveformAction = (event: Event) => {
+    const action = (event as CustomEvent<string>).detail;
+    const actions: Record<string, () => void> = {
+      zoomIn,
+      zoomOut,
+      fitToWindow,
+      panLeft,
+      panRight,
+      addMarker,
+      createRegion,
+      measureSelection,
+      copySelection,
+      cutSelection,
+      pasteClipboard,
+      deleteSelection
+    };
+
+    actions[action]?.();
+  };
+
+  const handlePointerDown = (event: PointerEvent) => {
+    if (!hasSamples.value || event.button !== 0) {
+      return;
+    }
+
+    draggingSelection.value = true;
+    selectionAnchor.value = sampleFromPointer(event);
+    waveformStore.selectRange(selectionAnchor.value, selectionAnchor.value);
+    canvasRef.value?.setPointerCapture?.(event.pointerId);
+  };
+
+  const handlePointerMove = (event: PointerEvent) => {
+    if (!draggingSelection.value) {
+      return;
+    }
+
+    waveformStore.selectRange(selectionAnchor.value, sampleFromPointer(event));
+  };
+
+  const handlePointerUp = (event: PointerEvent) => {
+    if (!draggingSelection.value) {
+      return;
+    }
+
+    draggingSelection.value = false;
+    waveformStore.selectRange(selectionAnchor.value, sampleFromPointer(event));
+    waveformStore.measureSelection(waveformStore.selection?.channelIndex ?? 0);
+    canvasRef.value?.releasePointerCapture?.(event.pointerId);
+  };
+
+  const handlePreviewInput = (event: Event) => {
+    const value = Number((event.target as HTMLInputElement).value);
+    waveformStore.setViewRange(value, waveformStore.viewRange.visibleSamples);
+  };
+
+  watch(
+    renderer,
+    nextRenderer => {
+      stopBinding?.();
+      stopBinding = null;
+
+      if (!nextRenderer) {
+        return;
+      }
+
+      stopBinding = createWaveformService(nextRenderer).bindViewRange(waveformStore, sessionStore);
+      syncRendererState();
+    },
+    {
+      immediate: true
+    }
+  );
+
+  watch(
+    () => ({
+      sampleRate: waveformStore.sampleRate,
+      channels: waveformStore.channels,
+      selection: waveformStore.selection,
+      markers: waveformStore.markers,
+      regions: waveformStore.regions
+    }),
+    syncRendererState,
+    {
+      deep: true,
+      immediate: true
+    }
+  );
+
+  onMounted(() => {
+    window.addEventListener('waveform-action', handleWaveformAction);
+  });
+
+  onUnmounted(() => {
+    stopBinding?.();
+    stopBinding = null;
+    window.removeEventListener('waveform-action', handleWaveformAction);
+  });
 </script>
 
 <template>
-  <section
-    ref="containerRef"
-    class="waveform-stage"
-  >
+  <section ref="containerRef" class="waveform-stage">
     <canvas
       ref="canvasRef"
       class="waveform-stage__canvas"
+      @pointerdown="handlePointerDown"
+      @pointermove="handlePointerMove"
+      @pointerup="handlePointerUp"
+      @pointercancel="handlePointerUp"
     />
 
-    <div class="waveform-stage__overlay">
-      <p class="waveform-stage__label">
-        Waveform Stage
-      </p>
-      <h2 class="waveform-stage__title">
-        {{ title }}
-      </h2>
-      <p class="waveform-stage__description">
-        波形画布生命周期已迁入独立组件；通道装载与复杂交互会在后续任务继续接回。
-      </p>
+    <div class="waveform-stage__toolbar">
+      <div class="waveform-stage__titlebar">
+        <span class="waveform-stage__title">{{ title }}</span>
+        <span class="waveform-stage__meta">{{ waveformStore.totalSamples }} samples</span>
+      </div>
+      <div class="waveform-stage__actions">
+        <button class="tool-button" title="缩小" :disabled="!hasSamples" @click="zoomOut">-</button>
+        <button class="tool-button" title="放大" :disabled="!hasSamples" @click="zoomIn">+</button>
+        <button class="tool-button" title="适应窗口" :disabled="!hasSamples" @click="fitToWindow">
+          1:1
+        </button>
+        <button class="tool-button" title="添加标记" :disabled="!hasSamples" @click="addMarker">
+          M
+        </button>
+        <button class="tool-button" title="创建区域" :disabled="!hasSamples" @click="createRegion">
+          R
+        </button>
+        <button
+          class="tool-button"
+          title="测量选区"
+          :disabled="!waveformStore.selection"
+          @click="measureSelection"
+        >
+          Hz
+        </button>
+        <button
+          class="tool-button"
+          title="复制"
+          :disabled="!waveformStore.selection"
+          @click="copySelection"
+        >
+          C
+        </button>
+        <button
+          class="tool-button"
+          title="剪切"
+          :disabled="!waveformStore.selection"
+          @click="cutSelection"
+        >
+          X
+        </button>
+        <button
+          class="tool-button"
+          title="粘贴"
+          :disabled="!waveformStore.clipboard"
+          @click="pasteClipboard"
+        >
+          V
+        </button>
+        <button
+          class="tool-button"
+          title="删除"
+          :disabled="!waveformStore.selection"
+          @click="deleteSelection"
+        >
+          Del
+        </button>
+      </div>
+    </div>
+
+    <div class="waveform-stage__preview">
+      <div class="waveform-stage__preview-track">
+        <div
+          class="waveform-stage__preview-window"
+          :style="{
+            left: `${previewStartPercent}%`,
+            width: `${previewWidthPercent}%`
+          }"
+        />
+      </div>
+      <input
+        class="waveform-stage__preview-input"
+        type="range"
+        min="0"
+        :max="previewMax"
+        :value="waveformStore.viewRange.firstSample"
+        :disabled="!hasSamples"
+        @input="handlePreviewInput"
+      />
+    </div>
+
+    <div v-if="measurementText" class="waveform-stage__measurement">
+      {{ measurementText }}
     </div>
   </section>
 </template>
 
 <style scoped>
-.waveform-stage {
-  position: relative;
-  min-height: 100%;
-  overflow: hidden;
-  background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(2, 6, 23, 0.98));
-}
+  .waveform-stage {
+    position: relative;
+    min-height: 100%;
+    overflow: hidden;
+    background: #111827;
+  }
 
-.waveform-stage__canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
+  .waveform-stage__canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
 
-.waveform-stage__overlay {
-  position: absolute;
-  left: 24px;
-  bottom: 24px;
-  width: min(100% - 48px, 720px);
-  padding: 20px 24px;
-  border: 1px dashed rgba(56, 189, 248, 0.36);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.86);
-  backdrop-filter: blur(8px);
-  pointer-events: none;
-}
+  .waveform-stage__toolbar {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 6px;
+    background: rgba(17, 24, 39, 0.88);
+  }
 
-.waveform-stage__label,
-.waveform-stage__description {
-  margin: 0;
-  color: #94a3b8;
-}
+  .waveform-stage__titlebar {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
 
-.waveform-stage__label {
-  text-transform: uppercase;
-  font-size: 12px;
-}
+  .waveform-stage__title {
+    overflow: hidden;
+    color: #f8fafc;
+    font-size: 13px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-.waveform-stage__title {
-  margin: 8px 0 12px;
-  color: #f8fafc;
-  font-size: 28px;
-  line-height: 1.2;
-}
+  .waveform-stage__meta {
+    color: #94a3b8;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .waveform-stage__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .tool-button {
+    min-width: 34px;
+    height: 28px;
+    border: 1px solid rgba(148, 163, 184, 0.26);
+    border-radius: 5px;
+    background: rgba(31, 41, 55, 0.92);
+    color: #e5e7eb;
+    font: 12px/1 monospace;
+  }
+
+  .tool-button:not(:disabled):hover {
+    border-color: rgba(56, 189, 248, 0.7);
+    color: #ffffff;
+  }
+
+  .tool-button:disabled {
+    color: #64748b;
+    cursor: not-allowed;
+  }
+
+  .waveform-stage__preview {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    height: 28px;
+  }
+
+  .waveform-stage__preview-track {
+    position: absolute;
+    inset: 8px 0;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 4px;
+    background: rgba(15, 23, 42, 0.82);
+  }
+
+  .waveform-stage__preview-window {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 3px;
+    background: rgba(56, 189, 248, 0.34);
+  }
+
+  .waveform-stage__preview-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    opacity: 0;
+  }
+
+  .waveform-stage__measurement {
+    position: absolute;
+    left: 12px;
+    bottom: 48px;
+    max-width: calc(100% - 24px);
+    padding: 6px 8px;
+    border-radius: 5px;
+    background: rgba(3, 7, 18, 0.78);
+    color: #d1fae5;
+    font: 12px/1.4 monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 </style>
