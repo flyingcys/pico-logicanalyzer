@@ -2,6 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { hardwareDriverManager } from '../drivers/HardwareDriverManager';
+import { LACFileFormat } from '../models/LACFileFormat';
+import { DataExportService, type ExportOptions } from '../services/DataExportService';
 import { NetworkStabilityService, type DiagnosticResult } from '../services/NetworkStabilityService';
 import { WiFiDeviceDiscovery, type WiFiDeviceInfo } from '../services/WiFiDeviceDiscovery';
 import {
@@ -119,7 +121,7 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
 
         case 'export':
           // 导出数据
-          await this.exportData(message.data);
+          await this.exportData(document, message.data);
           break;
 
         case 'startCapture':
@@ -294,8 +296,7 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
    */
   private parseLACFile(content: string): any {
     try {
-      // .lac文件是JSON格式
-      return JSON.parse(content);
+      return LACFileFormat.parse(content);
     } catch (error) {
       throw new Error('无效的.lac文件格式');
     }
@@ -321,25 +322,84 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
   /**
    * 导出数据
    */
-  private async exportData(_data: any): Promise<void> {
+  private async exportData(document: vscode.TextDocument, data: unknown): Promise<void> {
     try {
+      const requestedFormat = this.resolveExportFormat(data);
+      const defaultFilename = `capture_export.${requestedFormat}`;
       const options: vscode.SaveDialogOptions = {
-        defaultUri: vscode.Uri.file('capture_export.csv'),
+        defaultUri: vscode.Uri.file(defaultFilename),
         filters: {
+          LAC文件: ['lac'],
           CSV文件: ['csv'],
           JSON文件: ['json'],
+          VCD文件: ['vcd'],
           所有文件: ['*']
         }
       };
 
       const fileUri = await vscode.window.showSaveDialog(options);
       if (fileUri) {
-        // TODO: 实现实际的数据导出逻辑
+        const format = this.resolveExportFormat(data, fileUri.fsPath);
+        const exportedCapture = this.parseLACFile(document.getText());
+        const session = LACFileFormat.convertToCaptureSession(exportedCapture);
+        const exportOptions: ExportOptions = {
+          filename: fileUri.fsPath,
+          timeRange: this.resolveTimeRange(data),
+          customStart: this.readNumber(data, 'customStart'),
+          customEnd: this.readNumber(data, 'customEnd'),
+          selectedChannels: this.readNumberArray(data, 'selectedChannels')
+        };
+        const exportService = new DataExportService();
+
+        await exportService.initialize();
+        try {
+          const result = await exportService.exportWaveformData(session, format, exportOptions);
+          if (!result.success) {
+            vscode.window.showErrorMessage(`导出数据失败: ${result.error || '未知错误'}`);
+            return;
+          }
+        } finally {
+          await exportService.dispose();
+        }
+
         vscode.window.showInformationMessage(`数据已导出到: ${fileUri.fsPath}`);
       }
     } catch (error) {
       vscode.window.showErrorMessage(`导出数据失败: ${error}`);
     }
+  }
+
+  private resolveExportFormat(data: unknown, filePath?: string): 'lac' | 'csv' | 'json' | 'vcd' {
+    const payloadFormat = this.readString(data, 'format')?.toLowerCase();
+    const extension = filePath ? path.extname(filePath).replace('.', '').toLowerCase() : undefined;
+    const format = extension || payloadFormat || 'csv';
+
+    if (format === 'lac' || format === 'csv' || format === 'json' || format === 'vcd') {
+      return format;
+    }
+
+    return 'csv';
+  }
+
+  private resolveTimeRange(data: unknown): ExportOptions['timeRange'] {
+    const timeRange = this.readString(data, 'timeRange');
+    if (timeRange === 'all' || timeRange === 'visible' || timeRange === 'selection' || timeRange === 'custom') {
+      return timeRange;
+    }
+
+    return 'all';
+  }
+
+  private readNumberArray(value: unknown, key: string): number[] | undefined {
+    if (!this.isRecord(value) || !Array.isArray(value[key])) {
+      return undefined;
+    }
+
+    const numbers = (value[key] as unknown[]).filter((item): item is number =>
+      typeof item === 'number' && Number.isFinite(item)
+    );
+
+    return numbers.length > 0 ? numbers : undefined;
   }
 
   private getWiFiDiscoveryService(): WiFiDeviceDiscovery {
@@ -480,7 +540,7 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
           return { success: true };
 
         case 'exportData':
-          await this.exportData(payload);
+          await this.exportData(document, payload);
           return { success: true };
 
         case 'saveFile':

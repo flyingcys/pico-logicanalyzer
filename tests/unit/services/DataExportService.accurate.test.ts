@@ -342,8 +342,44 @@ describe('DataExportService 精准业务逻辑测试', () => {
       expect(result.success).toBe(true);
       expect(result.filename).toBe('test.lac');
       expect(result.mimeType).toBe('application/octet-stream');
-      expect(result.data).toContain('"settings"');
+      expect(result.data).toContain('"Settings"');
       expect(result.size).toBeGreaterThan(0);
+    });
+
+    it('应该按原版 PascalCase LAC 结构导出设置和 Samples', async () => {
+      const testSession = new CaptureSession();
+      testSession.frequency = 1000000;
+      testSession.preTriggerSamples = 1;
+      testSession.postTriggerSamples = 3;
+
+      const channel0 = new AnalyzerChannel(0, 'SDA');
+      channel0.samples = new Uint8Array([1, 0, 1, 0]);
+      const channel1 = new AnalyzerChannel(1, 'SCL');
+      channel1.samples = new Uint8Array([0, 1, 1, 0]);
+      testSession.captureChannels = [channel0, channel1];
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'lac', {
+        filename: 'original-compatible.lac',
+        timeRange: 'all'
+      });
+
+      expect(result.success).toBe(true);
+      const exportData = JSON.parse(result.data as string);
+
+      expect(exportData.Settings).toBeDefined();
+      expect(exportData.settings).toBeUndefined();
+      expect(exportData.metadata).toBeUndefined();
+      expect(exportData.Settings.Frequency).toBe(1000000);
+      expect(exportData.Settings.CaptureChannels[0]).toMatchObject({
+        ChannelNumber: 0,
+        ChannelName: 'SDA'
+      });
+      expect(exportData.Samples).toEqual([
+        '00000000000000000000000000000001',
+        '00000000000000000000000000000002',
+        '00000000000000000000000000000003',
+        '00000000000000000000000000000000'
+      ]);
     });
 
     it('应该正确处理样本范围选择', async () => {
@@ -373,7 +409,7 @@ describe('DataExportService 精准业务逻辑测试', () => {
 
       expect(result.success).toBe(true);
       const exportData = JSON.parse(result.data as string);
-      expect(exportData.metadata.channels).toBe(1);
+      expect(exportData.Settings.CaptureChannels).toHaveLength(1);
     });
 
     it('应该生成正确的元数据', async () => {
@@ -388,10 +424,9 @@ describe('DataExportService 精准业务逻辑测试', () => {
       expect(result.success).toBe(true);
       const exportData = JSON.parse(result.data as string);
       
-      expect(exportData.metadata).toBeDefined();
-      expect(exportData.metadata.sampleRate).toBe(24000000);
-      expect(exportData.metadata.exportType).toBe('waveform');
-      expect(exportData.metadata.exportFormat).toBe('lac');
+      expect(exportData.Settings).toBeDefined();
+      expect(exportData.Settings.Frequency).toBe(24000000);
+      expect(exportData.metadata).toBeUndefined();
     });
   });
 
@@ -458,6 +493,33 @@ describe('DataExportService 精准业务逻辑测试', () => {
       // 检查时间戳递增逻辑
       const thirdLineTime = parseFloat(lines[2]?.split(',')[0] || '0');
       expect(thirdLineTime).toBeGreaterThan(0);
+    });
+
+    it('应该按每个样本一个 0/1 byte 导出通道值', async () => {
+      const testSession = new CaptureSession();
+      testSession.frequency = 1000;
+      testSession.preTriggerSamples = 0;
+      testSession.postTriggerSamples = 4;
+
+      const channel0 = new AnalyzerChannel(0, 'CH0');
+      channel0.samples = new Uint8Array([1, 0, 1, 0]);
+      const channel1 = new AnalyzerChannel(1, 'CH1');
+      channel1.samples = new Uint8Array([0, 1, 0, 1]);
+      testSession.captureChannels = [channel0, channel1];
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'csv', {
+        filename: 'samples.csv',
+        timeRange: 'all'
+      });
+
+      expect(result.success).toBe(true);
+      expect((result.data as string).split('\n')).toEqual([
+        'Time,CH0,CH1',
+        '0.000000,1,0',
+        '1.000000,0,1',
+        '2.000000,1,0',
+        '3.000000,0,1'
+      ]);
     });
 
     it('应该支持取消操作', async () => {

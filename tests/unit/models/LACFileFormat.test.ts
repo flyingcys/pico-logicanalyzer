@@ -321,6 +321,65 @@ describe('LACFileFormat 模块单元测试套件', () => {
     });
   });
 
+  describe('parse() 方法测试', () => {
+    it('应该解析原版 PascalCase .lac 并恢复 CaptureSession 实例和通道样本', () => {
+      const originalLac = {
+        Settings: {
+          Frequency: 1000000,
+          PreTriggerSamples: 1,
+          PostTriggerSamples: 2,
+          LoopCount: 0,
+          MeasureBursts: false,
+          TriggerType: TriggerType.Edge,
+          TriggerChannel: 0,
+          TriggerInverted: false,
+          TriggerBitCount: 1,
+          TriggerPattern: 0,
+          CaptureChannels: [
+            {
+              ChannelNumber: 0,
+              ChannelName: 'SDA',
+              ChannelColor: 0xff0000,
+              Hidden: false
+            },
+            {
+              ChannelNumber: 1,
+              ChannelName: 'SCL',
+              ChannelColor: 0x00ff00,
+              Hidden: false
+            }
+          ]
+        },
+        Samples: [
+          '00000000000000000000000000000001',
+          '00000000000000000000000000000002',
+          '00000000000000000000000000000003'
+        ],
+        SelectedRegions: [
+          {
+            FirstSample: 0,
+            LastSample: 2,
+            RegionName: 'Transaction',
+            R: 255,
+            G: 128,
+            B: 64,
+            A: 200
+          }
+        ]
+      };
+
+      const exportedCapture = LACFileFormat.parse(JSON.stringify(originalLac));
+      const session = LACFileFormat.convertToCaptureSession(exportedCapture);
+
+      expect(session).toBeInstanceOf(CaptureSession);
+      expect(session.frequency).toBe(1000000);
+      expect(session.captureChannels[0]).toBeInstanceOf(AnalyzerChannel);
+      expect(session.captureChannels[0].samples).toEqual(new Uint8Array([1, 0, 1]));
+      expect(session.captureChannels[1].samples).toEqual(new Uint8Array([0, 1, 1]));
+      expect(exportedCapture.SelectedRegions?.[0].RegionName).toBe('Transaction');
+    });
+  });
+
   describe('convertToCaptureSession() 方法测试', () => {
     
     it('应该正确转换基本的ExportedCapture', () => {
@@ -343,10 +402,11 @@ describe('LACFileFormat 模块单元测试套件', () => {
 
       const result = LACFileFormat.convertToCaptureSession(exportedCapture);
 
-      expect(result).toBe(exportedCapture.Settings);
+      expect(result).toBeInstanceOf(CaptureSession);
       expect(result.frequency).toBe(2000000);
       expect(result.triggerType).toBe(TriggerType.Complex);
       expect(result.captureChannels.length).toBe(1);
+      expect(result.captureChannels[0]).toBeInstanceOf(AnalyzerChannel);
     });
 
     it('应该正确提取UInt128样本数据', () => {
