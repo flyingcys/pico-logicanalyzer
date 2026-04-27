@@ -366,47 +366,43 @@ describe('AnalyzerDriverBase 精准业务逻辑测试', () => {
   });
 
   describe('事件系统和生命周期管理', () => {
-    it('应该正确触发captureCompleted事件', (done) => {
+    it('应该正确触发captureCompleted事件', async () => {
       const testSession = createTestSession();
-      const expectedArgs: CaptureEventArgs = { success: true, session: testSession };
-      
-      driver.on('captureCompleted', (args: CaptureEventArgs) => {
-        expect(args.success).toBe(true);
-        expect(args.session).toBe(testSession);
-        done();
+      const eventPromise = new Promise<CaptureEventArgs>((resolve) => {
+        driver.once('captureCompleted', resolve);
       });
-
       driver.startCapture(testSession);
+      const args = await eventPromise;
+      expect(args.success).toBe(true);
+      expect(args.session).toBe(testSession);
     });
 
-    it('应该正确触发error事件', (done) => {
+    it('应该正确触发error事件', async () => {
       const testError = new Error('Test error');
-      
-      driver.on('error', (error: Error) => {
-        expect(error).toBe(testError);
-        expect(error.message).toBe('Test error');
-        done();
+      const eventPromise = new Promise<Error>((resolve) => {
+        driver.once('error', resolve);
       });
-
       // 使用protected方法触发错误事件
       (driver as any).emitError(testError);
+      const error = await eventPromise;
+      expect(error).toBe(testError);
+      expect(error.message).toBe('Test error');
     });
 
-    it('应该正确触发statusChanged事件', (done) => {
+    it('应该正确触发statusChanged事件', async () => {
       const testStatus: DeviceStatus = {
         isConnected: true,
         isCapturing: false,
         batteryVoltage: '4.2V'
       };
-      
-      driver.on('statusChanged', (status: DeviceStatus) => {
-        expect(status).toBe(testStatus);
-        expect(status.batteryVoltage).toBe('4.2V');
-        done();
+      const eventPromise = new Promise<DeviceStatus>((resolve) => {
+        driver.once('statusChanged', resolve);
       });
-
       // 使用protected方法触发状态变化事件
       (driver as any).emitStatusChanged(testStatus);
+      const status = await eventPromise;
+      expect(status).toBe(testStatus);
+      expect(status.batteryVoltage).toBe('4.2V');
     });
 
     it('应该正确清理所有事件监听器', () => {
@@ -452,16 +448,15 @@ describe('AnalyzerDriverBase 精准业务逻辑测试', () => {
       expect(driver.isCapturing).toBe(false);
     });
 
-    it('应该支持采集处理器回调', (done) => {
+    it('应该支持采集处理器回调', async () => {
       const testSession = createTestSession();
-      
-      const handler: CaptureCompletedHandler = (args: CaptureEventArgs) => {
-        expect(args.success).toBe(true);
-        expect(args.session).toBe(testSession);
-        done();
-      };
-
-      driver.startCapture(testSession, handler);
+      const handlerPromise = new Promise<CaptureEventArgs>((resolve) => {
+        const handler: CaptureCompletedHandler = (args: CaptureEventArgs) => resolve(args);
+        driver.startCapture(testSession, handler);
+      });
+      const args = await handlerPromise;
+      expect(args.success).toBe(true);
+      expect(args.session).toBe(testSession);
     });
   });
 });

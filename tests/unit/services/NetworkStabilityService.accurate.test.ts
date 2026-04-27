@@ -12,20 +12,22 @@
  * 将NetworkStabilityService覆盖率提升至85%+，继续Services层卓越表现
  */
 
+import { vi } from 'vitest';
+
 // Mock配置 - 最小化Mock，专注真实业务逻辑验证
 const mockSocketInstanceInstance = {
-  connect: jest.fn(),
-  write: jest.fn(),
-  destroy: jest.fn(),
-  setNoDelay: jest.fn(),
-  setKeepAlive: jest.fn(),
-  setDefaultEncoding: jest.fn(),
-  on: jest.fn(),
-  off: jest.fn()
+  connect: vi.fn(),
+  write: vi.fn(),
+  destroy: vi.fn(),
+  setNoDelay: vi.fn(),
+  setKeepAlive: vi.fn(),
+  setDefaultEncoding: vi.fn(),
+  on: vi.fn(),
+  off: vi.fn()
 };
 
-jest.mock('net', () => ({
-  Socket: jest.fn(() => mockSocketInstanceInstance)
+vi.mock('net', () => ({
+  Socket: vi.fn(function () { return mockSocketInstanceInstance as any; })
 }));
 
 import {
@@ -37,7 +39,7 @@ import {
 } from '../../../src/services/NetworkStabilityService';
 import { Socket } from 'net';
 
-const MockSocket = Socket as jest.MockedClass<typeof Socket>;
+const MockSocket = vi.mocked(Socket as any);
 
 describe('NetworkStabilityService 精准业务逻辑测试', () => {
   let networkStabilityService: NetworkStabilityService;
@@ -56,15 +58,27 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
   });
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.useFakeTimers();
+    vi.resetAllMocks();
+    vi.useFakeTimers();
+
+    mockSocketInstanceInstance.connect.mockImplementation(() => mockSocketInstanceInstance);
+    mockSocketInstanceInstance.write.mockImplementation((data: any, callback?: (error?: Error) => void) => {
+      callback && callback();
+      return true;
+    });
+    mockSocketInstanceInstance.destroy.mockImplementation(() => undefined);
+    mockSocketInstanceInstance.setNoDelay.mockImplementation(() => mockSocketInstanceInstance);
+    mockSocketInstanceInstance.setKeepAlive.mockImplementation(() => mockSocketInstanceInstance);
+    mockSocketInstanceInstance.setDefaultEncoding.mockImplementation(() => mockSocketInstanceInstance);
+    mockSocketInstanceInstance.on.mockImplementation(() => mockSocketInstanceInstance);
+    mockSocketInstanceInstance.off.mockImplementation(() => mockSocketInstanceInstance);
     
     networkStabilityService = new NetworkStabilityService();
   });
 
   afterEach(() => {
-    jest.useRealTimers();
-    jest.clearAllMocks();
+    vi.useRealTimers();
+    vi.resetAllMocks();
   });
 
   describe('服务实例化和基础配置逻辑', () => {
@@ -112,7 +126,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
       expect(quality.lastTestTime).toBeInstanceOf(Date);
     });
 
-    it('应该正确管理网络事件历史', () => {
+    it('应该正确管理网络事件历史', async () => {
       const events1 = networkStabilityService.getNetworkEvents();
       expect(events1).toEqual([]);
       
@@ -125,7 +139,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
   describe('连接管理核心功能验证', () => {
     it('应该正确执行连接流程', async () => {
       // 模拟成功连接
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
@@ -133,7 +147,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
       const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
       
       // 推进定时器以触发连接回调
-      jest.advanceTimersByTime(20);
+      await vi.advanceTimersByTimeAsync(20);
       
       const result = await connectPromise;
       expect(result).toBe(true);
@@ -142,12 +156,12 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
     it('应该正确处理连接超时', async () => {
       // 模拟连接超时（不调用回调）
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation(() => mockSocketInstanceInstance);
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation(() => mockSocketInstanceInstance);
 
       const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
       
       // 推进定时器超过连接超时时间
-      jest.advanceTimersByTime(15000);
+      await vi.advanceTimersByTimeAsync(15000);
       
       await expect(connectPromise).rejects.toThrow('连接超时');
       expect(mockSocketInstanceInstance.destroy).toHaveBeenCalled();
@@ -156,8 +170,9 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
     it('应该正确处理连接错误', async () => {
       // 模拟连接错误
       const testError = new Error('Connection refused');
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation(() => mockSocketInstanceInstance);
-      (mockSocketInstanceInstance.on as jest.Mock).mockImplementation((event: string, callback: any) => {
+      networkStabilityService.on('error', () => {});
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation(() => mockSocketInstanceInstance);
+      (mockSocketInstanceInstance.on as vi.Mock).mockImplementation((event: string, callback: any) => {
         if (event === 'error') {
           setTimeout(() => callback(testError), 10);
         }
@@ -166,20 +181,21 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
       const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
       
-      jest.advanceTimersByTime(20);
+      await vi.advanceTimersByTimeAsync(20);
       
       await expect(connectPromise).rejects.toThrow('Connection refused');
     });
 
     it('应该正确执行断开连接流程', async () => {
       // 先建立连接
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
 
-      await networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await connectPromise;
 
       // 执行断开连接
       await networkStabilityService.disconnect();
@@ -189,13 +205,14 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
     it('应该防止重复连接', async () => {
       // 模拟已连接状态
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
 
-      await networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await connectPromise;
 
       // 尝试重复连接
       const result = await networkStabilityService.connect('192.168.1.100', 4045);
@@ -206,17 +223,18 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
   describe('数据传输和响应时间统计', () => {
     beforeEach(async () => {
       // 建立连接
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
-      await networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await connectPromise;
     });
 
     it('应该正确发送数据', async () => {
       // 模拟成功写入
-      (mockSocketInstanceInstance.write as jest.Mock).mockImplementation((data: any, callback?: (error?: Error) => void) => {
+      (mockSocketInstanceInstance.write as vi.Mock).mockImplementation((data: any, callback?: (error?: Error) => void) => {
         setTimeout(() => callback && callback(), 5);
         return true;
       });
@@ -224,7 +242,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
       const testData = Buffer.from([0x01, 0x02, 0x03]);
       const result = await networkStabilityService.sendData(testData);
       
-      jest.advanceTimersByTime(10);
+      await vi.advanceTimersByTimeAsync(10);
       
       expect(result).toBe(true);
       expect(mockSocketInstanceInstance.write).toHaveBeenCalledWith(testData, expect.any(Function));
@@ -233,7 +251,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
     it('应该正确处理数据发送错误', async () => {
       // 模拟写入错误
       const testError = new Error('Write failed');
-      (mockSocketInstanceInstance.write as jest.Mock).mockImplementation((data: any, callback?: (error?: Error) => void) => {
+      (mockSocketInstanceInstance.write as vi.Mock).mockImplementation((data: any, callback?: (error?: Error) => void) => {
         setTimeout(() => callback && callback(testError), 5);
         return false;
       });
@@ -241,7 +259,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
       const testData = Buffer.from([0x01, 0x02, 0x03]);
       const sendPromise = networkStabilityService.sendData(testData);
       
-      jest.advanceTimersByTime(10);
+      await vi.advanceTimersByTimeAsync(10);
       
       await expect(sendPromise).rejects.toThrow('Write failed');
     });
@@ -257,7 +275,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
     it('应该正确统计响应时间', async () => {
       // 模拟多次数据传输
-      (mockSocketInstanceInstance.write as jest.Mock).mockImplementation((data: any, callback?: (error?: Error) => void) => {
+      (mockSocketInstanceInstance.write as vi.Mock).mockImplementation((data: any, callback?: (error?: Error) => void) => {
         setTimeout(() => callback && callback(), Math.random() * 10 + 5);
         return true;
       });
@@ -267,7 +285,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
       // 发送多次数据
       for (let i = 0; i < 5; i++) {
         const sendPromise = networkStabilityService.sendData(testData);
-        jest.advanceTimersByTime(15);
+        await vi.advanceTimersByTimeAsync(15);
         await sendPromise;
       }
 
@@ -282,12 +300,13 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
   describe('连接质量监控算法验证', () => {
     beforeEach(async () => {
       // 建立连接并启动监控
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
-      await networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await connectPromise;
     });
 
     it('应该正确计算稳定性评分', () => {
@@ -297,7 +316,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
       expect(initialQuality.stabilityScore).toBe(100);
       
       // 模拟连接质量更新（通过推进定时器触发）
-      jest.advanceTimersByTime(2500); // 超过qualityCheckInterval
+      vi.advanceTimersByTime(2500); // 超过qualityCheckInterval
       
       const updatedQuality = networkStabilityService.getConnectionQuality();
       expect(typeof updatedQuality.stabilityScore).toBe('number');
@@ -307,7 +326,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
     it('应该正确更新连接质量指标', () => {
       // 推进时间以触发质量监控更新
-      jest.advanceTimersByTime(2500);
+      vi.advanceTimersByTime(2500);
       
       const quality = networkStabilityService.getConnectionQuality();
       
@@ -325,7 +344,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
     it('应该正确管理响应时间历史', async () => {
       // 模拟数据传输以生成响应时间历史
-      mockSocketInstance.write.mockImplementation((data, callback) => {
+      mockSocketInstanceInstance.write.mockImplementation((data, callback) => {
         setTimeout(() => callback && callback(), 10);
         return true;
       });
@@ -335,12 +354,12 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
       // 发送多次数据以建立历史
       for (let i = 0; i < 10; i++) {
         const sendPromise = networkStabilityService.sendData(testData);
-        jest.advanceTimersByTime(15);
+        await vi.advanceTimersByTimeAsync(15);
         await sendPromise;
       }
 
       // 触发质量更新
-      jest.advanceTimersByTime(2500);
+      vi.advanceTimersByTime(2500);
       
       const quality = networkStabilityService.getConnectionQuality();
       
@@ -354,7 +373,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
     it('应该正确计算吞吐量', async () => {
       // 模拟数据接收（通过socket.on('data')回调）
       const dataCallbacks: Function[] = [];
-      (mockSocketInstanceInstance.on as jest.Mock).mockImplementation((event: string, callback: any) => {
+      (mockSocketInstanceInstance.on as vi.Mock).mockImplementation((event: string, callback: any) => {
         if (event === 'data') {
           dataCallbacks.push(callback);
         }
@@ -363,15 +382,16 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
       // 重新建立连接以触发setupSocketHandlers
       await networkStabilityService.disconnect();
-      await networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const reconnectPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await reconnectPromise;
 
       // 模拟接收数据
       const testData = Buffer.from([0x55, 0xAA, 0x55, 0xAA]);
       dataCallbacks.forEach(callback => callback(testData));
       
       // 推进时间以计算吞吐量
-      jest.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(1000);
       
       const quality = networkStabilityService.getConnectionQuality();
       expect(typeof quality.throughput).toBe('number');
@@ -380,22 +400,23 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
   describe('心跳检测机制验证', () => {
     beforeEach(async () => {
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
-      (mockSocketInstanceInstance.write as jest.Mock).mockImplementation((data: any, callback?: (error?: Error) => void) => {
+      (mockSocketInstanceInstance.write as vi.Mock).mockImplementation((data: any, callback?: (error?: Error) => void) => {
         setTimeout(() => callback && callback(), 5);
         return true;
       });
       
-      await networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await connectPromise;
     });
 
     it('应该正确启动心跳检测', () => {
       // 推进时间超过心跳间隔
-      jest.advanceTimersByTime(1200);
+      vi.advanceTimersByTime(1200);
       
       // 验证心跳数据包发送
       expect(mockSocketInstanceInstance.write).toHaveBeenCalledWith(
@@ -406,7 +427,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
     it('应该正确处理心跳响应', async () => {
       // 推进时间以触发心跳
-      jest.advanceTimersByTime(1200);
+      vi.advanceTimersByTime(1200);
       
       // 验证心跳更新了延迟信息
       const quality = networkStabilityService.getConnectionQuality();
@@ -415,32 +436,32 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
     it('应该在断开连接时停止心跳', async () => {
       // 推进时间以确保心跳开始
-      jest.advanceTimersByTime(1200);
+      vi.advanceTimersByTime(1200);
       
-      const writeCallsBefore = (mockSocketInstanceInstance.write as jest.Mock).mock.calls.length;
+      const writeCallsBefore = (mockSocketInstanceInstance.write as vi.Mock).mock.calls.length;
       
       // 断开连接
       await networkStabilityService.disconnect();
       
       // 推进时间，验证不再发送心跳
-      jest.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(5000);
       
-      const writeCallsAfter = (mockSocketInstanceInstance.write as jest.Mock).mock.calls.length;
+      const writeCallsAfter = (mockSocketInstanceInstance.write as vi.Mock).mock.calls.length;
       expect(writeCallsAfter).toBe(writeCallsBefore); // 没有新的心跳调用
     });
 
     it('应该正确处理心跳发送失败', async () => {
       // 模拟心跳发送失败
-      (mockSocketInstanceInstance.write as jest.Mock).mockImplementation((data: any, callback?: (error?: Error) => void) => {
+      (mockSocketInstanceInstance.write as vi.Mock).mockImplementation((data: any, callback?: (error?: Error) => void) => {
         setTimeout(() => callback && callback(new Error('Heartbeat failed')), 5);
         return false;
       });
 
       // 推进时间触发心跳
-      jest.advanceTimersByTime(1200);
+      vi.advanceTimersByTime(1200);
       
       // 推进时间处理心跳失败
-      jest.advanceTimersByTime(100);
+      vi.advanceTimersByTime(100);
       
       // 验证连接质量受到影响
       const quality = networkStabilityService.getConnectionQuality();
@@ -459,17 +480,18 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
     it('应该在连接断开时触发自动重连', async () => {
       // 建立初始连接
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
 
-      await networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const initialConnectPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await initialConnectPromise;
 
       // 模拟连接断开
       const closeCallbacks: Function[] = [];
-      (mockSocketInstanceInstance.on as jest.Mock).mockImplementation((event: string, callback: any) => {
+      (mockSocketInstanceInstance.on as vi.Mock).mockImplementation((event: string, callback: any) => {
         if (event === 'close') {
           closeCallbacks.push(callback);
         }
@@ -478,14 +500,15 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
       // 重新建立连接以设置close处理器
       await networkStabilityService.disconnect();
-      await networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const reconnectSetupPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await reconnectSetupPromise;
 
       // 触发连接关闭
       closeCallbacks.forEach(callback => callback());
       
       // 推进时间到重连间隔
-      jest.advanceTimersByTime(1200);
+      await vi.advanceTimersByTimeAsync(1200);
       
       // 验证重连尝试
       expect(mockSocketInstanceInstance.connect).toHaveBeenCalledTimes(2); // 初始连接 + 重连
@@ -493,13 +516,14 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
     it('应该正确处理重连重试逻辑', async () => {
       // 建立初始连接
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
 
-      await networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await connectPromise;
 
       // 验证连接质量中的重试计数
       const quality = networkStabilityService.getConnectionQuality();
@@ -511,15 +535,16 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
       networkStabilityService.setConfiguration({ autoReconnect: false });
 
       // 建立连接
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
 
-      await networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await connectPromise;
 
-      const initialConnectCalls = (mockSocketInstanceInstance.connect as jest.Mock).mock.calls.length;
+      const initialConnectCalls = (mockSocketInstanceInstance.connect as vi.Mock).mock.calls.length;
 
       // 模拟连接断开（简化实现，直接调用handleConnectionClose的逻辑）
       // 由于我们专注业务逻辑，这里验证配置生效
@@ -529,23 +554,23 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
     it('应该支持强制重连功能', async () => {
       // 建立初始连接
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
 
       await networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      vi.advanceTimersByTime(20);
 
-      const initialConnectCalls = (mockSocketInstanceInstance.connect as jest.Mock).mock.calls.length;
+      const initialConnectCalls = (mockSocketInstanceInstance.connect as vi.Mock).mock.calls.length;
 
       // 执行强制重连
       const reconnectPromise = networkStabilityService.forceReconnect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(1100); // 等待1秒 + 连接时间
+      await vi.advanceTimersByTimeAsync(1100); // 等待1秒 + 连接时间
       
       const result = await reconnectPromise;
       expect(result).toBe(true);
-      expect((mockSocketInstanceInstance.connect as jest.Mock).mock.calls.length).toBeGreaterThan(initialConnectCalls);
+      expect((mockSocketInstanceInstance.connect as vi.Mock).mock.calls.length).toBeGreaterThan(initialConnectCalls);
     });
   });
 
@@ -553,19 +578,18 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
     it('应该正确执行完整诊断测试', async () => {
       // 模拟成功的连接测试
       const testSocketInstance = {
-        connect: jest.fn((port: number, host: string, callback?: () => void) => {
+        connect: vi.fn((port: number, host: string, callback?: () => void) => {
           setTimeout(() => callback && callback(), 10);
           return testSocketInstance;
         }),
-        destroy: jest.fn(),
-        on: jest.fn()
+        destroy: vi.fn(),
+        on: vi.fn()
       };
       MockSocket.mockImplementation(() => testSocketInstance);
 
-      const diagnostics = await networkStabilityService.runDiagnostics('192.168.1.100', 4045);
-      
-      // 推进时间处理异步诊断
-      jest.advanceTimersByTime(100);
+      const diagnosticsPromise = networkStabilityService.runDiagnostics('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(100);
+      const diagnostics = await diagnosticsPromise;
       
       expect(Array.isArray(diagnostics)).toBe(true);
       expect(diagnostics.length).toBeGreaterThan(0);
@@ -584,8 +608,9 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
     });
 
     it('应该正确验证网络配置', async () => {
-      const diagnostics = await networkStabilityService.runDiagnostics('192.168.1.100', 4045);
-      jest.advanceTimersByTime(100);
+      const diagnosticsPromise = networkStabilityService.runDiagnostics('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(100);
+      const diagnostics = await diagnosticsPromise;
       
       // 查找网络配置检查结果
       const configTest = diagnostics.find(d => d.testName === '网络配置检查');
@@ -596,8 +621,9 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
     });
 
     it('应该正确识别无效IP地址', async () => {
-      const diagnostics = await networkStabilityService.runDiagnostics('invalid.ip', 4045);
-      jest.advanceTimersByTime(100);
+      const diagnosticsPromise = networkStabilityService.runDiagnostics('invalid.ip', 4045);
+      await vi.advanceTimersByTimeAsync(100);
+      const diagnostics = await diagnosticsPromise;
       
       const configTest = diagnostics.find(d => d.testName === '网络配置检查');
       if (configTest) {
@@ -607,8 +633,9 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
     });
 
     it('应该正确识别无效端口号', async () => {
-      const diagnostics = await networkStabilityService.runDiagnostics('192.168.1.100', 70000);
-      jest.advanceTimersByTime(100);
+      const diagnosticsPromise = networkStabilityService.runDiagnostics('192.168.1.100', 70000);
+      await vi.advanceTimersByTimeAsync(100);
+      const diagnostics = await diagnosticsPromise;
       
       const configTest = diagnostics.find(d => d.testName === '网络配置检查');
       if (configTest) {
@@ -618,8 +645,9 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
     });
 
     it('应该验证Pico Logic Analyzer默认端口', async () => {
-      const diagnostics = await networkStabilityService.runDiagnostics('192.168.1.100', 8080);
-      jest.advanceTimersByTime(100);
+      const diagnosticsPromise = networkStabilityService.runDiagnostics('192.168.1.100', 8080);
+      await vi.advanceTimersByTimeAsync(100);
+      const diagnostics = await diagnosticsPromise;
       
       const configTest = diagnostics.find(d => d.testName === '网络配置检查');
       if (configTest) {
@@ -637,85 +665,82 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
       expect(typeof networkStabilityService.emit).toBe('function');
     });
 
-    it('应该正确发出连接事件', (done) => {
-      const eventSpy = jest.fn((event: NetworkEvent) => {
-        expect(event.type).toBe('connected');
-        expect(event.timestamp).toBeInstanceOf(Date);
-        expect(event.data).toEqual({ host: '192.168.1.100', port: 4045 });
-        done();
+    it('应该正确发出连接事件', async () => {
+      const eventPromise = new Promise<NetworkEvent>((resolve) => {
+        networkStabilityService.once('connected', resolve);
       });
-
-      networkStabilityService.on('connected', eventSpy);
 
       // 模拟成功连接
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
 
-      networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await connectPromise;
+      const event = await eventPromise;
+      expect(event.type).toBe('connected');
+      expect(event.timestamp).toBeInstanceOf(Date);
+      expect(event.data).toEqual({ host: '192.168.1.100', port: 4045 });
     });
 
-    it('应该正确发出断开连接事件', (done) => {
-      const eventSpy = jest.fn((event: NetworkEvent) => {
-        expect(event.type).toBe('disconnected');
-        expect(event.timestamp).toBeInstanceOf(Date);
-        done();
+    it('应该正确发出断开连接事件', async () => {
+      const eventPromise = new Promise<NetworkEvent>((resolve) => {
+        networkStabilityService.once('disconnected', resolve);
       });
-
-      networkStabilityService.on('disconnected', eventSpy);
 
       // 先建立连接再断开
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
 
-      networkStabilityService.connect('192.168.1.100', 4045).then(() => {
-        jest.advanceTimersByTime(20);
-        networkStabilityService.disconnect();
-      });
-
-      jest.advanceTimersByTime(20);
+      const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await connectPromise;
+      await networkStabilityService.disconnect();
+      const event = await eventPromise;
+      expect(event.type).toBe('disconnected');
+      expect(event.timestamp).toBeInstanceOf(Date);
     });
 
-    it('应该正确发出错误事件', (done) => {
-      const eventSpy = jest.fn((event: NetworkEvent) => {
-        expect(event.type).toBe('error');
-        expect(event.message).toContain('Connection failed');
-        done();
+    it('应该正确发出错误事件', async () => {
+      const eventPromise = new Promise<NetworkEvent>((resolve) => {
+        networkStabilityService.once('error', resolve);
       });
-
-      networkStabilityService.on('error', eventSpy);
 
       // 模拟连接错误
       const testError = new Error('Connection failed');
-      mockSocketInstance.connect.mockImplementation(() => mockSocketInstance);
-      mockSocketInstance.on.mockImplementation((event, callback) => {
+      mockSocketInstanceInstance.connect.mockImplementation(() => mockSocketInstanceInstance);
+      mockSocketInstanceInstance.on.mockImplementation((event, callback) => {
         if (event === 'error') {
           setTimeout(() => callback(testError), 10);
         }
-        return mockSocketInstance;
+        return mockSocketInstanceInstance;
       });
 
       networkStabilityService.connect('192.168.1.100', 4045).catch(() => {});
-      jest.advanceTimersByTime(20);
+      await vi.advanceTimersByTimeAsync(20);
+      const event = await eventPromise;
+      expect(event.type).toBe('error');
+      expect(event.message).toContain('Connection failed');
     });
 
-    it('应该正确管理网络事件历史', () => {
+    it('应该正确管理网络事件历史', async () => {
       // 获取初始事件数量
       const initialEvents = networkStabilityService.getNetworkEvents();
       expect(initialEvents).toEqual([]);
 
       // 模拟连接以产生事件
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
 
-      networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await connectPromise;
 
       // 验证事件历史更新
       const eventsAfterConnect = networkStabilityService.getNetworkEvents();
@@ -751,13 +776,14 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
     it('应该正确执行连接优化', async () => {
       // 建立连接以触发优化
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
 
-      await networkStabilityService.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await connectPromise;
 
       // 验证TCP优化调用
       expect(mockSocketInstanceInstance.setNoDelay).toHaveBeenCalledWith(true);
@@ -773,21 +799,22 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
       // 模拟连接
       const mockSocketInstanceNoOpt = {
-        connect: jest.fn((port, host, callback) => {
+        connect: vi.fn((port, host, callback) => {
           setTimeout(() => callback && callback(), 10);
           return mockSocketInstanceNoOpt;
         }),
-        setNoDelay: jest.fn(),
-        setKeepAlive: jest.fn(),
-        setDefaultEncoding: jest.fn(),
-        on: jest.fn(),
-        destroy: jest.fn()
+        setNoDelay: vi.fn(),
+        setKeepAlive: vi.fn(),
+        setDefaultEncoding: vi.fn(),
+        on: vi.fn(),
+        destroy: vi.fn()
       } as any;
 
       MockSocket.mockImplementation(() => mockSocketInstanceNoOpt);
 
-      await serviceWithoutOptimization.connect('192.168.1.100', 4045);
-      jest.advanceTimersByTime(20);
+      const connectPromise = serviceWithoutOptimization.connect('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(20);
+      await connectPromise;
 
       // 验证优化未被调用（由于enableOptimization: false）
       expect(serviceWithoutOptimization).toBeDefined();
@@ -813,8 +840,9 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
         throw new Error('Socket creation failed');
       });
 
-      const diagnostics = await networkStabilityService.runDiagnostics('192.168.1.100', 4045);
-      jest.advanceTimersByTime(100);
+      const diagnosticsPromise = networkStabilityService.runDiagnostics('192.168.1.100', 4045);
+      await vi.advanceTimersByTimeAsync(100);
+      const diagnostics = await diagnosticsPromise;
       
       expect(Array.isArray(diagnostics)).toBe(true);
       // 即使有错误，也应该返回诊断结果
@@ -847,7 +875,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
     it('应该正确处理连接状态不一致情况', async () => {
       // 测试在连接过程中的状态管理
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation(() => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation(() => {
         // 不调用回调，模拟连接挂起
         return mockSocketInstanceInstance;
       });
@@ -880,7 +908,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
 
     it('应该正确处理异步操作的竞争条件', async () => {
       // 模拟并发连接和断开操作
-      (mockSocketInstanceInstance.connect as jest.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
+      (mockSocketInstanceInstance.connect as vi.Mock).mockImplementation((port: number, host: string, callback?: () => void) => {
         setTimeout(() => callback && callback(), 10);
         return mockSocketInstanceInstance;
       });
@@ -888,7 +916,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
       const connectPromise = networkStabilityService.connect('192.168.1.100', 4045);
       const disconnectPromise = networkStabilityService.disconnect();
       
-      jest.advanceTimersByTime(20);
+      await vi.advanceTimersByTimeAsync(20);
       
       // 验证服务能正确处理竞争条件
       await Promise.allSettled([connectPromise, disconnectPromise]);

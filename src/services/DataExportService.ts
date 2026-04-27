@@ -1925,8 +1925,8 @@ export class DataExportService extends ServiceLifecycleBase {
           results: results.map(result => ({
             startSample: result.startSample,
             endSample: result.endSample,
-            data: result.data,
-            type: result.type || 'unknown'
+            data: result.rawData ?? result.values,
+            type: String(result.annotationType ?? 'unknown')
           })),
           timestamp: new Date().toISOString()
         };
@@ -1944,7 +1944,7 @@ export class DataExportService extends ServiceLifecycleBase {
 
 ## Project Information
 - Created: ${new Date().toLocaleString()}
-- Device: ${projectData.deviceInfo?.name || 'Unknown'}
+- Device: ${projectData.metadata.deviceInfo?.name || 'Unknown'}
 - Sample Rate: ${session.frequency} Hz
 - Total Samples: ${session.totalSamples}
 - Channels: ${session.captureChannels.length}
