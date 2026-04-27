@@ -1,0 +1,1049 @@
+/**
+ * Canvas波形渲染引擎
+ * 基于原版 LogicAnalyzer SampleViewer 的精确 TypeScript 实现
+ * 严格遵循原版的架构设计和渲染逻辑
+ */
+
+import {
+  UnifiedCaptureData,
+  ViewRange,
+  RenderParams,
+  ChannelInfo
+} from '../../../models/UnifiedDataFormat';
+import { AnalyzerChannel } from '../../../models/CaptureModels';
+
+// 基于原版的接口定义
+export interface ISampleDisplay {
+  firstSample: number;
+  visibleSamples: number;
+  updateVisibleSamples(firstSample: number, visibleSamples: number): void;
+}
+
+export interface IRegionDisplay {
+  regions: SampleRegion[];
+  addRegion(region: SampleRegion): void;
+  addRegions(regions: SampleRegion[]): void;
+  removeRegion(region: SampleRegion): boolean;
+  clearRegions(): void;
+}
+
+export interface IMarkerDisplay {
+  userMarker: number | null;
+  setUserMarker(marker: number | null): void;
+}
+
+// 基于原版的数据结构
+export interface SampleRegion {
+  firstSample: number;
+  lastSample: number;
+  sampleCount: number; // Math.abs(lastSample - firstSample)
+  regionName: string;
+  regionColor: string; // CSS color string
+}
+
+export interface Interval {
+  value: boolean;
+  start: number;
+  end: number;
+  duration: number; // 时间 (秒)
+}
+
+export interface ChannelRenderStatus {
+  firstSample: number;
+  sampleCount: number;
+  value: number; // 0 or 1
+}
+
+// 渲染统计信息
+export interface RenderStats {
+  renderTime: number; // 渲染耗时 (ms)
+  samplesRendered: number; // 渲染的样本数
+  fps: number; // 帧率
+  memoryUsage: number; // 内存占用 (MB)
+}
+
+// 波形渲染配置
+export interface WaveformConfig {
+  colors: AnalyzerColors;
+  channelHeight: number;
+  minChannelHeight: number;
+  lineWidth: number;
+  showSamplePoints: boolean;
+  enableOptimization: boolean;
+  refreshRate: number; // FPS
+}
+
+// 颜色配置 - 基于原版 AnalyzerColors
+export interface AnalyzerColors {
+  bgChannelColors: string[]; // 交替背景颜色
+  palette: string[]; // 通道颜色调色板
+  sampleLineColor: string; // 采样线颜色
+  sampleDashColor: string; // 采样虚线颜色
+  triggerLineColor: string; // 触发线颜色
+  burstLineColor: string; // 突发线颜色
+  userLineColor: string; // 用户标记线颜色
+  gridLineColor: string; // 网格线颜色
+  errorColor: string;
+  textColor: string;
+}
+
+export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarkerDisplay {
+  // 基于原版的核心属性
+  protected canvas: HTMLCanvasElement;
+  protected ctx: CanvasRenderingContext2D;
+
+  // 基于原版的数据属性
+  private channels: AnalyzerChannel[] | null = null;
+  private intervals: Interval[][] = []; // 每个通道的时间间隔
+  private sampleFrequency = 0; // 采样频率
+
+  // ISampleDisplay 接口实现
+  public firstSample = 0;
+  public visibleSamples = 0;
+
+  // IRegionDisplay 接口实现
+  public regions: SampleRegion[] = [];
+
+  // IMarkerDisplay 接口实现
+  public userMarker: number | null = null;
+
+  // 其他关键属性
+  public preSamples = 0; // 触发前样本数
+  public bursts: number[] | null = null; // 突发采集位置
+
+  // 控制标志
+  private updating = false;
+
+  // 样式配置 - 基于原版
+  private readonly MIN_CHANNEL_HEIGHT = 48;
+  private colors: AnalyzerColors = {
+    bgChannelColors: ['#242424', '#1c1c1c'],
+    palette: [
+      '#ff7333', '#33ff57', '#3357ff', '#ff33a1', '#ffbd33', '#33fff6',
+      '#bd33ff', '#57ff33', '#5733ff', '#33ffbd', '#ff33bd', '#ff5733'
+      // 简化调色板，实际可扩展至64色
+    ],
+    sampleLineColor: '#3c3c3c',
+    sampleDashColor: '#3c3c3c60',
+    triggerLineColor: '#ffffff',
+    burstLineColor: '#f0ffff',
+    userLineColor: '#00ffff',
+    gridLineColor: '#333333',
+    errorColor: '#ff0000',
+    textColor: '#ffffff'
+  };
+
+  // 性能监控
+  private renderStats: RenderStats = {
+    renderTime: 0,
+    samplesRendered: 0,
+    fps: 0,
+    memoryUsage: 0
+  };
+
+  // 性能优化配置
+  private readonly PERFORMANCE_THRESHOLD = 50000; // 超过5万样本启用优化
+  private readonly MAX_VISIBLE_SAMPLES = 10000; // 最大可见样本数
+  private readonly LOD_THRESHOLD = 1000; // LOD (Level of Detail) 阈值
+
+  // 动画控制
+  private lastFrameTime = 0;
+  private frameCount = 0;
+  private readonly handleMouseMove = this.onMouseMove.bind(this);
+  private readonly handleMouseEnter = this.onMouseEnter.bind(this);
+  private readonly handleMouseLeave = this.onMouseLeave.bind(this);
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('无法获取Canvas 2D上下文');
+    }
+    this.ctx = ctx;
+
+    this.setupCanvasSettings();
+    this.setupEventListeners();
+  }
+
+  /**
+   * 设置事件监听器 - 基于原版的鼠标交互
+   */
+  private setupEventListeners(): void {
+    this.canvas.addEventListener('mousemove', this.handleMouseMove);
+    this.canvas.addEventListener('mouseenter', this.handleMouseEnter);
+    this.canvas.addEventListener('mouseleave', this.handleMouseLeave);
+  }
+
+  /**
+   * 鼠标移动事件处理 - 基于原版的tooltip功能
+   */
+  private onMouseMove(event: MouseEvent): void {
+    if (this.intervals.length === 0 || !this.channels) {
+      return;
+    }
+
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    const sampleWidth = rect.width / this.visibleSamples;
+    const curSample = Math.floor(x / sampleWidth) + this.firstSample;
+
+    const visibleChannels = this.channels.filter(c => !c.hidden);
+    const curChan = Math.floor(y / (rect.height / visibleChannels.length));
+
+    if (curChan >= visibleChannels.length) {
+      return;
+    }
+
+    const chan = visibleChannels[curChan];
+    let idx = -1;
+    for (let i = 0; i < this.channels.length; i++) {
+      if (this.channels[i] === chan) {
+        idx = i;
+        break;
+      }
+    }
+
+    if (idx === -1) {
+      return;
+    }
+
+    const interval = this.intervals[idx].find(i => i.start <= curSample && i.end > curSample);
+
+    if (interval) {
+      const duration = this.formatTime(interval.duration);
+      const sampleCount = interval.end - interval.start;
+      const tooltip = `State: ${interval.value ? 'High' : 'Low'}\nLength: ${duration} (${sampleCount} samples)`;
+
+      this.showTooltip(tooltip, event.clientX, event.clientY);
+    } else {
+      this.hideTooltip();
+    }
+  }
+
+  private onMouseEnter(event: MouseEvent): void {
+    // 可以添加鼠标进入处理
+  }
+
+  private onMouseLeave(event: MouseEvent): void {
+    this.hideTooltip();
+  }
+
+  /**
+   * 显示tooltip - 简单实现
+   */
+  private showTooltip(text: string, x: number, y: number): void {
+    // 简单的tooltip实现，可以后续扩展为更复杂的UI组件
+    const existingTooltip = document.getElementById('waveform-tooltip');
+    if (existingTooltip) {
+      existingTooltip.remove();
+    }
+
+    const tooltip = document.createElement('div');
+    tooltip.id = 'waveform-tooltip';
+    tooltip.style.position = 'fixed';
+    tooltip.style.left = `${x + 10}px`;
+    tooltip.style.top = `${y - 10}px`;
+    tooltip.style.background = 'rgba(0, 0, 0, 0.8)';
+    tooltip.style.color = 'white';
+    tooltip.style.padding = '4px 8px';
+    tooltip.style.borderRadius = '4px';
+    tooltip.style.fontSize = '12px';
+    tooltip.style.fontFamily = 'monospace';
+    tooltip.style.zIndex = '1000';
+    tooltip.style.whiteSpace = 'pre-line';
+    tooltip.textContent = text;
+
+    // 安全添加到 DOM，支持测试环境
+    if (document.body && typeof document.body.appendChild === 'function') {
+      try {
+        document.body.appendChild(tooltip);
+      } catch (error) {
+        // 在测试环境中可能无法添加元素，忽略错误
+        console.debug('Cannot append tooltip in test environment:', error);
+      }
+    }
+  }
+
+  /**
+   * 隐藏tooltip
+   */
+  private hideTooltip(): void {
+    const tooltip = document.getElementById('waveform-tooltip');
+    if (tooltip) {
+      tooltip.remove();
+    }
+  }
+
+  /**
+   * 格式化时间显示
+   */
+  private formatTime(seconds: number): string {
+    if (seconds < 1e-6) {
+      return `${(seconds * 1e9).toFixed(2)} ns`;
+    } else if (seconds < 1e-3) {
+      return `${(seconds * 1e6).toFixed(2)} µs`;
+    } else if (seconds < 1) {
+      return `${(seconds * 1e3).toFixed(2)} ms`;
+    } else {
+      return `${seconds.toFixed(2)} s`;
+    }
+  }
+
+  /**
+   * 设置通道数据和采样频率 - 基于原版的 SetChannels 方法
+   */
+  public setChannels(channels: AnalyzerChannel[] | null, sampleFrequency?: number): void {
+    this.channels = channels;
+    if (sampleFrequency !== undefined) {
+      this.sampleFrequency = sampleFrequency;
+    }
+
+    this.computeIntervals();
+    this.invalidateVisual();
+  }
+
+  /**
+   * 设置时间间隔数据 - 测试兼容方法
+   */
+  public setIntervals(intervals: Interval[][]): void {
+    this.intervals = intervals;
+    this.invalidateVisual();
+  }
+
+  /**
+   * 设置采样频率 - 测试兼容方法
+   */
+  public setSampleFrequency(frequency: number): void {
+    this.sampleFrequency = frequency;
+    this.computeIntervals();
+    this.invalidateVisual();
+  }
+
+  /**
+   * 获取通道数量 - 测试兼容方法
+   */
+  public getChannelCount(): number {
+    return this.channels ? this.channels.length : 0;
+  }
+
+  /**
+   * 获取采样频率 - 测试兼容方法
+   */
+  public getSampleFrequency(): number {
+    return this.sampleFrequency;
+  }
+
+  /**
+   * 计算时间间隔 - 基于原版的 ComputeIntervals 方法
+   */
+  private computeIntervals(): void {
+    this.intervals = [];
+
+    if (!this.channels) {
+      return;
+    }
+
+    for (let channelIndex = 0; channelIndex < this.channels.length; channelIndex++) {
+      const channel = this.channels[channelIndex];
+      const channelIntervals: Interval[] = [];
+
+      if (!channel.samples || channel.samples.length === 0) {
+        this.intervals.push(channelIntervals);
+        continue;
+      }
+
+      let lastSample = channel.samples[0];
+      let lastSampleIndex = 0;
+
+      for (let curSample = 1; curSample < channel.samples.length; curSample++) {
+        const sample = channel.samples[curSample];
+
+        if (sample !== lastSample) {
+          const interval: Interval = {
+            value: lastSample !== 0,
+            start: lastSampleIndex,
+            end: curSample,
+            duration: (curSample - lastSampleIndex) / this.sampleFrequency
+          };
+
+          channelIntervals.push(interval);
+
+          lastSample = sample;
+          lastSampleIndex = curSample;
+        }
+      }
+
+      // 添加最后一个间隔
+      const lastInterval: Interval = {
+        value: lastSample !== 0,
+        start: lastSampleIndex,
+        end: channel.samples.length,
+        duration: (channel.samples.length - lastSampleIndex) / this.sampleFrequency
+      };
+
+      channelIntervals.push(lastInterval);
+      this.intervals.push(channelIntervals);
+    }
+  }
+
+  /**
+   * 设置Canvas渲染参数
+   */
+  private setupCanvasSettings(): void {
+    // 高DPI支持
+    const dpr = window.devicePixelRatio || 1;
+    const rect = this.canvas.getBoundingClientRect();
+
+    this.canvas.width = rect.width * dpr;
+    this.canvas.height = rect.height * dpr;
+
+    // 安全设置style属性，支持测试环境
+    if (this.canvas.style) {
+      this.canvas.style.width = `${rect.width}px`;
+      this.canvas.style.height = `${rect.height}px`;
+    }
+
+    this.ctx.scale(dpr, dpr);
+
+    // 基本渲染设置
+    this.ctx.imageSmoothingEnabled = false; // 数字信号通常不需要平滑
+    this.ctx.lineCap = 'square';
+    this.ctx.lineJoin = 'miter';
+  }
+
+  /**
+   * 开始更新 - 基于原版的 BeginUpdate
+   */
+  public beginUpdate(): void {
+    this.updating = true;
+  }
+
+  /**
+   * 结束更新 - 基于原版的 EndUpdate
+   */
+  public endUpdate(): void {
+    this.updating = false;
+    this.invalidateVisual();
+  }
+
+  /**
+   * 触发重绘 - 基于原版的 InvalidateVisual
+   */
+  public invalidateVisual(): void {
+    if (!this.updating) {
+      requestAnimationFrame(() => this.render());
+    }
+  }
+
+  /**
+   * 主渲染方法 - 基于原版的 Render 方法
+   */
+  public render(): RenderStats {
+    const startTime = performance.now();
+
+    if (!this.channels || this.channels.length === 0 ||
+        !this.channels[0].samples || this.channels[0].samples.length === 0) {
+      return this.renderStats;
+    }
+
+    const visibleChannels = this.channels.filter(c => !c.hidden);
+    const channelCount = visibleChannels.length;
+
+    if (channelCount === 0) {
+      return this.renderStats;
+    }
+
+    // 更新最小高度
+    const minSize = channelCount * this.MIN_CHANNEL_HEIGHT;
+    if (this.canvas.parentElement && parseFloat(this.canvas.style.minHeight || '0') !== minSize) {
+      this.canvas.style.minHeight = `${minSize}px`;
+    }
+
+    // 计算显示参数
+    const canvasRect = this.canvas.getBoundingClientRect();
+    const canvasWidth = canvasRect.width;
+    const canvasHeight = canvasRect.height;
+
+    if (this.visibleSamples === 0 || this.updating) {
+      return this.renderStats;
+    }
+
+    const channelHeight = canvasHeight / channelCount;
+    const sampleWidth = canvasWidth / this.visibleSamples;
+    const margin = channelHeight / 5;
+
+    const totalSamples = visibleChannels[0].samples!.length;
+    const lastSample = Math.min(this.visibleSamples + this.firstSample, totalSamples);
+
+    // 性能优化: 根据可见样本数量调整渲染策略
+    const usePerformanceOptimization = this.visibleSamples > this.PERFORMANCE_THRESHOLD;
+    const useLOD = this.visibleSamples > this.LOD_THRESHOLD;
+
+    // 清除画布
+    this.ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+    // 绘制背景 - 交替颜色
+    for (let chan = 0; chan < channelCount; chan++) {
+      this.ctx.fillStyle = this.colors.bgChannelColors[chan % 2];
+      this.ctx.fillRect(0, chan * channelHeight, canvasWidth, channelHeight);
+    }
+
+    // 绘制时间轴和通道标签
+    this.renderTimeAxis(canvasWidth, canvasHeight, channelHeight);
+    this.renderChannelLabels(visibleChannels, channelHeight);
+
+    // 绘制区域高亮
+    this.renderRegions(sampleWidth, canvasHeight);
+
+    // 准备通道渲染状态
+    const renders: ChannelRenderStatus[] = new Array(channelCount);
+
+    // 主渲染循环 - 根据性能情况选择渲染策略
+    if (usePerformanceOptimization) {
+      this.renderOptimized(visibleChannels, channelHeight, margin, sampleWidth, canvasWidth, canvasHeight);
+    } else {
+      this.renderNormal(visibleChannels, channelHeight, margin, sampleWidth, canvasWidth, canvasHeight);
+    }
+
+    // 渲染边框和分隔线
+    this.renderBorders(channelCount, canvasHeight);
+
+    // 更新统计信息
+    const endTime = performance.now();
+    this.renderStats.renderTime = endTime - startTime;
+    this.renderStats.samplesRendered = (lastSample - this.firstSample) * channelCount;
+    this.updateFPS();
+
+    return { ...this.renderStats };
+  }
+
+  /**
+   * 正常渲染模式 - 逐样本精确渲染
+   */
+  private renderNormal(
+    visibleChannels: AnalyzerChannel[],
+    channelHeight: number,
+    margin: number,
+    sampleWidth: number,
+    canvasWidth: number,
+    canvasHeight: number
+  ): void {
+    const lastSample = Math.min(this.visibleSamples + this.firstSample,
+                                visibleChannels[0].samples!.length);
+    const channelCount = visibleChannels.length;
+    const renders: ChannelRenderStatus[] = new Array(channelCount);
+
+    // 主要采样循环 - 基于原版的逐样本渲染逻辑
+    for (let curSample = this.firstSample; curSample < lastSample; curSample++) {
+      const lineX = (curSample - this.firstSample) * sampleWidth;
+
+      // 绘制采样线 (在低缩放级别)
+      if (this.visibleSamples < 201) {
+        this.ctx.strokeStyle = this.colors.sampleLineColor;
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        this.ctx.moveTo(lineX + sampleWidth / 2, 0);
+        this.ctx.lineTo(lineX + sampleWidth / 2, canvasHeight);
+        this.ctx.stroke();
+
+        if (this.visibleSamples < 101) {
+          this.ctx.strokeStyle = this.colors.sampleDashColor;
+          this.ctx.beginPath();
+          this.ctx.moveTo(lineX, 0);
+          this.ctx.lineTo(lineX, canvasHeight);
+          this.ctx.stroke();
+        }
+      }
+
+      // 绘制触发线
+      if (curSample === this.preSamples) {
+        this.ctx.strokeStyle = this.colors.triggerLineColor;
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(lineX, 0);
+        this.ctx.lineTo(lineX, canvasHeight);
+        this.ctx.stroke();
+      }
+
+      // 绘制突发线
+      if (this.bursts && this.bursts.includes(curSample)) {
+        this.ctx.strokeStyle = this.colors.burstLineColor;
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([5, 3]);
+        this.ctx.beginPath();
+        this.ctx.moveTo(lineX, 0);
+        this.ctx.lineTo(lineX, canvasHeight);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]);
+      }
+
+      // 绘制用户标记线
+      if (this.userMarker !== null && this.userMarker === curSample) {
+        this.ctx.strokeStyle = this.colors.userLineColor;
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([5, 3]);
+        this.ctx.beginPath();
+        this.ctx.moveTo(lineX, 0);
+        this.ctx.lineTo(lineX, canvasHeight);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]);
+      }
+
+      // 处理通道渲染状态
+      if (curSample === this.firstSample) {
+        // 初始化渲染状态
+        for (let chan = 0; chan < channelCount; chan++) {
+          renders[chan] = {
+            firstSample: curSample,
+            sampleCount: 1,
+            value: visibleChannels[chan].samples![curSample]
+          };
+        }
+      } else {
+        // 检查状态变化
+        for (let chan = 0; chan < channelCount; chan++) {
+          const currentValue = visibleChannels[chan].samples![curSample];
+
+          if (renders[chan].value !== currentValue) {
+            // 渲染之前的状态
+            this.renderChannelSegment(renders[chan], chan, visibleChannels[chan],
+                                    channelHeight, margin, sampleWidth);
+
+            // 更新状态
+            renders[chan] = {
+              firstSample: curSample,
+              sampleCount: 1,
+              value: currentValue
+            };
+          } else {
+            renders[chan].sampleCount++;
+          }
+        }
+      }
+    }
+
+    // 渲染最后的状态段
+    for (let chan = 0; chan < channelCount; chan++) {
+      this.renderChannelSegment(renders[chan], chan, visibleChannels[chan],
+                               channelHeight, margin, sampleWidth);
+    }
+
+    // 如果用户标记在最后一个样本位置
+    if (this.userMarker !== null && this.userMarker === lastSample) {
+      const lineX = (lastSample - this.firstSample) * sampleWidth;
+      this.ctx.strokeStyle = this.colors.userLineColor;
+      this.ctx.lineWidth = 2;
+      this.ctx.setLineDash([5, 3]);
+      this.ctx.beginPath();
+      this.ctx.moveTo(lineX, 0);
+      this.ctx.lineTo(lineX, canvasHeight);
+      this.ctx.stroke();
+      this.ctx.setLineDash([]);
+    }
+  }
+
+  /**
+   * 优化渲染模式 - 适用于大数据量的高性能渲染
+   */
+  private renderOptimized(
+    visibleChannels: AnalyzerChannel[],
+    channelHeight: number,
+    margin: number,
+    sampleWidth: number,
+    canvasWidth: number,
+    canvasHeight: number
+  ): void {
+    const lastSample = Math.min(this.visibleSamples + this.firstSample,
+                                visibleChannels[0].samples!.length);
+    const channelCount = visibleChannels.length;
+
+    // 采样步长 - 跳过一些样本以提高性能
+    const stepSize = Math.max(1, Math.floor(this.visibleSamples / this.MAX_VISIBLE_SAMPLES));
+
+    console.log(`优化渲染: 步长=${stepSize}, 可见样本=${this.visibleSamples}`);
+
+    // 使用 Path2D 进行批量绘制
+    for (let chan = 0; chan < channelCount; chan++) {
+      const channel = visibleChannels[chan];
+      if (!channel.samples || channel.hidden) continue;
+
+      const path = new Path2D();
+      const yHi = chan * channelHeight + margin;
+      const yLo = yHi + channelHeight - margin * 2;
+      const channelColor = this.getChannelColor(channel);
+
+      let lastX = 0;
+      let lastValue = channel.samples[this.firstSample] || 0;
+      let currentY = lastValue !== 0 ? yHi : yLo;
+
+      path.moveTo(0, currentY);
+
+      for (let curSample = this.firstSample; curSample < lastSample; curSample += stepSize) {
+        const x = ((curSample - this.firstSample) / this.visibleSamples) * canvasWidth;
+        const value = channel.samples[curSample] || 0;
+
+        if (value !== lastValue) {
+          // 绘制水平线到转换点
+          path.lineTo(x, currentY);
+          // 绘制垂直转换线
+          const newY = value !== 0 ? yHi : yLo;
+          path.lineTo(x, newY);
+          currentY = newY;
+          lastValue = value;
+        }
+
+        lastX = x;
+      }
+
+      // 绘制到最后
+      path.lineTo(canvasWidth, currentY);
+
+      // 绘制整个路径
+      this.ctx.strokeStyle = channelColor;
+      this.ctx.lineWidth = 1;
+      this.ctx.stroke(path);
+    }
+
+    // 绘制重要的标记线（触发、突发、用户标记）
+    this.renderMarkerLines(canvasHeight, sampleWidth);
+  }
+
+  /**
+   * 渲染标记线（触发、突发、用户标记）
+   */
+  private renderMarkerLines(canvasHeight: number, sampleWidth: number): void {
+    // 绘制触发线
+    if (this.preSamples >= this.firstSample && this.preSamples < this.firstSample + this.visibleSamples) {
+      const lineX = (this.preSamples - this.firstSample) * sampleWidth;
+      this.ctx.strokeStyle = this.colors.triggerLineColor;
+      this.ctx.lineWidth = 2;
+      this.ctx.beginPath();
+      this.ctx.moveTo(lineX, 0);
+      this.ctx.lineTo(lineX, canvasHeight);
+      this.ctx.stroke();
+    }
+
+    // 绘制突发线
+    if (this.bursts) {
+      this.ctx.strokeStyle = this.colors.burstLineColor;
+      this.ctx.lineWidth = 2;
+      this.ctx.setLineDash([5, 3]);
+
+      for (const burst of this.bursts) {
+        if (burst >= this.firstSample && burst < this.firstSample + this.visibleSamples) {
+          const lineX = (burst - this.firstSample) * sampleWidth;
+          this.ctx.beginPath();
+          this.ctx.moveTo(lineX, 0);
+          this.ctx.lineTo(lineX, canvasHeight);
+          this.ctx.stroke();
+        }
+      }
+
+      this.ctx.setLineDash([]);
+    }
+
+    // 绘制用户标记线
+    if (this.userMarker !== null &&
+        this.userMarker >= this.firstSample &&
+        this.userMarker < this.firstSample + this.visibleSamples) {
+      const lineX = (this.userMarker - this.firstSample) * sampleWidth;
+      this.ctx.strokeStyle = this.colors.userLineColor;
+      this.ctx.lineWidth = 2;
+      this.ctx.setLineDash([5, 3]);
+      this.ctx.beginPath();
+      this.ctx.moveTo(lineX, 0);
+      this.ctx.lineTo(lineX, canvasHeight);
+      this.ctx.stroke();
+      this.ctx.setLineDash([]);
+    }
+  }
+
+  /**
+   * 渲染通道段 - 基于原版的通道渲染逻辑
+   */
+  private renderChannelSegment(
+    render: ChannelRenderStatus,
+    channelIndex: number,
+    channel: AnalyzerChannel,
+    channelHeight: number,
+    margin: number,
+    sampleWidth: number
+  ): void {
+    const yHi = channelIndex * channelHeight + margin;
+    const yLo = yHi + channelHeight - margin * 2;
+
+    const xStart = (render.firstSample - this.firstSample) * sampleWidth;
+    const xEnd = render.sampleCount * sampleWidth + xStart;
+
+    // 获取通道颜色
+    const channelColor = this.getChannelColor(channel);
+
+    this.ctx.strokeStyle = channelColor;
+    this.ctx.lineWidth = 2;
+    this.ctx.beginPath();
+
+    // 绘制水平线
+    if (render.value !== 0) {
+      this.ctx.moveTo(xStart, yHi);
+      this.ctx.lineTo(xEnd, yHi);
+    } else {
+      this.ctx.moveTo(xStart, yLo);
+      this.ctx.lineTo(xEnd, yLo);
+    }
+
+    // 绘制垂直转换线 (在状态变化点)
+    if (render.sampleCount === 1) {
+      this.ctx.moveTo(xEnd, yHi);
+      this.ctx.lineTo(xEnd, yLo);
+    }
+
+    this.ctx.stroke();
+  }
+
+  /**
+   * 获取通道颜色 - 基于原版的颜色逻辑
+   */
+  private getChannelColor(channel: AnalyzerChannel): string {
+    if (channel.channelColor !== null && channel.channelColor !== undefined) {
+      // 如果通道有自定义颜色，转换为CSS颜色
+      const colorValue = channel.channelColor;
+      const r = (colorValue >> 16) & 0xFF;
+      const g = (colorValue >> 8) & 0xFF;
+      const b = colorValue & 0xFF;
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    // 使用调色板颜色
+    return this.colors.palette[channel.channelNumber % this.colors.palette.length];
+  }
+
+  /**
+   * 渲染区域高亮 - 基于原版的区域显示
+   */
+  private renderRegions(sampleWidth: number, canvasHeight: number): void {
+    for (const region of this.regions) {
+      const first = Math.min(region.firstSample, region.lastSample);
+      const start = (first - this.firstSample) * sampleWidth;
+      const end = sampleWidth * region.sampleCount;
+
+      this.ctx.fillStyle = region.regionColor;
+      this.ctx.fillRect(start, 0, end, canvasHeight);
+    }
+  }
+
+  /**
+   * 渲染时间轴
+   */
+  private renderTimeAxis(canvasWidth: number, canvasHeight: number, channelHeight: number): void {
+    if (this.sampleFrequency === 0 || this.visibleSamples === 0) return;
+
+    const timeAxisHeight = 30;
+    const timeAxisY = canvasHeight - timeAxisHeight;
+
+    // 绘制时间轴背景
+    this.ctx.fillStyle = '#1e1e1e';
+    this.ctx.fillRect(0, timeAxisY, canvasWidth, timeAxisHeight);
+
+    // 计算时间刻度
+    const totalTimeSpan = this.visibleSamples / this.sampleFrequency; // 总时间跨度(秒)
+    const tickCount = Math.min(10, Math.max(3, Math.floor(canvasWidth / 100))); // 刻度数量
+    const timePerTick = totalTimeSpan / tickCount;
+    const samplesPerTick = this.visibleSamples / tickCount;
+
+    this.ctx.strokeStyle = this.colors.textColor;
+    this.ctx.fillStyle = this.colors.textColor;
+    this.ctx.font = '11px monospace';
+    this.ctx.lineWidth = 1;
+
+    for (let i = 0; i <= tickCount; i++) {
+      const x = (i / tickCount) * canvasWidth;
+      const timeValue = this.firstSample / this.sampleFrequency + i * timePerTick;
+
+      // 绘制刻度线
+      this.ctx.beginPath();
+      this.ctx.moveTo(x, timeAxisY);
+      this.ctx.lineTo(x, timeAxisY + 5);
+      this.ctx.stroke();
+
+      // 绘制时间标签
+      const timeText = this.formatTime(timeValue);
+      const textWidth = this.ctx.measureText(timeText).width;
+      this.ctx.fillText(timeText, x - textWidth / 2, timeAxisY + 18);
+    }
+
+    // 绘制时间轴边框
+    this.ctx.strokeStyle = this.colors.sampleLineColor;
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, timeAxisY);
+    this.ctx.lineTo(canvasWidth, timeAxisY);
+    this.ctx.stroke();
+  }
+
+  /**
+   * 渲染通道标签
+   */
+  private renderChannelLabels(visibleChannels: AnalyzerChannel[], channelHeight: number): void {
+    const labelWidth = 60;
+    const labelX = 5;
+
+    this.ctx.font = '12px monospace';
+    this.ctx.fillStyle = this.colors.textColor;
+
+    for (let chan = 0; chan < visibleChannels.length; chan++) {
+      const channel = visibleChannels[chan];
+      const y = chan * channelHeight + channelHeight / 2 + 4;
+      const channelName = channel.channelName || `CH${channel.channelNumber}`;
+
+      // 绘制通道标签背景（半透明）
+      this.ctx.fillStyle = 'rgba(30, 30, 30, 0.8)';
+      this.ctx.fillRect(0, chan * channelHeight + 2, labelWidth, 20);
+
+      // 绘制通道名称
+      const channelColor = this.getChannelColor(channel);
+      this.ctx.fillStyle = channelColor;
+      this.ctx.fillText(channelName, labelX, y);
+    }
+  }
+
+  // ISampleDisplay 接口实现
+  public updateVisibleSamples(firstSample: number, visibleSamples: number): void {
+    this.firstSample = firstSample;
+    this.visibleSamples = visibleSamples;
+
+    if (!this.updating) {
+      this.invalidateVisual();
+    }
+  }
+
+  // IRegionDisplay 接口实现
+  public addRegion(region: SampleRegion): void {
+    this.regions.push(region);
+    this.invalidateVisual();
+  }
+
+  public addRegions(regions: SampleRegion[]): void {
+    this.regions.push(...regions);
+    this.invalidateVisual();
+  }
+
+  public removeRegion(region: SampleRegion): boolean {
+    const index = this.regions.indexOf(region);
+    if (index !== -1) {
+      this.regions.splice(index, 1);
+      this.invalidateVisual();
+      return true;
+    }
+    return false;
+  }
+
+  public clearRegions(): void {
+    this.regions = [];
+    this.invalidateVisual();
+  }
+
+  // IMarkerDisplay 接口实现
+  public setUserMarker(marker: number | null): void {
+    this.userMarker = marker;
+
+    if (!this.updating) {
+      this.invalidateVisual();
+    }
+  }
+
+
+  /**
+   * 渲染边框和分隔线
+   */
+  private renderBorders(channelCount: number, canvasHeight: number): void {
+    if (!this.ctx) return;
+
+    // 渲染外边框
+    this.ctx.strokeStyle = this.colors.textColor;
+    this.ctx.lineWidth = 1;
+    this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // 渲染通道分隔线
+    if (channelCount > 1) {
+      const channelHeight = canvasHeight / channelCount;
+      this.ctx.strokeStyle = this.colors.gridLineColor;
+      this.ctx.lineWidth = 0.5;
+
+      for (let i = 1; i < channelCount; i++) {
+        const y = i * channelHeight;
+        this.ctx.strokeRect(0, y - 0.5, this.canvas.width, 1);
+      }
+    }
+  }
+
+  /**
+   * 更新FPS统计
+   */
+  private updateFPS(): void {
+    const now = performance.now();
+    if (this.lastFrameTime > 0) {
+      const delta = now - this.lastFrameTime;
+      this.renderStats.fps = 1000 / delta;
+    }
+    this.lastFrameTime = now;
+    this.frameCount++;
+  }
+
+  /**
+   * 更新颜色配置
+   */
+  public updateColors(colors: Partial<AnalyzerColors>): void {
+    this.colors = { ...this.colors, ...colors };
+    this.invalidateVisual();
+  }
+
+  /**
+   * 设置突发数据
+   */
+  public setBursts(bursts: number[] | null): void {
+    this.bursts = bursts;
+    this.invalidateVisual();
+  }
+
+  /**
+   * 设置触发前样本数
+   */
+  public setPreSamples(preSamples: number): void {
+    this.preSamples = preSamples;
+    this.invalidateVisual();
+  }
+
+  /**
+   * 获取渲染统计
+   */
+  public getRenderStats(): RenderStats {
+    return { ...this.renderStats };
+  }
+
+  /**
+   * 清理资源
+   */
+  public dispose(): void {
+    // 移除事件监听器
+    this.canvas.removeEventListener('mousemove', this.handleMouseMove);
+    this.canvas.removeEventListener('mouseenter', this.handleMouseEnter);
+    this.canvas.removeEventListener('mouseleave', this.handleMouseLeave);
+
+    // 清理tooltip
+    this.hideTooltip();
+
+    // 清理数据
+    this.channels = null;
+    this.intervals = [];
+    this.regions = [];
+  }
+
+  /**
+   * 重新调整Canvas大小
+   */
+  public resize(): void {
+    this.setupCanvasSettings();
+    this.invalidateVisual();
+  }
+}

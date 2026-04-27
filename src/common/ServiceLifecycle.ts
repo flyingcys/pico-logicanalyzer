@@ -241,7 +241,7 @@ export abstract class ServiceLifecycleBase implements IServiceLifecycle {
 
       // 执行子类的初始化逻辑
       const initPromise = this.onInitialize(options);
-      
+
       try {
         await Promise.race([initPromise, timeoutPromise]);
         // 初始化成功，清理超时
@@ -294,7 +294,7 @@ export abstract class ServiceLifecycleBase implements IServiceLifecycle {
 
       // 执行子类的销毁逻辑
       const disposePromise = this.onDispose(options);
-      
+
       try {
         await Promise.race([disposePromise, timeoutPromise]);
         // 销毁成功，清理超时

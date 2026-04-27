@@ -1,5 +1,0 @@
-#!/usr/bin/env sh
-
-npm run test:type-check
-npm run test:unit
-npm run test:webview

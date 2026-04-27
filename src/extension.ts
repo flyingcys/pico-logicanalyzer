@@ -4,7 +4,7 @@ import { LACEditorProvider } from './providers/LACEditorProvider';
 import { hardwareDriverManager } from './drivers/HardwareDriverManager';
 import { WiFiDeviceDiscovery } from './services/WiFiDeviceDiscovery';
 import { NetworkStabilityService } from './services/NetworkStabilityService';
-import { AnalyzerDriverType, TriggerType } from './models/AnalyzerTypes';
+import { AnalyzerDriverType, CaptureError, TriggerType } from './models/AnalyzerTypes';
 import { CaptureSession, AnalyzerChannel } from './models/CaptureModels';
 import { LACFileFormat } from './models/LACFileFormat';
 
@@ -34,11 +34,11 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
       // 创建一个新的.lac文件来启动主界面
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const fileName = `analyzer_session_${timestamp}.lac`;
-      
+
       // 获取工作区根目录
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
       let filePath: string;
-      
+
       if (workspaceFolder) {
         filePath = path.join(workspaceFolder.uri.fsPath, fileName);
       } else {
@@ -46,7 +46,7 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
         const tempDir = require('os').tmpdir();
         filePath = path.join(tempDir, fileName);
       }
-      
+
       const fileUri = vscode.Uri.file(filePath);
 
       // 创建初始化的LAC文件内容
@@ -54,7 +54,7 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
       initialSession.frequency = 1000000;
       initialSession.postTriggerSamples = 1000;
       initialSession.preTriggerSamples = 100;
-      
+
       // 添加默认通道
       for (let i = 0; i < 8; i++) {
         const channel = new AnalyzerChannel(i, `Channel ${i + 1}`);
@@ -63,7 +63,7 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
       }
 
       // 转换为LAC格式
-      const lacData = LACFileFormat.createFromCaptureSession(initialSession, 'VSCode Logic Analyzer - New Session');
+      const lacData = LACFileFormat.createFromCaptureSession(initialSession);
       const lacContent = JSON.stringify(lacData, null, 2);
 
       // 写入文件
@@ -72,9 +72,9 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
 
       // 打开文件，这将触发LACEditorProvider自动打开主界面
       await vscode.commands.executeCommand('vscode.open', fileUri);
-      
+
       vscode.window.showInformationMessage('逻辑分析器主界面已打开！');
-      
+
     } catch (error) {
       vscode.window.showErrorMessage(`打开逻辑分析器界面失败: ${error}`);
     }
@@ -185,7 +185,7 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
           '连接设备',
           '取消'
         );
-        
+
         if (action === '连接设备') {
           await vscode.commands.executeCommand('logicAnalyzer.connectDevice');
           return;
@@ -215,31 +215,31 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
       }, async (progress, token) => {
         return new Promise<void>((resolve, reject) => {
           let progressValue = 0;
-          
+
           // 设置进度更新定时器
           const progressTimer = setInterval(() => {
             if (progressValue < 90) {
               progressValue += 10;
-              progress.report({ 
-                increment: 10, 
-                message: `采集进度: ${progressValue}%` 
+              progress.report({
+                increment: 10,
+                message: `采集进度: ${progressValue}%`
               });
             }
           }, 500);
 
           // 采集完成处理函数
-          const captureCompletedHandler = async (success: boolean, session: any, error?: string) => {
+          const captureCompletedHandler = async (args: { success: boolean; session: CaptureSession }) => {
             clearInterval(progressTimer);
-            
-            if (success && session) {
+
+            if (args.success && args.session) {
               progress.report({ increment: 10, message: '采集完成，正在处理数据...' });
-              
+
               try {
                 // 保存采集数据到工作区
-                await saveCaptureData(session);
-                
+                await saveCaptureData(args.session);
+
                 vscode.window.showInformationMessage(
-                  `数据采集成功！共采集 ${session.totalSamples} 个样本`
+                  `数据采集成功！共采集 ${args.session.totalSamples} 个样本`
                 );
                 resolve();
               } catch (saveError) {
@@ -248,7 +248,7 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
               }
             } else {
               clearInterval(progressTimer);
-              const errorMsg = error || '采集失败';
+              const errorMsg = '采集失败';
               vscode.window.showErrorMessage(`数据采集失败: ${errorMsg}`);
               reject(new Error(errorMsg));
             }
@@ -269,7 +269,7 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
           // 开始采集
           currentDevice.startCapture(captureSession, captureCompletedHandler)
             .then(result => {
-              if (result !== 0) { // CaptureError.None = 0
+              if (result !== CaptureError.None) {
                 clearInterval(progressTimer);
                 const errorMsg = `采集启动失败，错误代码: ${result}`;
                 vscode.window.showErrorMessage(errorMsg);
@@ -618,14 +618,14 @@ async function getCaptureConfiguration(): Promise<any> {
 // 创建采集会话的辅助函数
 function createCaptureSession(config: any): CaptureSession {
   const session = new CaptureSession();
-  
+
   // 基础配置
   session.frequency = config.frequency;
   session.postTriggerSamples = config.samples;
   session.preTriggerSamples = Math.floor(config.samples * 0.1); // 10%预触发
   session.triggerChannel = config.triggerChannel;
   session.triggerType = TriggerType.Edge; // 使用边沿触发
-  
+
   // 配置活动通道
   session.captureChannels = config.activeChannels.map((channelNum: number) => {
     const channel = new AnalyzerChannel(channelNum, `Channel ${channelNum + 1}`);
@@ -642,7 +642,7 @@ async function saveCaptureData(session: CaptureSession): Promise<void> {
     // 生成文件名
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const fileName = `capture_${timestamp}.lac`;
-    
+
     // 获取工作区根目录
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (!workspaceFolder) {
@@ -654,7 +654,7 @@ async function saveCaptureData(session: CaptureSession): Promise<void> {
     const fileUri = vscode.Uri.file(filePath);
 
     // 转换为LAC格式
-    const lacData = LACFileFormat.createFromCaptureSession(session, 'VSCode Logic Analyzer');
+    const lacData = LACFileFormat.createFromCaptureSession(session);
     const lacContent = JSON.stringify(lacData, null, 2);
 
     // 写入文件

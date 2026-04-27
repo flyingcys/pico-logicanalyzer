@@ -3,6 +3,7 @@ import type {
   FrontendCapabilities,
   FrontendDocumentData,
   HostAdapter,
+  HostCommandResult,
   HostInboundMessage,
   HostMessageHandler
 } from './types';
@@ -16,6 +17,33 @@ const defaultCapabilities: FrontendCapabilities = {
 
 function cloneDocument(document?: FrontendDocumentData): FrontendDocumentData | undefined {
   return document ? { ...document } : undefined;
+}
+
+function createInvalidLacError(): HostInboundMessage {
+  return {
+    type: 'error',
+    payload: {
+      message: '解析文件失败: 无效的.lac文件格式'
+    }
+  };
+}
+
+function parseLacPayload(payload: unknown): { content: string; parsed: unknown } | null {
+  if (typeof payload === 'string') {
+    try {
+      return {
+        content: payload,
+        parsed: JSON.parse(payload)
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  return {
+    content: JSON.stringify(payload ?? {}, null, 2),
+    parsed: payload ?? {}
+  };
 }
 
 function createDefaultDocument(): FrontendDocumentData {
@@ -41,17 +69,20 @@ export function createBrowserHost(): HostAdapter {
       return cloneDocument(documentData);
     },
     saveDocument(payload) {
-      const content =
-        typeof payload === 'string' ? payload : JSON.stringify(payload ?? {}, null, 2);
+      const parsedDocument = parseLacPayload(payload);
+      if (!parsedDocument) {
+        emit(createInvalidLacError());
+        return;
+      }
 
       documentData = {
         ...documentData,
-        content
+        content: parsedDocument.content
       };
 
       emit({
         type: 'documentUpdate',
-        payload: cloneDocument(documentData)
+        payload: parsedDocument.parsed
       });
     },
     exportData(payload) {
@@ -70,11 +101,32 @@ export function createBrowserHost(): HostAdapter {
         type: 'startCapture'
       });
     },
-    sendCommand(command, payload) {
-      emit({
-        type: command,
-        payload
-      });
+    async sendCommand<T = unknown>(command, payload): Promise<HostCommandResult<T>> {
+      switch (command) {
+        case 'export':
+        case 'exportData':
+          this.exportData(payload);
+          return { success: true } as HostCommandResult<T>;
+        case 'connectDevice':
+          this.connectDevice();
+          return { success: true } as HostCommandResult<T>;
+        case 'startCapture':
+          this.startCapture();
+          return { success: true } as HostCommandResult<T>;
+        default:
+          emit({
+            type: 'hostCommand',
+            payload: {
+              command,
+              payload
+            }
+          });
+
+          return {
+            success: false,
+            error: `HTML host 不支持命令: ${command}`
+          } as HostCommandResult<T>;
+      }
     },
     onMessage(handler: HostMessageHandler) {
       handlers.add(handler);
@@ -86,7 +138,11 @@ export function createBrowserHost(): HostAdapter {
 }
 
 export function readBrowserBootstrap(): FrontendBootstrapData {
-  const bootstrap = typeof window === 'undefined' ? undefined : window.__FRONTEND_BOOTSTRAP__;
+  const bootstrap = typeof window === 'undefined'
+    ? undefined
+    : (window as Window & typeof globalThis & {
+        __FRONTEND_BOOTSTRAP__?: FrontendBootstrapData;
+      }).__FRONTEND_BOOTSTRAP__;
 
   if (bootstrap?.host === 'html') {
     return {

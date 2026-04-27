@@ -1,3 +1,4 @@
+import '../shared/styles/html.css';
 import { createFrontendApp } from '../platform/bootstrap/createFrontendApp';
 import { createBrowserHost, readBrowserBootstrap } from '../platform/host/browserHost';
 

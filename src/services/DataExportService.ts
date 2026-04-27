@@ -63,8 +63,8 @@ class SimpleZipGenerator {
     let centralDirOffset = 0;
 
     for (const [filename, content] of this.files.entries()) {
-      const fileBuffer = typeof content === 'string' ? 
-        Buffer.from(content, 'utf8') : 
+      const fileBuffer = typeof content === 'string' ?
+        Buffer.from(content, 'utf8') :
         Buffer.from(content);
 
       // 压缩文件内容
@@ -72,16 +72,16 @@ class SimpleZipGenerator {
 
       // 创建本地文件头
       const localHeader = this.createLocalFileHeader(filename, fileBuffer.length, compressedData.length);
-      
+
       // 添加到文件数据
       fileData.push(localHeader);
       fileData.push(compressedData);
 
       // 创建中央目录条目
       const centralDirEntry = this.createCentralDirectoryEntry(
-        filename, 
-        fileBuffer.length, 
-        compressedData.length, 
+        filename,
+        fileBuffer.length,
+        compressedData.length,
         centralDirOffset
       );
       centralDirectory.push(centralDirEntry);
@@ -107,7 +107,7 @@ class SimpleZipGenerator {
   private createLocalFileHeader(filename: string, uncompressedSize: number, compressedSize: number): Uint8Array {
     const filenameBuffer = Buffer.from(filename, 'utf8');
     const header = Buffer.alloc(30 + filenameBuffer.length);
-    
+
     header.writeUInt32LE(0x04034b50, 0); // 本地文件头签名
     header.writeUInt16LE(20, 4); // 提取所需版本
     header.writeUInt16LE(0, 6); // 通用位标志
@@ -119,16 +119,16 @@ class SimpleZipGenerator {
     header.writeUInt32LE(uncompressedSize, 22); // 未压缩大小
     header.writeUInt16LE(filenameBuffer.length, 26); // 文件名长度
     header.writeUInt16LE(0, 28); // 额外字段长度
-    
+
     filenameBuffer.copy(header, 30);
-    
+
     return header;
   }
 
   private createCentralDirectoryEntry(filename: string, uncompressedSize: number, compressedSize: number, localHeaderOffset: number): Uint8Array {
     const filenameBuffer = Buffer.from(filename, 'utf8');
     const entry = Buffer.alloc(46 + filenameBuffer.length);
-    
+
     entry.writeUInt32LE(0x02014b50, 0); // 中央目录文件头签名
     entry.writeUInt16LE(20, 4); // 创建版本
     entry.writeUInt16LE(20, 6); // 提取所需版本
@@ -146,15 +146,15 @@ class SimpleZipGenerator {
     entry.writeUInt16LE(0, 36); // 内部文件属性
     entry.writeUInt32LE(0, 38); // 外部文件属性
     entry.writeUInt32LE(localHeaderOffset, 42); // 本地文件头相对偏移
-    
+
     filenameBuffer.copy(entry, 46);
-    
+
     return entry;
   }
 
   private createEndOfCentralDirectory(totalEntries: number, centralDirSize: number, centralDirOffset: number): Uint8Array {
     const endRecord = Buffer.alloc(22);
-    
+
     endRecord.writeUInt32LE(0x06054b50, 0); // 中央目录结束记录签名
     endRecord.writeUInt16LE(0, 4); // 当前磁盘号
     endRecord.writeUInt16LE(0, 6); // 中央目录起始磁盘号
@@ -163,7 +163,7 @@ class SimpleZipGenerator {
     endRecord.writeUInt32LE(centralDirSize, 12); // 中央目录大小
     endRecord.writeUInt32LE(centralDirOffset, 16); // 中央目录偏移
     endRecord.writeUInt16LE(0, 20); // 注释长度
-    
+
     return endRecord;
   }
 }
@@ -1899,16 +1899,16 @@ export class DataExportService extends ServiceLifecycleBase {
 
     // 使用SimpleZipGenerator创建真正的ZIP文件，包含：
     // - project.json (主项目文件)
-    // - waveform.lac (波形数据)  
+    // - waveform.lac (波形数据)
     // - decoders/ (解码结果文件夹)
     // - analysis/ (分析报告文件夹)
     // - README.md (项目说明)
-    
+
     const zipGenerator = new SimpleZipGenerator();
-    
+
     // 添加主项目文件
     zipGenerator.addFile('project.json', JSON.stringify(projectData, null, 2));
-    
+
     // 添加波形数据文件
     const lacData = {
       Settings: session,
@@ -1916,7 +1916,7 @@ export class DataExportService extends ServiceLifecycleBase {
       Metadata: this.generateMetadata(session, 'project', 'lac', options)
     };
     zipGenerator.addFile('waveform.lac', JSON.stringify(lacData, null, 2));
-    
+
     // 添加解码结果文件
     if (decoderResults && decoderResults.size > 0) {
       for (const [decoderId, results] of decoderResults.entries()) {
@@ -1925,20 +1925,22 @@ export class DataExportService extends ServiceLifecycleBase {
           results: results.map(result => ({
             startSample: result.startSample,
             endSample: result.endSample,
-            data: result.rawData ?? result.values,
-            type: String(result.annotationType ?? 'unknown')
+            values: result.values,
+            rawData: result.rawData,
+            annotationType: result.annotationType,
+            type: result.shape || 'unknown'
           })),
           timestamp: new Date().toISOString()
         };
         zipGenerator.addFile(`decoders/${decoderId}.json`, JSON.stringify(decoderData, null, 2));
       }
     }
-    
+
     // 添加分析报告
     if (analysisData) {
       zipGenerator.addFile('analysis/report.json', JSON.stringify(analysisData, null, 2));
     }
-    
+
     // 添加项目说明文件
     const readmeContent = `# Logic Analyzer Project
 

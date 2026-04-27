@@ -80,7 +80,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
   private _isConnected: boolean = false;
   private _deviceConfig: any = {};
   private _authToken: string = '';
-  
+
   // 定时器资源追踪
   private _activeTimeouts: Set<NodeJS.Timeout> = new Set();
 
@@ -493,7 +493,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
       }
       this._activeTimeouts.delete(timeoutId);
     }, 300000); // 5分钟超时
-    
+
     // 跟踪超时定时器
     this._activeTimeouts.add(timeoutId);
   }
@@ -793,7 +793,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
       clearTimeout(timeoutId);
     }
     this._activeTimeouts.clear();
-    
+
     this.disconnect();
     super.dispose();
   }

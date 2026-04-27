@@ -7,7 +7,7 @@
 // 内存数据类型枚举
 export enum MemoryDataType {
   SAMPLE_DATA = 'sample_data',
-  DECODER_RESULT = 'decoder_result', 
+  DECODER_RESULT = 'decoder_result',
   CONFIGURATION = 'configuration',
   ANALYSIS_RESULT = 'analysis_result',
   CACHED_COMPUTATION = 'cached_computation',
@@ -15,7 +15,7 @@ export enum MemoryDataType {
 }
 
 // 支持的内存数据类型
-export type MemoryData = 
+export type MemoryData =
   | Uint8Array          // 采样数据
   | ArrayBuffer         // 原始缓冲区
   | object              // 配置对象
@@ -23,7 +23,6 @@ export type MemoryData =
   | Array<unknown>      // 数组数据
   | string              // 字符串数据
   | number              // 数值数据
-  | boolean             // 布尔标记
   | Buffer;             // Node.js Buffer
 
 export interface MemoryBlock<T extends MemoryData = MemoryData> {
@@ -90,7 +89,6 @@ export class MemoryManager {
   private defaultPoolMaxSize = 100 * 1024 * 1024; // 100MB
   private gcInterval = 30000; // 30秒
   private memoryThreshold = 0.85; // 85%内存使用阈值
-  private timestampCursor = 0;
 
   constructor() {
     this.startMemoryMonitoring();
@@ -154,12 +152,7 @@ export class MemoryManager {
     poolName: string,
     blockId: string,
     data: T,
-    dataTypeOrOptions?:
-      | MemoryDataType
-      | {
-          priority?: 'high' | 'medium' | 'low';
-          canRelease?: boolean;
-        },
+    dataType: MemoryDataType,
     options: {
       priority?: 'high' | 'medium' | 'low';
       canRelease?: boolean;
@@ -173,12 +166,6 @@ export class MemoryManager {
 
     // 计算数据大小
     const size = this.calculateDataSize(data);
-    const dataType = typeof dataTypeOrOptions === 'string'
-      ? dataTypeOrOptions
-      : this.inferMemoryDataType(data);
-    const resolvedOptions = typeof dataTypeOrOptions === 'string'
-      ? options
-      : (dataTypeOrOptions || {});
 
     // 检查是否需要释放内存
     if (pool.currentSize + size > pool.maxSize) {
@@ -192,7 +179,7 @@ export class MemoryManager {
       return false;
     }
 
-    const now = this.nextTimestamp();
+    const now = Date.now();
     const block: MemoryBlock<T> = {
       id: blockId,
       data,
@@ -201,8 +188,8 @@ export class MemoryManager {
       lastAccessedAt: now,
       accessCount: 1,
       size,
-      priority: resolvedOptions.priority || 'medium',
-      canRelease: resolvedOptions.canRelease !== false
+      priority: options.priority || 'medium',
+      canRelease: options.canRelease !== false
     };
 
     pool.blocks.set(blockId, block);
@@ -210,30 +197,6 @@ export class MemoryManager {
 
     console.log(`✅ 内存分配成功: ${poolName}/${blockId} (${(size / 1024).toFixed(1)}KB)`);
     return true;
-  }
-
-  /**
-   * 推断内存数据类型
-   * 兼容旧调用方式：未显式传入 dataType 时按数据结构做保守推断。
-   */
-  private inferMemoryDataType(data: MemoryData): MemoryDataType {
-    if (data instanceof Uint8Array || data instanceof ArrayBuffer || Buffer.isBuffer(data)) {
-      return MemoryDataType.SAMPLE_DATA;
-    }
-
-    if (typeof data === 'string' || typeof data === 'number') {
-      return MemoryDataType.CACHED_COMPUTATION;
-    }
-
-    if (data instanceof Map) {
-      return MemoryDataType.ANALYSIS_RESULT;
-    }
-
-    if (Array.isArray(data)) {
-      return MemoryDataType.TEMPORARY_BUFFER;
-    }
-
-    return MemoryDataType.CONFIGURATION;
   }
 
   /**
@@ -247,7 +210,7 @@ export class MemoryManager {
     if (!block) return null;
 
     // 更新访问信息
-    block.lastAccessedAt = this.nextTimestamp();
+    block.lastAccessedAt = Date.now();
     block.accessCount++;
 
     return block.data as T;
@@ -534,7 +497,7 @@ export class MemoryManager {
    * 更新内存历史
    */
   private updateMemoryHistory(): void {
-    const now = this.nextTimestamp();
+    const now = Date.now();
     const totalUsed = Array.from(this.pools.values())
       .reduce((sum, pool) => sum + pool.currentSize, 0);
 
@@ -693,15 +656,6 @@ export class MemoryManager {
     this.memoryHistory = [];
 
     console.log('🛑 内存管理器已停止');
-  }
-
-  /**
-   * 生成全局单调递增时间戳，避免同毫秒内多次访问导致排序不稳定。
-   */
-  private nextTimestamp(): number {
-    const now = Date.now();
-    this.timestampCursor = Math.max(now, this.timestampCursor + 1);
-    return this.timestampCursor;
   }
 }
 

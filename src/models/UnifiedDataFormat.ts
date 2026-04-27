@@ -94,9 +94,9 @@ export interface TriggerInfo {
 }
 
 // 硬件特定的扩展数据类型
-export type HardwareExtensionData = 
+export type HardwareExtensionData =
   | PicoExtensionData
-  | SaleaeExtensionData  
+  | SaleaeExtensionData
   | RigolExtensionData
   | GenericExtensionData;
 
@@ -153,7 +153,7 @@ export interface LacFileFormat {
     }>;
   };
   deviceInfo?: DeviceInfo;
-  quality?: QualityMetrics;
+  quality?: DataQuality;
 }
 
 // LAC格式输入数据（从文件读取时的类型）
@@ -171,21 +171,8 @@ export interface LacInputData {
       samples?: Uint8Array | number[];
     }>;
   };
+  quality?: DataQuality;
   [key: string]: unknown; // 允许其他字段
-}
-
-// 设备信息接口
-export interface DeviceInfo {
-  name: string;
-  version?: string;
-  type?: string;
-  connectionPath?: string;
-  isNetwork?: boolean;
-  capabilities?: {
-    channels: number;
-    maxFrequency: number;
-    bufferSize: number;
-  };
 }
 
 // 统一采集数据格式 - 核心接口
@@ -330,6 +317,16 @@ export class UnifiedDataFormat {
    * 转换为.lac兼容格式
    */
   static toLacFormat(data: UnifiedCaptureData): LacFileFormat {
+    const toChannelColorNumber = (channelColor?: string): number | undefined => {
+      if (!channelColor) {
+        return undefined;
+      }
+
+      const normalized = channelColor.startsWith('#') ? channelColor.slice(1) : channelColor;
+      const parsed = Number.parseInt(normalized, 16);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    };
+
     // 转换为与原软件兼容的.lac格式
     return {
       captureSession: {
@@ -340,7 +337,7 @@ export class UnifiedDataFormat {
         captureChannels: data.channels.map((ch, index) => ({
           channelNumber: ch.channelNumber,
           channelName: ch.channelName,
-          channelColor: ch.channelColor,
+          channelColor: toChannelColorNumber(ch.channelColor),
           hidden: ch.hidden,
           samples: data.samples.digital?.data[index] || new Uint8Array()
         }))
@@ -354,7 +351,37 @@ export class UnifiedDataFormat {
    * 从.lac格式转换
    */
   static fromLacFormat(lacData: LacInputData, deviceInfo: DeviceInfo): UnifiedCaptureData {
-    const session = lacData.captureSession || lacData;
+    const session = (lacData.captureSession || lacData) as {
+      frequency?: number;
+      totalSamples?: number;
+      preTriggerSamples?: number;
+      postTriggerSamples?: number;
+      captureChannels?: Array<{
+        channelNumber?: number;
+        channelName?: string;
+        channelColor?: number;
+        hidden?: boolean;
+        samples?: Uint8Array | number[];
+      }>;
+    };
+    const captureChannels = Array.isArray(session.captureChannels) ? session.captureChannels : [];
+    const sampleRate = typeof session.frequency === 'number' ? session.frequency : 1000000;
+    const totalSamples = typeof session.totalSamples === 'number'
+      ? session.totalSamples
+      : (
+          (typeof session.preTriggerSamples === 'number' ? session.preTriggerSamples : 0)
+          + (typeof session.postTriggerSamples === 'number' ? session.postTriggerSamples : 0)
+        );
+    const triggerPosition = typeof session.preTriggerSamples === 'number'
+      ? session.preTriggerSamples
+      : 0;
+    const toChannelColorString = (channelColor?: number): string | undefined => {
+      if (typeof channelColor !== 'number' || !Number.isFinite(channelColor)) {
+        return undefined;
+      }
+
+      return `#${channelColor.toString(16).padStart(6, '0')}`;
+    };
 
     return {
       version: '1.0.0',
@@ -364,27 +391,27 @@ export class UnifiedDataFormat {
         captureId: `imported-${Date.now()}`,
         timestamp: Date.now(),
         duration: 0,
-        sampleRate: session.frequency !== undefined ? session.frequency : 1000000,
-        totalSamples: session.totalSamples || 0,
-        triggerPosition: session.preTriggerSamples || 0,
+        sampleRate,
+        totalSamples,
+        triggerPosition,
         timebase: {
-          sampleRate: session.frequency !== undefined ? session.frequency : 1000000,
-          sampleInterval: session.frequency !== undefined && session.frequency > 0 ? 1000000000 / session.frequency : 0,
+          sampleRate,
+          sampleInterval: sampleRate > 0 ? 1000000000 / sampleRate : 0,
           timeOffset: 0,
           precision: 1
         },
         captureMode: 'imported'
       },
-      channels: (session.captureChannels || []).map((ch) => ({
+      channels: captureChannels.map((ch) => ({
         channelNumber: ch.channelNumber || 0,
         channelName: ch.channelName || `Channel ${ch.channelNumber + 1}`,
-        channelColor: ch.channelColor,
+        channelColor: toChannelColorString(ch.channelColor),
         enabled: !ch.hidden,
         hidden: ch.hidden || false
       })),
       samples: {
         digital: {
-          data: (session.captureChannels || []).map((ch) => {
+          data: captureChannels.map((ch) => {
             // 处理可能的数组格式转换
             if (ch.samples instanceof Uint8Array) {
               return ch.samples;

@@ -1,3 +1,4 @@
+import '../shared/styles/webview.css';
 import { createFrontendApp } from '../platform/bootstrap/createFrontendApp';
 import { createVsCodeHost, readVsCodeBootstrap } from '../platform/host/vscodeHost';
 

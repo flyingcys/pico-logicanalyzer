@@ -5,8 +5,6 @@ out/
 dist/
 *.vsix
 .worktree/
-.vitest/
-.vscode-test/
 
 # Node.js 依赖
 node_modules/

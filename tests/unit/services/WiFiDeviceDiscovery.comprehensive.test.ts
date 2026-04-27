@@ -11,8 +11,6 @@
  * 将WiFiDeviceDiscovery覆盖率从0%提升至80%+，实现Services层第九重突破
  */
 
-import { vi } from 'vitest';
-import { VersionValidator } from '../../../src/drivers/VersionValidator';
 import {
   WiFiDeviceDiscovery,
   WiFiDeviceInfo,
@@ -20,26 +18,10 @@ import {
   ScanConfiguration
 } from '../../../src/services/WiFiDeviceDiscovery';
 
-const {
-  mockSocketCtor,
-  mockCreateSocket,
-  mockNetworkInterfaces
-} = vi.hoisted(() => ({
-  mockSocketCtor: vi.fn(function () { return {}; }),
-  mockCreateSocket: vi.fn(),
-  mockNetworkInterfaces: vi.fn()
-}));
-
 // 最小化Mock：只Mock网络I/O，保留业务逻辑
-vi.mock('net', () => ({
-  Socket: mockSocketCtor
-}));
-vi.mock('dgram', () => ({
-  createSocket: mockCreateSocket
-}));
-vi.mock('os', () => ({
-  networkInterfaces: mockNetworkInterfaces
-}));
+jest.mock('net');
+jest.mock('dgram');
+jest.mock('os');
 
 describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
   let discoveryService: WiFiDeviceDiscovery;
@@ -65,7 +47,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
 
   beforeEach(() => {
     discoveryService = new WiFiDeviceDiscovery();
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
   describe('服务实例化和基础接口逻辑', () => {
@@ -93,6 +75,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
 
   describe('扫描配置处理核心逻辑', () => {
     it('应该提供正确的默认配置', async () => {
+      const mockNetworkInterfaces = require('os').networkInterfaces;
       mockNetworkInterfaces.mockReturnValue({
         'eth0': [{
           family: 'IPv4',
@@ -107,7 +90,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         on: jest.fn(),
         destroy: jest.fn()
       };
-      mockSocketCtor.mockImplementation(function () { return mockSocket as any; });
+      require('net').Socket.mockImplementation(() => mockSocket);
 
       const mockUdpSocket = {
         bind: jest.fn((callback) => setTimeout(callback, 10)),
@@ -116,7 +99,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         close: jest.fn(),
         on: jest.fn()
       };
-      mockCreateSocket.mockReturnValue(mockUdpSocket);
+      require('dgram').createSocket.mockReturnValue(mockUdpSocket);
 
       try {
         const result = await discoveryService.scanForDevices();
@@ -140,6 +123,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         enableBroadcast: false
       };
 
+      const mockNetworkInterfaces = require('os').networkInterfaces;
       mockNetworkInterfaces.mockReturnValue({});
 
       try {
@@ -154,6 +138,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
     });
 
     it('应该处理空网络接口的情况', () => {
+      const mockNetworkInterfaces = require('os').networkInterfaces;
       mockNetworkInterfaces.mockReturnValue({});
 
       // 通过私有方法访问来测试网络范围生成逻辑
@@ -195,6 +180,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         }]
       };
 
+      const mockNetworkInterfaces = require('os').networkInterfaces;
       mockNetworkInterfaces.mockReturnValue(mockInterfaces);
 
       const ranges = (discoveryService as any).getLocalNetworkRanges();
@@ -251,7 +237,8 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
       };
       
       // 临时替换VersionValidator
-      const versionSpy = vi.spyOn(VersionValidator, 'getVersion').mockReturnValue({ isValid: mockVersionValidator.getVersion().isValid } as any);
+      const originalVersionValidator = require('../../../src/drivers/VersionValidator').VersionValidator;
+      require('../../../src/drivers/VersionValidator').VersionValidator = mockVersionValidator;
 
       const device = parseDeviceResponse('192.168.1.100', 4045, validResponse);
       
@@ -264,7 +251,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
       expect(device!.isOnline).toBe(true);
 
       // 恢复原始VersionValidator
-      versionSpy.mockRestore();
+      require('../../../src/drivers/VersionValidator').VersionValidator = originalVersionValidator;
     });
 
     it('应该拒绝无效的版本信息', () => {
@@ -283,13 +270,14 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         getVersion: jest.fn().mockReturnValue({ isValid: false })
       };
       
-      const versionSpy = vi.spyOn(VersionValidator, 'getVersion').mockReturnValue({ isValid: mockVersionValidator.getVersion().isValid } as any);
+      const originalVersionValidator = require('../../../src/drivers/VersionValidator').VersionValidator;
+      require('../../../src/drivers/VersionValidator').VersionValidator = mockVersionValidator;
 
       const device = parseDeviceResponse('192.168.1.100', 4045, invalidVersionResponse);
       
       expect(device).toBeNull();
 
-      versionSpy.mockRestore();
+      require('../../../src/drivers/VersionValidator').VersionValidator = originalVersionValidator;
     });
 
     it('应该拒绝信息不完整的响应', () => {
@@ -322,13 +310,14 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         getVersion: jest.fn().mockReturnValue({ isValid: true })
       };
       
-      const versionSpy = vi.spyOn(VersionValidator, 'getVersion').mockReturnValue({ isValid: mockVersionValidator.getVersion().isValid } as any);
+      const originalVersionValidator = require('../../../src/drivers/VersionValidator').VersionValidator;
+      require('../../../src/drivers/VersionValidator').VersionValidator = mockVersionValidator;
 
       const device = parseDeviceResponse('192.168.1.100', 4045, malformedResponse);
       
       expect(device).toBeNull();
 
-      versionSpy.mockRestore();
+      require('../../../src/drivers/VersionValidator').VersionValidator = originalVersionValidator;
     });
   });
 
@@ -478,7 +467,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         destroy: jest.fn()
       };
 
-      mockSocketCtor.mockImplementation(function () { return mockSocket as any; });
+      require('net').Socket.mockImplementation(() => mockSocket);
 
       const isPortOpen = (discoveryService as any).isPortOpen.bind(discoveryService);
       const result = await isPortOpen('192.168.1.100', 4045, 1000);
@@ -500,7 +489,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         destroy: jest.fn()
       };
 
-      mockSocketCtor.mockImplementation(function () { return mockSocket as any; });
+      require('net').Socket.mockImplementation(() => mockSocket);
 
       const isPortOpen = (discoveryService as any).isPortOpen.bind(discoveryService);
       const result = await isPortOpen('192.168.1.100', 4045, 1000);
@@ -516,7 +505,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         destroy: jest.fn()
       };
 
-      mockSocketCtor.mockImplementation(function () { return mockSocket as any; });
+      require('net').Socket.mockImplementation(() => mockSocket);
 
       const isPortOpen = (discoveryService as any).isPortOpen.bind(discoveryService);
       const result = await isPortOpen('192.168.1.100', 4045, 50); // 短超时
@@ -528,6 +517,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
 
   describe('错误处理和边界条件验证', () => {
     it('应该处理网络扫描中的错误', async () => {
+      const mockNetworkInterfaces = require('os').networkInterfaces;
       mockNetworkInterfaces.mockImplementation(() => {
         throw new Error('Network interface error');
       });
@@ -552,7 +542,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         write: jest.fn()
       };
 
-      mockSocketCtor.mockImplementation(function () { return mockSocket as any; });
+      require('net').Socket.mockImplementation(() => mockSocket);
 
       const result = await discoveryService.refreshDevice('192.168.1.100', 4045);
       expect(result).toBeNull();
@@ -610,7 +600,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         })
       };
 
-      mockCreateSocket.mockReturnValue(mockUdpSocket);
+      require('dgram').createSocket.mockReturnValue(mockUdpSocket);
 
       const performBroadcastDiscovery = (discoveryService as any).performBroadcastDiscovery.bind(discoveryService);
       const config = { timeout: 100, deepScan: false };
@@ -639,7 +629,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         })
       };
 
-      mockCreateSocket.mockReturnValue(mockUdpSocket);
+      require('dgram').createSocket.mockReturnValue(mockUdpSocket);
 
       const performBroadcastDiscovery = (discoveryService as any).performBroadcastDiscovery.bind(discoveryService);
       const config = { timeout: 100, deepScan: false };
@@ -652,6 +642,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
   describe('综合功能场景验证', () => {
     it('应该完成完整的设备发现流程', async () => {
       // Mock网络接口
+      const mockNetworkInterfaces = require('os').networkInterfaces;
       mockNetworkInterfaces.mockReturnValue({
         'eth0': [{
           family: 'IPv4',
@@ -668,7 +659,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         close: jest.fn(),
         on: jest.fn()
       };
-      mockCreateSocket.mockReturnValue(mockUdpSocket);
+      require('dgram').createSocket.mockReturnValue(mockUdpSocket);
 
       // Mock TCP连接
       const mockSocket = {
@@ -677,7 +668,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         on: jest.fn(),
         destroy: jest.fn()
       };
-      mockSocketCtor.mockImplementation(function () { return mockSocket as any; });
+      require('net').Socket.mockImplementation(() => mockSocket);
 
       const config: Partial<ScanConfiguration> = {
         timeout: 100,
@@ -697,6 +688,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
     });
 
     it('应该处理部分失败的设备发现', async () => {
+      const mockNetworkInterfaces = require('os').networkInterfaces;
       mockNetworkInterfaces.mockReturnValue({
         'eth0': [{
           family: 'IPv4',
@@ -716,7 +708,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         }),
         destroy: jest.fn()
       };
-      mockSocketCtor.mockImplementation(function () { return mockSocket as any; });
+      require('net').Socket.mockImplementation(() => mockSocket);
 
       const mockUdpSocket = {
         bind: jest.fn(),
@@ -729,7 +721,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
           }
         })
       };
-      mockCreateSocket.mockReturnValue(mockUdpSocket);
+      require('dgram').createSocket.mockReturnValue(mockUdpSocket);
 
       const result = await discoveryService.scanForDevices({
         timeout: 100,
@@ -768,13 +760,14 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         end: jest.fn()
       };
 
-      mockSocketCtor.mockImplementation(function () { return mockSocket as any; });
+      require('net').Socket.mockImplementation(() => mockSocket);
 
       // Mock VersionValidator
       const mockVersionValidator = {
         getVersion: jest.fn().mockReturnValue({ isValid: true })
       };
-      const versionSpy = vi.spyOn(VersionValidator, 'getVersion').mockReturnValue({ isValid: mockVersionValidator.getVersion().isValid } as any);
+      const originalVersionValidator = require('../../../src/drivers/VersionValidator').VersionValidator;
+      require('../../../src/drivers/VersionValidator').VersionValidator = mockVersionValidator;
 
       const verifyPicoDevice = (discoveryService as any).verifyPicoDevice.bind(discoveryService);
       const result = await verifyPicoDevice('192.168.1.100', 4045, 1000);
@@ -784,7 +777,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
       expect(result).not.toBeNull();
       expect(result!.ipAddress).toBe('192.168.1.100');
 
-      versionSpy.mockRestore();
+      require('../../../src/drivers/VersionValidator').VersionValidator = originalVersionValidator;
     });
   });
 });

@@ -10,7 +10,8 @@ import { pulseTimingAnalyzer } from './PulseTimingAnalyzer';
 import { sessionManager } from './SessionManager';
 import { configurationManager } from './ConfigurationManager';
 import { workspaceManager } from './WorkspaceManager';
-import { CaptureSession, AnalyzerChannel, TriggerType } from '../models/AnalyzerTypes';
+import { TriggerType } from '../models/AnalyzerTypes';
+import { CaptureSession, AnalyzerChannel } from '../models/CaptureModels';
 import { DecoderResult } from '../decoders/types';
 
 interface TestResult {
@@ -503,80 +504,35 @@ export class Stage7SelfTest {
    * 创建测试采集会话
    */
   private createTestCaptureSession(): CaptureSession {
-    return {
-      frequency: 1000000,
-      preTriggerSamples: 1000,
-      postTriggerSamples: 9000,
-      totalSamples: 10000,
-      triggerType: TriggerType.Edge,
-      triggerChannel: 0,
-      triggerInverted: false,
-      loopCount: 0,
-      measureBursts: false,
-      clone: function() { return { ...this }; },
-      cloneSettings: function() { 
-        const { captureChannels, ...settings } = this; 
-        return settings; 
-      },
-      captureChannels: [
-        {
-          channelNumber: 0,
-          channelName: 'CH0',
-          textualChannelNumber: 'CH0',
-          hidden: false,
-          samples: this.createTestSampleData(10000),
-          clone: function() { return { ...this }; }
-        },
-        {
-          channelNumber: 1,
-          channelName: 'CH1',
-          textualChannelNumber: 'CH1',
-          hidden: false,
-          samples: this.createTestSampleData(10000),
-          clone: function() { return { ...this }; }
-        },
-        {
-          channelNumber: 2,
-          channelName: 'CH2',
-          textualChannelNumber: 'CH2',
-          hidden: false,
-          samples: this.createTestSampleData(10000),
-          clone: function() { return { ...this }; }
-        }
-      ]
-    };
+    const session = new CaptureSession();
+    session.frequency = 1000000;
+    session.preTriggerSamples = 1000;
+    session.postTriggerSamples = 9000;
+    session.triggerType = TriggerType.Edge;
+    session.triggerChannel = 0;
+    session.triggerInverted = false;
+    session.loopCount = 0;
+    session.measureBursts = false;
+    session.captureChannels = [0, 1, 2].map(index => {
+      const channel = new AnalyzerChannel(index, `CH${index}`);
+      channel.hidden = false;
+      channel.samples = this.createTestSampleData(10000);
+      return channel;
+    });
+
+    return session;
   }
 
   /**
    * 创建测试通道数据
    */
   private createTestChannels(): AnalyzerChannel[] {
-    return [
-      {
-        channelNumber: 0,
-        channelName: 'SCL',
-        textualChannelNumber: 'CH0',
-        hidden: false,
-        samples: this.createTestSampleData(10000),
-        clone: function() { return { ...this }; }
-      },
-      {
-        channelNumber: 1,
-        channelName: 'SDA',
-        textualChannelNumber: 'CH1',
-        hidden: false,
-        samples: this.createTestSampleData(10000),
-        clone: function() { return { ...this }; }
-      },
-      {
-        channelNumber: 2,
-        channelName: 'CS',
-        textualChannelNumber: 'CH2',
-        hidden: false,
-        samples: this.createTestSampleData(10000),
-        clone: function() { return { ...this }; }
-      }
-    ];
+    return ['SCL', 'SDA', 'CS'].map((name, index) => {
+      const channel = new AnalyzerChannel(index, name);
+      channel.hidden = false;
+      channel.samples = this.createTestSampleData(10000);
+      return channel;
+    });
   }
 
   /**

@@ -8,19 +8,14 @@
  * - 专注核心数据流：连接→采集→断开
  */
 
-import { vi } from 'vitest';
 import { LogicAnalyzerDriver } from '../../../src/drivers/LogicAnalyzerDriver';
 import { CaptureSession, AnalyzerChannel } from '../../../src/models/CaptureModels';
 import { AnalyzerDriverType, CaptureError, TriggerType } from '../../../src/models/AnalyzerTypes';
 import { mockSerialPort } from '../../fixtures/mocks/simple-mocks';
 
 // 使用简化Mock策略
-vi.mock('serialport', () => ({
-  SerialPort: class MockSerialPort {
-    constructor() {
-      return mockSerialPort as any;
-    }
-  }
+jest.mock('serialport', () => ({
+  SerialPort: jest.fn().mockImplementation(() => mockSerialPort)
 }));
 
 describe('LogicAnalyzerDriver 核心功能测试', () => {
@@ -28,12 +23,7 @@ describe('LogicAnalyzerDriver 核心功能测试', () => {
   let testSession: CaptureSession;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockSerialPort.isOpen = false;
-    mockSerialPort.open.mockImplementation((callback) => callback && callback());
-    mockSerialPort.close.mockImplementation((callback) => callback && callback());
-    mockSerialPort.write.mockImplementation((data, callback) => callback && callback());
-    mockSerialPort.pipe.mockImplementation(() => mockSerialPort as any);
+    jest.clearAllMocks();
     
     // 使用串口连接创建驱动
     driver = new LogicAnalyzerDriver('/dev/ttyUSB0');
@@ -102,9 +92,17 @@ describe('LogicAnalyzerDriver 核心功能测试', () => {
     it('应该能够连接到设备', async () => {
       // 模拟成功连接和设备初始化
       mockSerialPort.open.mockImplementation((callback) => callback());
+      mockSerialPort.pipe = jest.fn();
+      
+      // Mock设备初始化响应
+      const mockOnce = jest.fn().mockImplementation((event, callback) => {
+        if (event === 'data') {
+          setTimeout(() => callback('CHANNELS:24\nFREQ:100000000\nBUFFER:96000\n'), 10);
+        }
+      });
       
       // 将驱动器的私有方法Mock化以避免实际设备通信
-      vi.spyOn(driver as any, 'initializeDevice').mockResolvedValue(undefined);
+      jest.spyOn(driver as any, 'initializeDevice').mockResolvedValue(undefined);
       
       const result = await driver.connect();
       
@@ -144,8 +142,8 @@ describe('LogicAnalyzerDriver 核心功能测试', () => {
     it('应该能开始采集', async () => {
       // 模拟采集相关方法
       mockSerialPort.write.mockImplementation((data, callback) => callback && callback());
-      vi.spyOn(driver as any, 'writeData').mockResolvedValue(undefined);
-      vi.spyOn(driver as any, 'startDataReading').mockImplementation(() => {});
+      jest.spyOn(driver as any, 'writeData').mockResolvedValue(undefined);
+      jest.spyOn(driver as any, 'startDataReading').mockImplementation(() => {});
       
       const result = await driver.startCapture(testSession);
       
@@ -166,8 +164,8 @@ describe('LogicAnalyzerDriver 核心功能测试', () => {
       (driver as any)._capturing = true;
       
       // Mock停止采集所需的方法
-      vi.spyOn(driver as any, 'writeData').mockResolvedValue(undefined);
-      vi.spyOn(driver as any, 'reconnectDevice').mockResolvedValue(undefined);
+      jest.spyOn(driver as any, 'writeData').mockResolvedValue(undefined);
+      jest.spyOn(driver as any, 'reconnectDevice').mockResolvedValue(undefined);
       
       const result = await driver.stopCapture();
       
@@ -226,7 +224,7 @@ describe('LogicAnalyzerDriver 核心功能测试', () => {
     it('应该处理重复连接尝试', async () => {
       // 首先成功连接一次
       mockSerialPort.open.mockImplementation((callback) => callback());
-      vi.spyOn(driver as any, 'initializeDevice').mockResolvedValue(undefined);
+      jest.spyOn(driver as any, 'initializeDevice').mockResolvedValue(undefined);
       
       const result1 = await driver.connect();
       expect(result1.success).toBe(true);

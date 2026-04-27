@@ -50,15 +50,15 @@
     "incremental": true,
     "tsBuildInfoFile": "./out/.tsbuildinfo",
     
-    // 路径映射 - 与webpack alias一致
+    // 路径映射 - 与当前 frontend webpack / jest alias 对齐
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
+      "@/*": ["src/frontend/*"],
       "@drivers/*": ["src/drivers/*"],
       "@models/*": ["src/models/*"],
-      "@utils/*": ["src/utils/*"],
-      "@components/*": ["src/webview/components/*"],
-      "@stores/*": ["src/webview/stores/*"],
+      "@utils/*": ["src/frontend/core/*"],
+      "@components/*": ["src/frontend/app/components/*"],
+      "@stores/*": ["src/frontend/core/stores/*"],
       "@frontend/*": ["src/frontend/*"],
       "@frontend-app/*": ["src/frontend/app/*"],
       "@frontend-core/*": ["src/frontend/core/*"],

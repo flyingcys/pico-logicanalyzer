@@ -1,5 +1,11 @@
 export type FrontendHostKind = 'vscode' | 'html';
 
+export interface HostCommandResult<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
 export interface FrontendDocumentData {
   uri: string;
   fileName: string;
@@ -19,11 +25,32 @@ export interface FrontendBootstrapData {
   capabilities: FrontendCapabilities;
 }
 
-export interface HostInboundMessage<TPayload = unknown> {
-  type: string;
-  payload?: TPayload;
+export interface HostMessageBase<TType extends string, TPayload> {
+  type: TType;
+  payload: TPayload;
   raw?: unknown;
 }
+
+export type HostDocumentMessage = HostMessageBase<'documentUpdate' | 'documentLoaded', unknown>;
+
+export type HostErrorMessage = HostMessageBase<'error', { message: string }>;
+
+export type HostCommandMessage = HostMessageBase<
+  'export' | 'connectDevice' | 'startCapture' | 'testResponse',
+  unknown
+>;
+
+export type HostCustomMessage = {
+  type: string;
+  payload?: unknown;
+  raw?: unknown;
+};
+
+export type HostInboundMessage =
+  | HostDocumentMessage
+  | HostErrorMessage
+  | HostCommandMessage
+  | HostCustomMessage;
 
 export type HostMessageHandler = (message: HostInboundMessage) => void;
 
@@ -37,10 +64,10 @@ export interface HostAdapter {
   exportData(payload: unknown): void | Promise<void>;
   connectDevice(): void | Promise<void>;
   startCapture(): void | Promise<void>;
-  sendCommand(command: string, payload?: unknown): void | Promise<void>;
+  sendCommand<T = unknown>(command: string, payload?: unknown): Promise<HostCommandResult<T>>;
   onMessage(handler: HostMessageHandler): () => void;
 }
 
 export interface VsCodeApiLike {
-  postMessage?: (message: unknown) => void;
+  postMessage?: (message: unknown) => unknown;
 }

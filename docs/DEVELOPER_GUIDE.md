@@ -2006,11 +2006,7 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
   
   private getHtmlForWebview(webview: vscode.Webview): string {
     const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'out/webview', 'main.js')
-    );
-    
-    const styleUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'out/webview', 'main.css')
+      vscode.Uri.joinPath(this.context.extensionUri, 'out/webview', 'main-vscode.js')
     );
     
     return `
@@ -2019,7 +2015,6 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link href="${styleUri}" rel="stylesheet">
         <title>Logic Analyzer Data</title>
       </head>
       <body>
@@ -2269,15 +2264,18 @@ module.exports = [
   {
     name: 'webview',
     target: 'web',
-    entry: './src/webview/main.ts',
+    entry: {
+      'main-vscode': './src/frontend/app/main-vscode.ts',
+      'main-html': './src/frontend/app/main-html.ts'
+    },
     output: {
       path: path.resolve(__dirname, 'out/webview'),
-      filename: 'main.js'
+      filename: isDevelopment ? '[name].js' : '[name].[contenthash:8].js'
     },
     resolve: {
       extensions: ['.ts', '.js', '.vue'],
       alias: {
-        '@': path.resolve(__dirname, 'src/webview')
+        '@': path.resolve(__dirname, 'src/frontend')
       }
     },
     module: {
@@ -2642,7 +2640,8 @@ pico-logic-analyzer/
 │   ├── providers/       # VSCode 提供者
 │   ├── services/        # 核心服务
 │   ├── utils/           # 工具函数
-│   ├── webview/         # Webview 前端
+│   ├── frontend/        # 前端主路径
+│   ├── webview/         # 兼容壳与旧路径转发
 │   └── extension.ts     # 扩展入口
 ├── tests/               # 测试文件
 │   ├── integration/     # 集成测试

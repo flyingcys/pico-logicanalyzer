@@ -131,10 +131,12 @@ vscode-logicanalyzer/
 │   ├── decoders/                 # 协议解码器
 │   │   ├── base/                 # 解码器基类
 │   │   └── protocols/            # 具体协议实现
-│   ├── webview/                  # Vue前端界面
-│   │   ├── components/           # Vue组件
-│   │   ├── stores/               # Pinia状态管理
-│   │   └── views/                # 页面视图
+│   ├── frontend/                 # 新前端主路径
+│   │   ├── app/                  # Vue应用壳与组件
+│   │   ├── core/                 # 状态、服务、引擎
+│   │   ├── platform/             # host/bootstrap适配层
+│   │   └── shared/               # i18n、样式、共享资源
+│   ├── webview/                  # 兼容壳与旧路径转发
 │   ├── models/                   # 数据模型
 │   ├── utils/                    # 工具函数
 │   └── extension.ts              # 插件入口

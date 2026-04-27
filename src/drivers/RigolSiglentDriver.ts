@@ -69,7 +69,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
     reject: (error: Error) => void;
   }> = [];
   private _isProcessingCommand: boolean = false;
-  
+
   // 定时器资源追踪
   private _activeTimeouts: Set<NodeJS.Timeout> = new Set();
 
@@ -523,7 +523,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
       }
       this._activeTimeouts.delete(timeoutId);
     }, 60000); // 60秒超时
-    
+
     // 跟踪超时定时器
     this._activeTimeouts.add(timeoutId);
   }
@@ -660,7 +660,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
         this._activeTimeouts.delete(timeoutId);
         setTimeout(() => this.processCommandQueue(), 10);
       }, 5000);
-      
+
       // 跟踪超时定时器
       this._activeTimeouts.add(timeoutId);
 
@@ -757,7 +757,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
       clearTimeout(timeoutId);
     }
     this._activeTimeouts.clear();
-    
+
     this.disconnect();
     super.dispose();
   }

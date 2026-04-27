@@ -3,6 +3,57 @@ const webpack = require('webpack');
 const { VueLoaderPlugin } = require('vue-loader');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
+class WebviewAssetManifestPlugin {
+  apply(compiler) {
+    compiler.hooks.thisCompilation.tap('WebviewAssetManifestPlugin', compilation => {
+      compilation.hooks.processAssets.tap(
+        {
+          name: 'WebviewAssetManifestPlugin',
+          stage: webpack.Compilation.PROCESS_ASSETS_STAGE_SUMMARIZE
+        },
+        () => {
+          const manifest = {};
+          const vscodeEntrypoint = compilation.entrypoints.get('main-vscode');
+          const htmlEntrypoint = compilation.entrypoints.get('main-html');
+          const getEntryScript = (entrypoint, entryName) => {
+            if (!entrypoint) {
+              return undefined;
+            }
+
+            const hashedEntryPattern = new RegExp(`^${entryName}(\\.[a-f0-9]{8})?\\.js$`);
+            return entrypoint.getFiles().find(file => hashedEntryPattern.test(file));
+          };
+
+          const vscodeScript = getEntryScript(vscodeEntrypoint, 'main-vscode');
+          if (vscodeScript) {
+            manifest['main-vscode.js'] = vscodeScript;
+          } else {
+            compilation.errors.push(new Error('Webview manifest 缺少 main-vscode.js 产物'));
+          }
+
+          const htmlScript = getEntryScript(htmlEntrypoint, 'main-html');
+          if (htmlScript) {
+            manifest['main-html.js'] = htmlScript;
+          } else {
+            compilation.errors.push(new Error('Webview manifest 缺少 main-html.js 产物'));
+          }
+
+          if (compilation.getAsset('html/index.html')) {
+            manifest['html/index.html'] = 'html/index.html';
+          } else {
+            compilation.errors.push(new Error('Webview manifest 缺少 html/index.html 产物'));
+          }
+
+          compilation.emitAsset(
+            'webview-manifest.json',
+            new webpack.sources.RawSource(`${JSON.stringify(manifest, null, 2)}\n`)
+          );
+        }
+      );
+    });
+  }
+}
+
 /**
  * 生产级Webpack配置
  * 支持环境区分、优化和代码分割
@@ -111,7 +162,8 @@ const webviewConfig = {
   target: ['web', 'es2020'],
   mode: isDevelopment ? 'development' : 'production',
   entry: {
-    main: './src/webview/main.ts'
+    'main-vscode': './src/frontend/app/main-vscode.ts',
+    'main-html': './src/frontend/app/main-html.ts'
   },
   output: {
     path: path.resolve(__dirname, 'out/webview'),
@@ -123,10 +175,10 @@ const webviewConfig = {
   resolve: {
     extensions: ['.ts', '.js', '.vue'],
     alias: {
-      '@': path.resolve(__dirname, 'src/webview'),
-      '@components': path.resolve(__dirname, 'src/webview/components'),
-      '@stores': path.resolve(__dirname, 'src/webview/stores'),
-      '@utils': path.resolve(__dirname, 'src/webview/utils'),
+      '@': path.resolve(__dirname, 'src/frontend'),
+      '@components': path.resolve(__dirname, 'src/frontend/app/components'),
+      '@stores': path.resolve(__dirname, 'src/frontend/core/stores'),
+      '@utils': path.resolve(__dirname, 'src/frontend/core'),
       '@drivers': path.resolve(__dirname, 'src/drivers'),
       '@models': path.resolve(__dirname, 'src/models')
     }
@@ -203,9 +255,12 @@ const webviewConfig = {
   },
   plugins: [
     new VueLoaderPlugin(),
+    new WebviewAssetManifestPlugin(),
     new HtmlWebpackPlugin({
-      template: 'src/webview/index.html',
-      filename: 'index.html',
+      template: 'src/frontend/app/index.html',
+      filename: 'html/index.html',
+      chunks: ['main-html'],
+      publicPath: '../',
       inject: true,
       minify: isProduction ? {
         removeComments: true,
@@ -233,46 +288,7 @@ const webviewConfig = {
   optimization: {
     minimize: isProduction,
     sideEffects: false,
-    usedExports: true,
-    // 代码分割 - 将vendor库分离
-    splitChunks: {
-      chunks: 'all',
-      cacheGroups: {
-        // Vue和相关库
-        vue: {
-          test: /[\\/]node_modules[\\/](vue|@vue|pinia)[\\/]/,
-          name: 'vue-vendor',
-          chunks: 'all',
-          priority: 20
-        },
-        // Element Plus UI库
-        elementPlus: {
-          test: /[\\/]node_modules[\\/]element-plus[\\/]/,
-          name: 'element-plus',
-          chunks: 'all',
-          priority: 15
-        },
-        // 其他第三方库
-        vendors: {
-          test: /[\\/]node_modules[\\/]/,
-          name: 'vendors',
-          chunks: 'all',
-          priority: 10
-        },
-        // 公共模块
-        common: {
-          name: 'common',
-          minChunks: 2,
-          chunks: 'all', 
-          priority: 5,
-          enforce: true
-        }
-      }
-    },
-    // 运行时优化
-    runtimeChunk: {
-      name: 'runtime'
-    }
+    usedExports: true
   },
   // 性能预算 - 为VSCode扩展调整
   performance: {

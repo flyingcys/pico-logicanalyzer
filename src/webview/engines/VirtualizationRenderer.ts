@@ -231,7 +231,7 @@ export class VirtualizationRenderer {
           // 清理超时定时器
           clearTimeout(task.timeoutId);
           this.workerTasks.delete(taskId);
-          
+
           if (success) {
             task.resolve(result);
           } else {
@@ -591,7 +591,7 @@ export class VirtualizationRenderer {
           reject(new Error('Worker task timeout'));
         }
       }, 5000);
-      
+
       this.workerTasks.set(taskId, { resolve, reject, timeoutId });
       this.renderWorker!.postMessage({ taskId, type, data });
     });
@@ -870,7 +870,7 @@ export class VirtualizationRenderer {
 
     // 清理任务队列和超时定时器
     this.renderQueue = [];
-    
+
     // 清理所有待处理任务的超时定时器
     for (const task of this.workerTasks.values()) {
       clearTimeout(task.timeoutId);
