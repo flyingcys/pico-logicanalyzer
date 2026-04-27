@@ -618,10 +618,367 @@
 - [ ] 单元、集成、真实 fixture、性能测试可重复运行。
 - [ ] 文档明确标注已实现、实验性、规划中。
 
-## 24. 最终判断
+## 24. 10 个并行大项目拆分
+
+以下拆分按“先恢复原版 Pico 核心闭环，再补齐 UI/解码/工具，再推进生态质量”的优先级设计。每个项目都必须在独立 worktree 中推进，目录固定为项目根目录下 `.worktree/01` 到 `.worktree/10`。各项目原则上不共享写入文件；如发现必须跨边界修改，应先在对应 worktree 的任务文档里登记冲突点，再合并协调。
+
+| 序号 | Worktree | 建议分支 | 项目名称 | 优先级 | 并行边界 |
+| --- | --- | --- | --- | --- | --- |
+| 01 | `.worktree/01` | `parallel/01-pico-protocol-capture` | Pico 协议与真实采集闭环 | P0 | 只负责 Pico 驱动、协议字节、串口/网络采集状态机 |
+| 02 | `.worktree/02` | `parallel/02-lac-compat-export` | `.lac` 兼容与导入导出统一 | P0 | 只负责 `.lac` 模型、导入导出服务、兼容 fixture |
+| 03 | `.worktree/03` | `parallel/03-frontend-waveform-pipeline` | 新前端真实波形数据管线 | P0 | 只负责新 Vue3 前端的数据装载、store、renderer 接入 |
+| 04 | `.worktree/04` | `parallel/04-capture-device-workflow` | 设备连接与采集配置工作流 | P0 | 只负责 VSCode 命令、Webview host command、采集配置 UI |
+| 05 | `.worktree/05` | `parallel/05-decoder-parity-core` | 解码器核心与 I2C/SPI/UART 对齐 | P0/P1 | 只负责 decoder framework、基础三协议、golden 测试 |
+| 06 | `.worktree/06` | `parallel/06-waveform-interactions` | 波形交互、区域、测量、样本编辑 | P1 | 只负责 marker/region/measure/edit 交互层 |
+| 07 | `.worktree/07` | `parallel/07-device-discovery-multidevice` | 设备发现与多设备级联 | P1 | 只负责 DeviceDetector parity、多设备同步、已知设备管理 |
+| 08 | `.worktree/08` | `parallel/08-cli-terminal-automation` | CLI/TUI 自动化采集工具 | P1 | 只负责命令行采集、终端向导、脚本入口 |
+| 09 | `.worktree/09` | `parallel/09-signal-dsl-synthetic-captures` | 信号描述语言与合成捕获 | P1/P2 | 只负责 DSL、合成样本、无硬件示例数据 |
+| 10 | `.worktree/10` | `parallel/10-quality-ci-docs-certification` | 质量门禁、CI、文档状态与硬件认证 | P0/P2 | 只负责严格模式、CI、状态文档、真实设备认证矩阵 |
+
+### 24.1 项目 01：Pico 协议与真实采集闭环
+
+**目标**：让当前 TypeScript Pico 驱动与原版 C# `SharedDriver` 在命令协议、采集生命周期、错误语义上达到字节级和行为级对齐。
+
+**主写入范围**：
+
+- `src/drivers/LogicAnalyzerDriver.ts`
+- `src/drivers/AnalyzerDriverBase.ts`
+- `src/models/CaptureModels.ts`
+- `src/models/AnalyzerTypes.ts`
+- `tests/unit/drivers/LogicAnalyzerDriver*.test.ts`
+- `tests/integration/core-flows/hardware-capture.integration.test.ts`
+
+**禁止主动修改**：前端 UI、`.lac` 导出服务、解码器、CLI 工具。
+
+**核心任务**：
+
+- 修正 `StartCapture` 返回语义，必须等待 `CAPTURE_STARTED` 后才返回 `CaptureError.None`。
+- 重构串口读流状态机，避免 `ReadlineParser` 与二进制采集数据争抢同一数据流。
+- 修正 `StopCapture` 空闲语义、串口电压状态、Blast 参数校验、`getLimits` 计算。
+- 补齐 Blink/StopBlink 命令 `5` / `6`。
+- 建立 `OutputPacket` 和 `CaptureRequest` 的 C# fixture 字节级测试。
+
+**验收标准**：
+
+- Edge/Fast/Complex/Blast 请求字节与原版 fixture 一致。
+- 串口、网络两种连接路径的启动、停止、失败事件语义明确。
+- `npm run test:drivers -- LogicAnalyzerDriver` 通过。
+- 若无真实硬件，必须提供硬件测试清单和 mock 串口二进制流回放测试。
+
+### 24.2 项目 02：`.lac` 兼容与导入导出统一
+
+**目标**：建立唯一权威 `.lac` 读写路径，保证原版保存文件与当前扩展往返兼容。
+
+**主写入范围**：
+
+- `src/models/LACFileFormat.ts`
+- `src/models/UnifiedDataFormat.ts`
+- `src/services/DataExportService.ts`
+- `src/providers/LACEditorProvider.ts` 中 `.lac` load/save/export 相关函数
+- `tests/unit/models/LACFileFormat.test.ts`
+- `tests/unit/services/DataExportService*.test.ts`
+- `tests/fixtures/lac/`
+
+**禁止主动修改**：Pico 驱动、波形 renderer、解码器实现。
+
+**核心任务**：
+
+- 统一 `Settings/Samples/SelectedRegions` PascalCase 格式，废弃 lowercase `settings` 导出。
+- 验证并修正 `Samples` 的 UInt128 JSON 表示。
+- 修正 CSV 导出按每样本 0/1 byte 读取，不再按 bit-packed 读取通道样本。
+- 让 `LACEditorProvider` 调用 `LACFileFormat` 和 `DataExportService`，移除假成功导出。
+- 建立原版 `.lac` fixture：settings-only、含 samples、含 selected regions、含 bursts。
+
+**验收标准**：
+
+- 原版 `.lac` 可打开、当前保存后原版可再打开。
+- `.lac` -> `CaptureSession` -> `.lac` 往返不丢通道、样本、区域。
+- CSV 与原版同一 capture 样本值一致。
+- `npm run test:unit -- LACFileFormat DataExportService` 通过。
+
+### 24.3 项目 03：新前端真实波形数据管线
+
+**目标**：让新 Vue3 前端从 `.lac` 或采集结果中装载真实通道样本，并驱动 canvas 波形渲染，而不是只显示占位布局。
+
+**主写入范围**：
+
+- `src/frontend/app/App.vue`
+- `src/frontend/app/components/AppWaveformStage.vue`
+- `src/frontend/core/stores/sessionStore.ts`
+- `src/frontend/core/stores/waveformStore.ts`
+- `src/frontend/core/services/bootstrapService.ts`
+- `src/frontend/core/services/waveformService.ts`
+- `src/frontend/core/engines/WaveformRenderer.ts`
+- `tests/unit/webview/main.test.ts`
+
+**禁止主动修改**：旧 `src/webview/components` 大型业务组件、驱动层、解码器层。
+
+**核心任务**：
+
+- 扩展 `sessionStore`，保存 `CaptureSession`、channels、sampleRate、pre/post samples。
+- 实现 `.lac` 文档 payload 到前端 channel data 的转换。
+- 让 `AppWaveformStage` 调用 renderer 加载真实 channels。
+- 支持触发位置跳转、基础滚动、基础缩放。
+- 给空文档、settings-only 文档、含 samples 文档分别显示明确状态。
+
+**验收标准**：
+
+- 打开含样本 `.lac` 后，画布显示真实波形。
+- 新前端不再显示“后续任务继续接回”类占位描述。
+- jsdom 单测覆盖 document bootstrap、样本装载、视口变更。
+- `npm run test:webview:unit` 通过或列出剩余非本项目阻断。
+
+### 24.4 项目 04：设备连接与采集配置工作流
+
+**目标**：补齐 VSCode 扩展中的设备连接、采集配置、开始/停止/重复采集的用户工作流，覆盖原版 CaptureDialog 的核心能力。
+
+**主写入范围**：
+
+- `src/extension.ts`
+- `src/providers/LACEditorProvider.ts` 的 host command 分发
+- `src/frontend/app/components/AppHeader.vue`
+- `src/frontend/app/components/AppSidebarLeft.vue`
+- `src/frontend/core/stores/deviceStore.ts`
+- `src/frontend/platform/host/*`
+- `tests/unit/extension/Extension.test.ts`
+- `tests/unit/webview/main.test.ts`
+
+**禁止主动修改**：Pico 驱动协议细节、`.lac` 底层编码、解码器实现。
+
+**核心任务**：
+
+- 设计 host command：detect devices、connect、disconnect、get status、start capture、stop capture、repeat capture。
+- 实现采集配置 UI：频率、pre/post samples、通道选择、通道命名、Edge/Fast/Complex/Blast 触发。
+- 接入 jitter 提示和设备 limits。
+- 实现采集进度、取消、错误显示。
+- 采集完成后把结果保存/更新到当前 `.lac` 文档。
+
+**验收标准**：
+
+- 用户可从 Webview 完成连接设备、配置采集、开始采集、停止采集。
+- 未连接设备时的手动串口和网络地址输入可用。
+- Repeat last capture 有明确入口和测试。
+- `npm run test:extensions` 与相关 webview 单测通过。
+
+### 24.5 项目 05：解码器核心与 I2C/SPI/UART 对齐
+
+**目标**：让 TypeScript 解码器框架和基础三协议有可信 parity，建立后续扩展协议的标准。
+
+**主写入范围**：
+
+- `src/decoders/DecoderBase.ts`
+- `src/decoders/DecoderManager.ts`
+- `src/decoders/DecoderRegistry.ts`
+- `src/decoders/types.ts`
+- `src/decoders/protocols/I2CDecoder.ts`
+- `src/decoders/protocols/SPIDecoder.ts`
+- `src/decoders/protocols/UARTDecoder.ts`
+- `src/decoders/protocols/StreamingI2CDecoder.ts`
+- `tests/unit/decoders/`
+- `tests/fixtures/decoders/`
+
+**禁止主动修改**：前端波形 UI、设备驱动、`.lac` 导出。
+
+**核心任务**：
+
+- 为 I2C/SPI/UART 建立 sigrok golden 输入输出样本。
+- 修正 `wait/put/matched` 语义与 sigrokdecode 行为差距。
+- 完善 options、channels、annotations、annotation rows 元数据。
+- 验证解码树父子级联和 input/output merge。
+- 明确 streaming decoder 与常规 decoder 的切换规则。
+
+**验收标准**：
+
+- I2C/SPI/UART golden 输出与 sigrok 对齐。
+- DecoderManager 可稳定执行解码树。
+- `npm run test:decoders` 通过。
+- 新增协议开发模板和最小测试模板。
+
+### 24.6 项目 06：波形交互、区域、测量、样本编辑
+
+**目标**：恢复原版 SampleMarker/SamplePreviewer/SampleViewer 的核心交互能力。
+
+**主写入范围**：
+
+- `src/frontend/core/engines/WaveformRenderer.ts`
+- `src/frontend/core/utils/KeyboardShortcutManager.ts`
+- `src/frontend/core/stores/uiStore.ts`
+- `src/frontend/core/stores/waveformStore.ts`
+- `src/frontend/app/components/AppWaveformStage.vue`
+- 必要时迁移 `src/webview/engines/MarkerTools.ts`
+- 必要时迁移 `src/webview/engines/MeasurementTools.ts`
+- `tests/unit/webview/`
+
+**禁止主动修改**：驱动层、`.lac` 编码、解码器算法。
+
+**核心任务**：
+
+- 实现选区、用户 marker、触发 marker、burst marker。
+- 实现区域创建、删除、命名、颜色、保存回 session。
+- 实现测量：样本数、时间、频率、占空比、脉宽。
+- 实现样本编辑：剪切、复制、粘贴、插入、删除、移位。
+- 实现全局预览和滚动/缩放联动。
+
+**验收标准**：
+
+- 原版样本编辑核心操作在新前端可完成。
+- 区域和 marker 可随 `.lac` 保存/恢复。
+- 快捷键帮助与实际快捷键一致。
+- 大样本交互有性能测试或手动验收记录。
+
+### 24.7 项目 07：设备发现与多设备级联
+
+**目标**：把设备发现从泛化扫描改为兼容原版 Pico LogicAnalyzer 的精准识别，并修复多设备同步合并。
+
+**主写入范围**：
+
+- `src/drivers/HardwareDriverManager.ts`
+- `src/drivers/MultiAnalyzerDriver.ts`
+- `src/drivers/VersionValidator.ts`
+- `src/services/ConfigurationManager.ts`
+- `tests/unit/drivers/HardwareDriverManager*.test.ts`
+- `tests/unit/drivers/MultiAnalyzerDriver*.test.ts`
+- `data/sample-devices.json`
+
+**禁止主动修改**：Pico 单设备协议状态机、前端 UI 大改、`.lac` 编码。
+
+**核心任务**：
+
+- 按原版 VID/PID `1209/3020` 实现 Windows/Linux 精准枚举。
+- 保留普通 Pico `2E8A/0003` 为候选，但降低置信度并要求握手确认。
+- 修复 MultiAnalyzerDriver async 构造、设备 tag、会话 clone、结果合并。
+- 实现 known devices、forget device、稳定排序。
+- 建立 2-5 台设备的 mock 同步采集测试。
+
+**验收标准**：
+
+- Windows/Linux 枚举逻辑有单元测试 fixture。
+- 多设备 2/3/5 台合并测试通过。
+- 错误版本、不同版本、从设备失败均有测试。
+- `npm run test:drivers -- HardwareDriverManager MultiAnalyzerDriver` 通过。
+
+### 24.8 项目 08：CLI/TUI 自动化采集工具
+
+**目标**：提供原版 `CLCapture` 的 TypeScript/Node 等价工具，并为后续 TUI 留接口。
+
+**主写入范围**：
+
+- `src/cli/`
+- `src/tools/`
+- `package.json` scripts/bin 字段
+- `tests/unit/cli/`
+- `docs/user-manual.md`
+- `docs/DEVELOPER_GUIDE.md` 中 CLI 章节
+
+**禁止主动修改**：核心驱动实现、前端 UI、解码器算法。
+
+**核心任务**：
+
+- 实现 `logic-analyzer-capture` 命令：设备地址、采样率、pre/post、通道、触发、输出文件。
+- 支持输出 `.lac` 和 `.csv`。
+- 支持网络配置命令。
+- 支持读取/写入采集配置文件，兼容原版 `.tcs` 或定义迁移格式。
+- 设计 TUI 边界文档，暂不强行实现完整 Terminal.Gui 等价。
+
+**验收标准**：
+
+- `node out/cli/... --help` 可用。
+- CLI 参数校验与原版关键约束一致。
+- mock 设备采集到 `.lac` / `.csv` 的测试通过。
+- 用户文档包含完整示例。
+
+### 24.9 项目 09：信号描述语言与合成捕获
+
+**目标**：复刻原版 SignalDescriptionLanguage/SignalComposer 的核心价值，让用户可无硬件生成 `.lac` 和协议测试样本。
+
+**主写入范围**：
+
+- `src/signal-dsl/`
+- `src/models/CaptureModels.ts` 中必要的纯模型扩展
+- `src/frontend/app/components/` 中合成捕获入口组件
+- `tests/unit/signal-dsl/`
+- `tests/fixtures/signal-dsl/`
+- `docs/user-manual.md` 中信号生成章节
+
+**禁止主动修改**：真实硬件驱动、解码器主算法、导出底层格式。
+
+**核心任务**：
+
+- 调研原版 `SignalDescriptionLanguage/Parser.cs` 语法并定义 TS AST。
+- 实现 parser、diagnostics、sample generator。
+- 输出 `CaptureSession` 和 `.lac`。
+- 提供示例：时钟、UART 字节、I2C start/address/ack、SPI transaction。
+- 接入新前端的“新建合成捕获”入口。
+
+**验收标准**：
+
+- DSL fixtures 生成确定性样本。
+- 生成的 `.lac` 可被当前前端显示。
+- 合成 I2C/UART/SPI 样本可被项目 05 解码器识别。
+- 文档包含语法和示例。
+
+### 24.10 项目 10：质量门禁、CI、文档状态与硬件认证
+
+**目标**：恢复工程质量基线，防止“文档已支持但代码仍模拟”的状态继续扩大。
+
+**主写入范围**：
+
+- `tsconfig.json`
+- `jest*.config.js`
+- `.github/workflows/`
+- `.husky/`
+- `scripts/ci-test-runner.js`
+- `docs/`
+- `README.md`
+- `package.json` 中质量脚本和元数据
+
+**禁止主动修改**：业务实现文件，除非只是为严格模式做机械类型修复且已登记。
+
+**核心任务**：
+
+- 分阶段恢复 `strict=true`，先建立 `tsconfig.strict.json` 或分模块 strict gate。
+- 恢复 CI workflow：typecheck、lint、unit、webview、driver、decoder、package。
+- 恢复 pre-commit 或等价本地质量门禁。
+- 建立功能状态矩阵：已实现、实验性、规划中、模拟。
+- 建立真实硬件认证矩阵：Pico/Pico W/Pico 2/多设备/网络。
+- 清理 README/package 文档中的占位链接和误导性描述。
+
+**验收标准**：
+
+- CI 文件存在并可本地 dry run 关键命令。
+- strict gate 至少覆盖新增/核心模块。
+- 文档中的功能声明与代码状态一致。
+- `npm run validate` 或替代质量命令有明确可执行路径。
+
+## 25. Worktree 创建命令记录
+
+本轮要求创建 10 个 worktree。约定如下：
+
+```bash
+git worktree add .worktree/01 -b parallel/01-pico-protocol-capture
+git worktree add .worktree/02 -b parallel/02-lac-compat-export
+git worktree add .worktree/03 -b parallel/03-frontend-waveform-pipeline
+git worktree add .worktree/04 -b parallel/04-capture-device-workflow
+git worktree add .worktree/05 -b parallel/05-decoder-parity-core
+git worktree add .worktree/06 -b parallel/06-waveform-interactions
+git worktree add .worktree/07 -b parallel/07-device-discovery-multidevice
+git worktree add .worktree/08 -b parallel/08-cli-terminal-automation
+git worktree add .worktree/09 -b parallel/09-signal-dsl-synthetic-captures
+git worktree add .worktree/10 -b parallel/10-quality-ci-docs-certification
+```
+
+创建完成后，每个 worktree 的第一步都应执行：
+
+```bash
+npm install
+npm run typecheck
+```
+
+如果 baseline 失败，不应直接开始实现，应先在对应 worktree 记录失败命令、失败摘要和是否属于当前任务边界。
+
+## 26. 最终判断
 
 当前项目已经具备“重建一个现代 VSCode 逻辑分析器平台”的基础代码量和模块雏形，但与 `logicanalyzer` 原版相比，仍处在“架构扩展多、核心闭环弱”的阶段。
 
 如果目标是“替代原版桌面 LogicAnalyzer”，优先级必须回到 Pico 协议、`.lac`、波形 UI、采集配置、解码注释这条主链路。  
 如果目标是“超越原版成为多硬件平台”，也应先把原版主链路做成可验证基线，否则 Saleae/Rigol/sigrok 等扩展会建立在未稳定的数据模型和 UI 工作流之上，后续维护成本会快速上升。
-
