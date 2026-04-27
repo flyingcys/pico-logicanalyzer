@@ -1,5 +1,25 @@
 # VSCode 逻辑分析器插件 - 开发任务清单
 
+## 当前修正结论（2026-04-27）
+
+本文件保留历史阶段任务，但大量“已完成”“生产级”“100%”结论来自早期计划或阶段总结，不能直接作为当前发布状态。最新审查结论：
+
+- 构建：`npm run build` 可通过，但 webpack 使用 `transpileOnly`，构建不能证明类型正确。
+- 类型：`npm run typecheck` 失败，发布前必须清零。
+- 测试：测试目录结构已建立，但仍有 `utest/mocks` 旧路径引用；`npm run test:unit -- --silent` 最近一次运行超过 3 分钟无输出。
+- 文档：README、测试说明和结构说明已开始按当前事实修正；后续以 `docs/current-status-and-next-steps-2026-04-27.md` 为新的任务入口。
+
+### 新的优先级
+
+1. P0：修复 TypeScript 编译错误，先处理 `GenericDriverTemplate.ts` 重复实现、`extension.ts` 的 `.lac` 调用参数、`UnifiedDataFormat.ts` 类型冲突、`DataExportService.ts` 解码结果契约不一致。
+2. P0：迁移所有测试中的 `../../../utest/mocks/simple-mocks` 到 `tests/fixtures/mocks/simple-mocks`。
+3. P0：定位 `npm run test:unit` 长时间无输出问题，拆分测试文件并修复未释放资源。
+4. P1：把 typecheck 纳入构建或发布检查门槛，避免 `transpileOnly` 掩盖错误。
+5. P1：补齐 `LACEditorProvider.exportData` 的真实导出逻辑，移除“选择路径即提示导出成功”的假成功。
+6. P1：按真实硬件能力重新校准 README 中的硬件支持、性能和覆盖率描述。
+
+---
+
 ## 🔍 基于源码深度分析的关键发现 (2025-01-28更新)
 
 ### 重要架构发现
@@ -141,7 +161,7 @@
 **任务清单**:
 - [x] ☑️ 完善硬件抽象层 (ILogicAnalyzer, HardwareCapabilities)
 - [x] ☑️ 实现AnalyzerDriverBase基类 (基于C#原版)
-- [x] ☑️ 实现CaptureSession数据模型 (精确对应C#版本) 
+- [x] ☑️ 实现CaptureSession数据模型 (精确对应C#版本)
 - [x] ☑️ 实现AnalyzerChannel数据模型
 - [x] ☑️ 实现生产级驱动插件管理系统
 - [x] ☑️ 建立硬件描述标准和解析器

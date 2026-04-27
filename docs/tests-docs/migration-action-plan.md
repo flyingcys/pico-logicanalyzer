@@ -200,7 +200,7 @@ find utest/unit -name "*.test.ts" ! -path "*/drivers/*" ! -path "*/services/*" !
 # 基于Models层成功经验，建立完整文档
 
 # 创建架构说明
-cat > tests/README.md << 'EOF'
+cat > docs/tests/README.md << 'EOF'
 # 🧪 5层测试生态系统 - 基于实际成果
 
 ## 📊 当前成果
@@ -387,7 +387,7 @@ EOF
 mkdir -p tests/{unit,integration,performance,stress,e2e,fixtures}/{framework,scenarios,data,mocks,utils}
 
 # 创建架构说明
-cat > tests/README.md << 'EOF'
+cat > docs/tests/README.md << 'EOF'
 # 🧪 5层测试生态系统
 
 ## 目录结构

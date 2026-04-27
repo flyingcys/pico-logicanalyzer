@@ -1,8 +1,26 @@
-# 🧪 5层测试生态系统
+# 5层测试生态系统
 
-**迁移完成**: 2025-08-13  
-**架构版本**: P2.3完整版  
+**迁移完成**: 2025-08-13
+**架构版本**: P2.3完整版
 **统一测试目录**: `/tests`
+
+---
+
+## 当前校验状态（2026-04-27）
+
+旧说明中“迁移完成”“CI 正常运行”“核心测试 100% 迁移完成”等结论已经过期。当前可验证事实：
+
+- `tests` 目录保留 5 层测试结构：`unit`、`integration`、`performance`、`stress`、`e2e`。
+- 仍有多处测试引用 `../../../utest/mocks/simple-mocks`，包括集成、性能、压力和端到端测试。
+- `npm run test:unit -- --silent` 最近一次运行超过 3 分钟无输出，需拆分定位卡住文件。
+- `npm run typecheck` 当前失败，测试结果不能替代类型质量门槛。
+
+下一步先处理测试基础设施：
+
+1. 将所有 `utest/mocks` 引用迁移到 `tests/fixtures/mocks`。
+2. 拆分运行 `tests/unit`，定位长耗时或未释放资源的测试文件。
+3. 修正 `package.json` 脚本，避免 `--maxWorkers` 与调用方追加 `--runInBand` 冲突。
+4. 重新生成覆盖率报告后，再更新覆盖率数字和迁移结论。
 
 ---
 
@@ -135,7 +153,7 @@ class MyModuleTest extends UnitTestBase {
 - 📋 [测试最佳实践指南](../docs/utest/testing-best-practices-guide.md)
 - ⚙️ [分层CI执行策略](../docs/utest/layered-ci-strategy-manual.md)  
 - 🔍 [内存泄漏检测指南](../docs/utest/memory-leak-detection-guide.md)
-- 📁 [迁移行动计划](../tests-docs/migration-action-plan.md)
+- 📁 [迁移行动计划](../docs/tests-docs/migration-action-plan.md)
 
 ---
 
@@ -143,16 +161,16 @@ class MyModuleTest extends UnitTestBase {
 
 ### @utest状态
 - 🚨 **@utest目录已弃用** - 不要在其中创建新测试
-- 📅 **清理时间表**: 
+- 📅 **清理时间表**:
   - 2025-08-20: 停止使用@utest文件
-  - 2025-08-27: 归档历史内容  
+  - 2025-08-27: 归档历史内容
   - 2025-09-03: 完全删除@utest目录
 
 ### 迁移完成标志
-- ✅ 核心测试100%迁移完成
-- ✅ 5层测试架构完整建立
-- ✅ CI分层执行正常运行
-- ✅ 团队完全切换到@tests目录
+- ⚠️ 核心测试迁移未完全完成，仍有 `utest/mocks` 引用。
+- ✅ 5层测试目录结构已建立。
+- ⚠️ CI 分层执行状态需重新验证。
+- ⚠️ 团队切换到 `tests` 目录的结论需等引用清理和测试稳定后再确认。
 
 ---
 
