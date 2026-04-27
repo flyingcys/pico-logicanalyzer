@@ -1,0 +1,47 @@
+{
+  "i2cWrite": {
+    "sampleRate": 1000000,
+    "operations": [
+      { "type": "start" },
+      { "type": "byte", "value": 160 },
+      { "type": "ack" },
+      { "type": "byte", "value": 18 },
+      { "type": "ack" },
+      { "type": "stop" }
+    ],
+    "expected": [
+      { "annotationType": 0, "values": ["Start", "S"] },
+      { "annotationType": 7, "rawData": 80, "values": ["Address write: 50", "AW: 50", "50"] },
+      { "annotationType": 3, "values": ["ACK", "A"] },
+      { "annotationType": 9, "rawData": 18, "values": ["Data write: 12", "DW: 12", "12"] },
+      { "annotationType": 3, "values": ["ACK", "A"] },
+      { "annotationType": 2, "values": ["Stop", "P"] }
+    ]
+  },
+  "spiMode0": {
+    "sampleRate": 1000000,
+    "channels": [
+      { "channelNumber": 0, "channelName": "CLK", "samples": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0] },
+      { "channelNumber": 1, "channelName": "MISO", "samples": [1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1] },
+      { "channelNumber": 2, "channelName": "MOSI", "samples": [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0] },
+      { "channelNumber": 3, "channelName": "CS", "samples": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1] }
+    ],
+    "expected": [
+      { "annotationType": 0, "rawData": 165, "values": ["A5"] },
+      { "annotationType": 1, "rawData": 60, "values": ["3C"] },
+      { "annotationType": 5, "values": ["A5"] },
+      { "annotationType": 6, "values": ["3C"] }
+    ]
+  },
+  "uart8n1": {
+    "sampleRate": 115200,
+    "channels": [
+      { "channelNumber": 0, "channelName": "RX", "samples": [1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1] }
+    ],
+    "expected": [
+      { "annotationType": 2, "values": ["Start bit", "Start", "S"] },
+      { "annotationType": 0, "rawData": 85, "values": ["55"] },
+      { "annotationType": 8, "values": ["Stop bit", "Stop", "T"] }
+    ]
+  }
+}

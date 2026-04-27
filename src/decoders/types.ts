@@ -82,6 +82,8 @@ export type WaitConditionType =
  */
 export interface WaitCondition {
   [channelIndex: number]: WaitConditionType;
+  /** Sigrok-compatible sample skip condition, e.g. wait({ skip: 10 }). */
+  skip?: number;
 }
 
 /**

@@ -46,6 +46,8 @@ export abstract class DecoderBase {
   protected registeredOutputs: Map<DecoderOutputType, number> = new Map();
   protected currentState: Map<number, number> = new Map();
   protected lastState: Map<number, number> = new Map();
+  private executionInputs: Map<string, any[]> | null = null;
+  private executionOutputs: Map<string, any[]> = new Map();
 
   /**
    * 主解码方法 - 子类必须实现
@@ -115,8 +117,12 @@ export abstract class DecoderBase {
     // 转换为条件数组格式
     const conditionsArray = Array.isArray(conditions) ? conditions : [conditions];
 
-    // 如果是单个跳过条件，直接返回当前状态
+    // 如果是单个跳过条件，按 sigrokdecode 语义前进指定样本数
     if (conditionsArray.length === 1 && this.isSkipCondition(conditionsArray[0])) {
+      const skip = Math.max(0, Math.floor(conditionsArray[0].skip || 0));
+      this.sampleIndex = Math.min(this.sampleIndex + skip, Math.max(0, maxSamples - 1));
+      this.updateCurrentState();
+
       return {
         pins: this.getCurrentPins(),
         sampleNumber: this.sampleIndex
@@ -128,21 +134,21 @@ export abstract class DecoderBase {
       // 更新当前状态
       this.updateCurrentState();
 
-      // 检查每个条件是否匹配
-      for (let i = 0; i < conditionsArray.length; i++) {
-        const matched = this.checkConditions(conditionsArray[i]);
-        if (matched.every(m => m)) {
-          // 创建 matched 数组，对应原版的 self.matched
-          const matchedArray = new Array(conditionsArray.length).fill(false);
-          matchedArray[i] = true;
+      // 检查每个条件是否匹配。同一样本可能同时满足多个条件，
+      // matched 需要保留所有命中的条件，供 SPI 等协议处理 CS+CLK 同步边沿。
+      const matchedArray = conditionsArray.map(condition => {
+        const matched = this.checkConditions(condition);
+        return matched.length > 0 && matched.every(m => m);
+      });
+      const matchedIndex = matchedArray.findIndex(Boolean);
 
-          return {
-            pins: this.getCurrentPins(),
-            sampleNumber: this.sampleIndex,
-            matched: matchedArray,
-            matchedIndex: i
-          };
-        }
+      if (matchedIndex !== -1) {
+        return {
+          pins: this.getCurrentPins(),
+          sampleNumber: this.sampleIndex,
+          matched: matchedArray,
+          matchedIndex
+        };
       }
 
       // 移动到下一个样本
@@ -164,7 +170,7 @@ export abstract class DecoderBase {
     const result: DecoderResult = {
       startSample,
       endSample,
-      annotationType: data.annotationType || 0,
+      annotationType: data.annotationType ?? 0,
       values: data.values,
       rawData: data.rawData,
       shape: 'hexagon' // 默认形状
@@ -200,6 +206,10 @@ export abstract class DecoderBase {
     const results: boolean[] = [];
 
     for (const [channelIndex, conditionType] of Object.entries(conditions)) {
+      if (channelIndex === 'skip') {
+        continue;
+      }
+
       const chIndex = parseInt(channelIndex);
       const matched = this.checkSingleCondition(chIndex, conditionType);
       results.push(matched);
@@ -273,8 +283,7 @@ export abstract class DecoderBase {
    * @returns 是否为跳过条件
    */
   private isSkipCondition(conditions: WaitCondition): boolean {
-    const entries = Object.entries(conditions);
-    return entries.length === 1 && entries[0][0] === '0' && entries[0][1] === 'skip';
+    return typeof conditions.skip === 'number' && Object.keys(conditions).length === 1;
   }
 
   /**
@@ -285,6 +294,10 @@ export abstract class DecoderBase {
    */
   protected matchesCondition(pins: number[], conditions: { [key: number]: WaitConditionType }): boolean {
     for (const [channelIndexStr, conditionType] of Object.entries(conditions)) {
+      if (channelIndexStr === 'skip') {
+        continue;
+      }
+
       const channelIndex = parseInt(channelIndexStr);
       if (channelIndex >= pins.length) {
         return false;
@@ -351,6 +364,49 @@ export abstract class DecoderBase {
         this.channelData[mapping.decoderIndex] = channels[mapping.captureIndex].samples;
       }
     }
+  }
+
+  /**
+   * 设置解码树执行上下文。
+   * DecoderManager 在执行父子分支前注入输入，并在解码后读取输出。
+   */
+  public setExecutionContext(inputs: Map<string, any[]> | null): void {
+    this.executionInputs = inputs;
+    this.executionOutputs = new Map();
+  }
+
+  /**
+   * 清理解码树执行上下文，避免实例缓存跨次执行泄漏状态。
+   */
+  public clearExecutionContext(): void {
+    this.executionInputs = null;
+    this.executionOutputs = new Map();
+  }
+
+  /**
+   * 获取本次解码产生的 typed outputs。
+   */
+  public getExecutionOutputs(): Map<string, any[]> {
+    return this.executionOutputs;
+  }
+
+  /**
+   * 读取父级解码器输出。
+   */
+  protected getInput(inputName: string): any[] | null {
+    if (!this.executionInputs || !this.executionInputs.has(inputName)) {
+      return null;
+    }
+
+    return this.executionInputs.get(inputName) || null;
+  }
+
+  /**
+   * 输出供子级解码器消费的 typed data。
+   */
+  protected addOutput(outputName: string, output: any[]): void {
+    const existing = this.executionOutputs.get(outputName) || [];
+    this.executionOutputs.set(outputName, existing.concat(output));
   }
 
   /**
