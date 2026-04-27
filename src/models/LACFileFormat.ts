@@ -54,6 +54,34 @@ export interface LACFileResult {
  */
 export class LACFileFormat {
   /**
+   * 解析 .lac JSON 内容，并兼容原版 PascalCase 与早期 lowercase 结构。
+   */
+  public static parse(content: string): ExportedCapture {
+    const raw = JSON.parse(content);
+    return this.normalizeExportedCapture(raw);
+  }
+
+  /**
+   * 序列化为原版 .lac PascalCase 结构。
+   */
+  public static serialize(exportedCapture: ExportedCapture): string {
+    const session = this.hydrateCaptureSession(exportedCapture.Settings);
+    const originalCapture: Record<string, any> = {
+      Settings: this.toOriginalSettings(session)
+    };
+
+    if (exportedCapture.Samples !== undefined) {
+      originalCapture.Samples = exportedCapture.Samples;
+    }
+
+    if (exportedCapture.SelectedRegions !== undefined) {
+      originalCapture.SelectedRegions = this.normalizeSelectedRegions(exportedCapture.SelectedRegions);
+    }
+
+    return JSON.stringify(originalCapture, this.sampleRegionReplacer, 2);
+  }
+
+  /**
    * 保存.lac文件 - 对应C# MainWindow中的保存逻辑
    */
   public static async save(
@@ -92,7 +120,7 @@ export class LACFileFormat {
       }
 
       // 序列化为JSON - 使用与C#版本相同的方式
-      const jsonContent = JSON.stringify(exportedCapture, this.sampleRegionReplacer, 2);
+      const jsonContent = this.serialize(exportedCapture);
 
       // 确保目录存在
       const dir = path.dirname(filePath);
@@ -139,12 +167,7 @@ export class LACFileFormat {
       // 解析JSON - 使用与C#版本相同的方式
       let exportedCapture: ExportedCapture;
       try {
-        exportedCapture = JSON.parse(fileContent);
-
-        // 手动处理SampleRegion如果需要
-        if (exportedCapture.SelectedRegions) {
-          exportedCapture.SelectedRegions = this.sampleRegionReviver('SelectedRegions', exportedCapture.SelectedRegions) as SampleRegion[];
-        }
+        exportedCapture = this.parse(fileContent);
       } catch (parseError) {
         return {
           success: false,
@@ -234,7 +257,7 @@ export class LACFileFormat {
       throw new Error('ExportedCapture cannot be null or undefined');
     }
 
-    const captureSession = exportedCapture.Settings;
+    const captureSession = this.hydrateCaptureSession(exportedCapture.Settings);
 
     // 如果有原始样本数据，提取到各个通道 - 对应C# ExtractSamples方法
     if (exportedCapture.Samples && exportedCapture.Samples.length > 0) {
@@ -344,5 +367,187 @@ export class LACFileFormat {
 
       channel.samples = samples;
     }
+  }
+
+  private static normalizeExportedCapture(raw: any): ExportedCapture {
+    if (!raw || typeof raw !== 'object') {
+      throw new Error('Invalid .lac file: root must be an object');
+    }
+
+    const rawSettings = raw.Settings ?? raw.settings;
+    if (!rawSettings) {
+      throw new Error('Invalid .lac file: missing Settings');
+    }
+
+    const samples = raw.Samples ?? raw.samples;
+    const selectedRegions = raw.SelectedRegions ?? raw.selectedRegions;
+    const exportedCapture: ExportedCapture = {
+      Settings: this.hydrateCaptureSession(rawSettings)
+    };
+
+    if (samples !== undefined && samples !== null) {
+      exportedCapture.Samples = Array.isArray(samples) ? samples.map(String) : [];
+    }
+
+    if (selectedRegions !== undefined && selectedRegions !== null) {
+      exportedCapture.SelectedRegions = this.normalizeSelectedRegions(selectedRegions);
+    }
+
+    return exportedCapture;
+  }
+
+  private static hydrateCaptureSession(value: any): CaptureSession {
+    if (value instanceof CaptureSession) {
+      const cloned = value.clone ? value.clone() : value;
+      return cloned;
+    }
+
+    const session = new CaptureSession();
+    session.frequency = this.readNumber(value, 'Frequency', 'frequency', session.frequency);
+    session.preTriggerSamples = this.readNumber(value, 'PreTriggerSamples', 'preTriggerSamples', session.preTriggerSamples);
+    session.postTriggerSamples = this.readNumber(value, 'PostTriggerSamples', 'postTriggerSamples', session.postTriggerSamples);
+    session.loopCount = this.readNumber(value, 'LoopCount', 'loopCount', session.loopCount);
+    session.measureBursts = this.readBoolean(value, 'MeasureBursts', 'measureBursts', session.measureBursts);
+    session.triggerType = this.readNumber(value, 'TriggerType', 'triggerType', session.triggerType) as TriggerType;
+    session.triggerChannel = this.readNumber(value, 'TriggerChannel', 'triggerChannel', session.triggerChannel);
+    session.triggerInverted = this.readBoolean(value, 'TriggerInverted', 'triggerInverted', session.triggerInverted);
+    session.triggerBitCount = this.readNumber(value, 'TriggerBitCount', 'triggerBitCount', session.triggerBitCount);
+    session.triggerPattern = this.readNumber(value, 'TriggerPattern', 'triggerPattern', session.triggerPattern);
+
+    const rawChannels = value?.CaptureChannels ?? value?.captureChannels ?? [];
+    session.captureChannels = Array.isArray(rawChannels)
+      ? rawChannels.map((channel: any) => this.hydrateAnalyzerChannel(channel))
+      : [];
+
+    const rawBursts = value?.Bursts ?? value?.bursts;
+    if (Array.isArray(rawBursts)) {
+      session.bursts = rawBursts.map((rawBurst: any) => {
+        const burst = new BurstInfo();
+        burst.burstSampleStart = this.readNumber(rawBurst, 'BurstSampleStart', 'burstSampleStart', burst.burstSampleStart);
+        burst.burstSampleEnd = this.readNumber(rawBurst, 'BurstSampleEnd', 'burstSampleEnd', burst.burstSampleEnd);
+        burst.burstSampleGap = this.readNumber(rawBurst, 'BurstSampleGap', 'burstSampleGap', burst.burstSampleGap);
+        burst.burstTimeGap = this.readNumber(rawBurst, 'BurstTimeGap', 'burstTimeGap', burst.burstTimeGap);
+        return burst;
+      });
+    }
+
+    return session;
+  }
+
+  private static hydrateAnalyzerChannel(value: any): AnalyzerChannel {
+    if (value instanceof AnalyzerChannel) {
+      return value.clone ? value.clone() : value;
+    }
+
+    const channel = new AnalyzerChannel(
+      this.readNumber(value, 'ChannelNumber', 'channelNumber', 0),
+      this.readString(value, 'ChannelName', 'channelName', '')
+    );
+    const channelColor = this.readOptionalNumber(value, 'ChannelColor', 'channelColor');
+    channel.channelColor = channelColor;
+    channel.hidden = this.readBoolean(value, 'Hidden', 'hidden', false);
+    channel.minimized = this.readBoolean(value, 'Minimized', 'minimized', false);
+
+    const samples = value?.Samples ?? value?.samples;
+    if (samples instanceof Uint8Array) {
+      channel.samples = new Uint8Array(samples);
+    } else if (Array.isArray(samples)) {
+      channel.samples = new Uint8Array(samples.map((sample: any) => sample ? 1 : 0));
+    }
+
+    return channel;
+  }
+
+  private static toOriginalSettings(session: CaptureSession): Record<string, any> {
+    const settings = session.cloneSettings();
+    const original: Record<string, any> = {
+      Frequency: settings.frequency,
+      PreTriggerSamples: settings.preTriggerSamples,
+      PostTriggerSamples: settings.postTriggerSamples,
+      LoopCount: settings.loopCount,
+      MeasureBursts: settings.measureBursts,
+      CaptureChannels: settings.captureChannels.map(channel => this.toOriginalChannel(channel)),
+      TriggerType: settings.triggerType,
+      TriggerChannel: settings.triggerChannel,
+      TriggerInverted: settings.triggerInverted,
+      TriggerBitCount: settings.triggerBitCount,
+      TriggerPattern: settings.triggerPattern
+    };
+
+    if (settings.bursts) {
+      original.Bursts = settings.bursts.map(burst => ({
+        BurstSampleStart: burst.burstSampleStart,
+        BurstSampleEnd: burst.burstSampleEnd,
+        BurstSampleGap: burst.burstSampleGap,
+        BurstTimeGap: burst.burstTimeGap
+      }));
+    }
+
+    return original;
+  }
+
+  private static toOriginalChannel(channel: AnalyzerChannel): Record<string, any> {
+    const original: Record<string, any> = {
+      ChannelNumber: channel.channelNumber,
+      ChannelName: channel.channelName,
+      Hidden: channel.hidden
+    };
+
+    if (channel.channelColor !== undefined) {
+      original.ChannelColor = channel.channelColor;
+    }
+
+    if (channel.minimized !== undefined) {
+      original.Minimized = channel.minimized;
+    }
+
+    return original;
+  }
+
+  private static normalizeSelectedRegions(regions: any[]): SampleRegion[] {
+    if (!Array.isArray(regions)) {
+      return [];
+    }
+
+    return regions.map(region => ({
+      FirstSample: this.readNumber(region, 'FirstSample', 'firstSample', 0),
+      LastSample: this.readNumber(region, 'LastSample', 'lastSample', 0),
+      RegionName: this.readString(region, 'RegionName', 'regionName', ''),
+      R: this.readColorNumber(region, 'R', 'r'),
+      G: this.readColorNumber(region, 'G', 'g'),
+      B: this.readColorNumber(region, 'B', 'b'),
+      A: this.readColorNumber(region, 'A', 'a', 255)
+    }));
+  }
+
+  private static readNumber(value: any, pascalKey: string, camelKey: string, fallback: number): number {
+    const raw = value?.[pascalKey] ?? value?.[camelKey];
+    return typeof raw === 'number' && Number.isFinite(raw) ? raw : fallback;
+  }
+
+  private static readOptionalNumber(value: any, pascalKey: string, camelKey: string): number | undefined {
+    const raw = value?.[pascalKey] ?? value?.[camelKey];
+    return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined;
+  }
+
+  private static readString(value: any, pascalKey: string, camelKey: string, fallback: string): string {
+    const raw = value?.[pascalKey] ?? value?.[camelKey];
+    return typeof raw === 'string' ? raw : fallback;
+  }
+
+  private static readBoolean(value: any, pascalKey: string, camelKey: string, fallback: boolean): boolean {
+    const raw = value?.[pascalKey] ?? value?.[camelKey];
+    return typeof raw === 'boolean' ? raw : fallback;
+  }
+
+  private static readColorNumber(value: any, pascalKey: string, camelKey: string, fallback: number = 0): number {
+    const direct = this.readOptionalNumber(value, pascalKey, camelKey);
+    if (direct !== undefined) {
+      return direct;
+    }
+
+    const color = value?.color;
+    const colorValue = color?.[camelKey];
+    return typeof colorValue === 'number' && Number.isFinite(colorValue) ? colorValue : fallback;
   }
 }

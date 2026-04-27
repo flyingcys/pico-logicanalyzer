@@ -4,6 +4,7 @@
  * 支持多种格式导出：LAC、CSV、JSON、VCD、TXT、HTML等
  */
 import { CaptureSession, AnalyzerChannel, SampleRegion } from '../models/CaptureModels';
+import { LACFileFormat } from '../models/LACFileFormat';
 import { DecoderResult } from '../decoders/types';
 import { exportPerformanceOptimizer, PerformanceConfig } from './ExportPerformanceOptimizer';
 import { ServiceLifecycleBase, ServiceInitOptions, ServiceDisposeOptions } from '../common/ServiceLifecycle';
@@ -977,19 +978,21 @@ export class DataExportService extends ServiceLifecycleBase {
       options.onProgress(50, '生成导出数据结构...');
     }
 
-    // 创建导出数据结构 - 精确对应原版 ExportedCapture
-    const exportedCapture: ExportedCapture = {
-      settings: exportSession,
-      selectedRegions: [], // 可以扩展为实际选中的区域
-      metadata: this.generateMetadata(exportSession, 'waveform', 'lac', options)
-    };
+    exportSession.captureChannels = exportSession.captureChannels
+      .filter(channel => selectedChannels.includes(channel.channelNumber));
+
+    const exportedCapture = LACFileFormat.createFromCaptureSession(
+      exportSession,
+      [],
+      exportSession.captureChannels.some(channel => channel.samples && channel.samples.length > 0)
+    );
 
     if (options.onProgress) {
       options.onProgress(80, '序列化为JSON...');
     }
 
-    // 使用JSON序列化 - 对应原版的 JsonConvert.SerializeObject
-    const jsonData = JSON.stringify(exportedCapture, null, 2);
+    // 使用原版 PascalCase .lac 结构序列化 - 对应 JsonConvert.SerializeObject
+    const jsonData = LACFileFormat.serialize(exportedCapture);
     const processingTime = Date.now() - startTime;
 
     if (options.onProgress) {
@@ -1059,9 +1062,7 @@ export class DataExportService extends ServiceLifecycleBase {
         for (const channelIndex of selectedChannels) {
           const channel = session.captureChannels.find(ch => ch.channelNumber === channelIndex);
           if (channel && channel.samples) {
-            const byteIndex = Math.floor(sampleIndex / 8);
-            const bitIndex = sampleIndex % 8;
-            const value = (channel.samples[byteIndex] & (1 << bitIndex)) ? '1' : '0';
+            const value = channel.samples[sampleIndex] ? '1' : '0';
             row.push(value);
           } else {
             row.push('0');

@@ -1074,4 +1074,90 @@ describe('LACEditorProvider 契约', () => {
       });
     });
   });
+
+  it('exportData 应从当前 LAC 文档生成真实导出文件', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const showInformationMessage = jest.fn();
+      const showSaveDialog = jest.fn().mockResolvedValue({ fsPath: '/tmp/export.csv' });
+      const exportWaveformData = jest.fn().mockResolvedValue({
+        success: true,
+        filename: '/tmp/export.csv',
+        mimeType: 'text/csv',
+        size: 32
+      });
+
+      mockProviderDependencies();
+      jest.doMock('../../../src/services/DataExportService', () => ({
+        DataExportService: jest.fn().mockImplementation(() => ({
+          initialize: jest.fn().mockResolvedValue(true),
+          dispose: jest.fn().mockResolvedValue(true),
+          exportWaveformData
+        }))
+      }));
+      jest.doMock('vscode', () => ({
+        commands: { executeCommand: jest.fn() },
+        window: {
+          registerCustomEditorProvider: jest.fn(),
+          showInformationMessage,
+          showErrorMessage: jest.fn(),
+          showSaveDialog
+        },
+        workspace: {
+          applyEdit: jest.fn(),
+          onDidChangeTextDocument: jest.fn(() => ({ dispose: jest.fn() }))
+        },
+        Uri: {
+          joinPath: jest.fn(),
+          file: jest.fn((filePath: string) => ({ fsPath: filePath }))
+        },
+        Range: jest.fn(),
+        WorkspaceEdit: jest.fn()
+      }), { virtual: true });
+
+      const { LACEditorProvider } = await import('../../../src/providers/LACEditorProvider');
+      const provider = new LACEditorProvider({
+        extensionUri: {
+          fsPath: '/tmp/extension'
+        }
+      } as any);
+      const document = {
+        getText: () => JSON.stringify({
+          Settings: {
+            Frequency: 1000,
+            PreTriggerSamples: 0,
+            PostTriggerSamples: 2,
+            CaptureChannels: [
+              {
+                ChannelNumber: 0,
+                ChannelName: 'CH0',
+                Hidden: false
+              }
+            ]
+          },
+          Samples: [
+            '00000000000000000000000000000001',
+            '00000000000000000000000000000000'
+          ]
+        })
+      };
+
+      await (provider as any).exportData(document, { format: 'csv' });
+
+      expect(showSaveDialog).toHaveBeenCalledWith(expect.objectContaining({
+        defaultUri: { fsPath: 'capture_export.csv' }
+      }));
+      expect(exportWaveformData).toHaveBeenCalledWith(
+        expect.objectContaining({
+          frequency: 1000,
+          captureChannels: expect.any(Array)
+        }),
+        'csv',
+        expect.objectContaining({
+          filename: '/tmp/export.csv',
+          timeRange: 'all'
+        })
+      );
+      expect(showInformationMessage).toHaveBeenCalledWith('数据已导出到: /tmp/export.csv');
+    });
+  });
 });
