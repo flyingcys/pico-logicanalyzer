@@ -77,7 +77,41 @@
           "performanceGrade": "B",
           "reliability": "pending-hardware"
         },
-        "certificationLevel": "fixture"
+        "certificationLevel": "fixture",
+        "certificationEvidence": {
+          "evidenceLevel": "fixture",
+          "requiredHardwareEvidence": true,
+          "downgradeReason": "当前只有 Pico 协议 fixture，真实硬件采集结果待补",
+          "records": [
+            {
+              "evidenceId": "pico-protocol-fixture-2026-04-27",
+              "evidenceLevel": "fixture",
+              "date": "2026-04-27",
+              "operatingSystem": "CI fixture",
+              "deviceModel": "Pico Logic Analyzer",
+              "firmwareVersion": "fixture",
+              "extensionVersion": "1.0.0-beta.0",
+              "commit": "fixture",
+              "commandOrPath": "npm run test:drivers -- --runInBand",
+              "captureConfig": {
+                "sampleRateHz": 1000000,
+                "preTriggerSamples": 100,
+                "postTriggerSamples": 100,
+                "channels": [0, 1, 2, 3],
+                "trigger": "edge"
+              },
+              "resultFiles": [
+                {
+                  "path": "tests/fixtures/drivers",
+                  "kind": "other",
+                  "sha256": "fixture-directory"
+                }
+              ],
+              "result": "pass",
+              "notes": "fixture 只证明协议回放可测，不代表真实硬件认证通过。"
+            }
+          ]
+        }
       },
       "communityFeedback": {
         "userRating": 0,
@@ -163,7 +197,13 @@
           "performanceGrade": "N/A",
           "reliability": "candidate"
         },
-        "certificationLevel": "candidate"
+        "certificationLevel": "candidate",
+        "certificationEvidence": {
+          "evidenceLevel": "mock",
+          "requiredHardwareEvidence": true,
+          "downgradeReason": "VID/PID 命中普通 Pico，只能作为待固件握手候选",
+          "records": []
+        }
       },
       "communityFeedback": {
         "userRating": 0,
@@ -254,7 +294,40 @@
           "performanceGrade": "A",
           "reliability": "excellent"
         },
-        "certificationLevel": "certified"
+        "certificationLevel": "fixture",
+        "certificationEvidence": {
+          "evidenceLevel": "fixture",
+          "requiredHardwareEvidence": true,
+          "downgradeReason": "示例设备只用于数据库 schema 展示，不含真实硬件证据",
+          "records": [
+            {
+              "evidenceId": "example-usb-fixture",
+              "evidenceLevel": "fixture",
+              "date": "2024-01-10",
+              "operatingSystem": "CI fixture",
+              "deviceModel": "USB Logic Analyzer Pro",
+              "firmwareVersion": "fixture",
+              "extensionVersion": "1.0.0-beta.0",
+              "commit": "sample",
+              "commandOrPath": "npm run db:validate",
+              "captureConfig": {
+                "sampleRateHz": 1000000,
+                "preTriggerSamples": 100,
+                "postTriggerSamples": 100,
+                "channels": [0, 1],
+                "trigger": "edge"
+              },
+              "resultFiles": [
+                {
+                  "path": "data/sample-devices.json",
+                  "kind": "json",
+                  "sha256": "sample"
+                }
+              ],
+              "result": "pass"
+            }
+          ]
+        }
       },
       "communityFeedback": {
         "userRating": 4.3,
@@ -347,7 +420,13 @@
           "performanceGrade": "B",
           "reliability": "good"
         },
-        "certificationLevel": "verified"
+        "certificationLevel": "experimental",
+        "certificationEvidence": {
+          "evidenceLevel": "mock",
+          "requiredHardwareEvidence": true,
+          "downgradeReason": "示例网络设备无真实硬件采集结果",
+          "records": []
+        }
       },
       "communityFeedback": {
         "userRating": 3.9,
@@ -441,7 +520,13 @@
           "performanceGrade": "C",
           "reliability": "fair"
         },
-        "certificationLevel": "community"
+        "certificationLevel": "community",
+        "certificationEvidence": {
+          "evidenceLevel": "mock",
+          "requiredHardwareEvidence": true,
+          "downgradeReason": "社区条目未附真实硬件结果文件 hash",
+          "records": []
+        }
       },
       "communityFeedback": {
         "userRating": 3.2,

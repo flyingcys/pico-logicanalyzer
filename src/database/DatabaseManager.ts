@@ -1,4 +1,10 @@
-import { HardwareCompatibilityDatabase, DeviceCompatibilityEntry } from './HardwareCompatibilityDatabase';
+import {
+  HardwareCompatibilityDatabase,
+  DeviceCompatibilityEntry,
+  CertificationEvidenceRecord,
+  CertificationLevel,
+  EvidenceLevel
+} from './HardwareCompatibilityDatabase';
 import { HardwareDriverManager, DetectedDevice } from '../drivers/HardwareDriverManager';
 import { DeviceInfo } from '../models/AnalyzerTypes';
 // import { AnalyzerDriverBase } from '../drivers/AnalyzerDriverBase'; // 暂时注释掉未使用的导入
@@ -297,7 +303,12 @@ export class DatabaseManager {
           performanceGrade: 'C',
           reliability: 'fair'
         },
-        certificationLevel: 'experimental'
+        certificationLevel: 'experimental',
+        certificationEvidence: {
+          evidenceLevel: 'mock',
+          records: [],
+          requiredHardwareEvidence: true
+        }
       },
       communityFeedback: {
         userRating: 3.0,
@@ -432,7 +443,7 @@ export class DatabaseManager {
 
       // 检查驱动是否存在
       const availableDrivers = this.driverManager.getAvailableDrivers();
-      const availableDriverIds = availableDrivers.map(d => d.id);
+      const availableDriverIds = this.getCompatibleDriverIds(availableDrivers);
       if (!availableDriverIds.includes(device.driverCompatibility.primaryDriver)) {
         issues.push(`设备 ${device.deviceId} 的主驱动 ${device.driverCompatibility.primaryDriver} 不存在`);
 
@@ -456,11 +467,87 @@ export class DatabaseManager {
         await this.database.addOrUpdateDevice(device);
         fixedIssues.push(`设备 ${device.deviceId} 的日期字段已修复`);
       }
+
+      const downgradeLevel = this.getRequiredCertificationDowngrade(device);
+      if (downgradeLevel) {
+        device.testStatus.certificationLevel = downgradeLevel;
+        device.testStatus.certificationEvidence = {
+          evidenceLevel: this.getEvidenceLevel(device.testStatus.certificationEvidence?.records || []),
+          records: device.testStatus.certificationEvidence?.records || [],
+          requiredHardwareEvidence: true,
+          downgradeReason: '缺少真实硬件通过证据'
+        };
+        await this.database.addOrUpdateDevice(device);
+        fixedIssues.push(`设备 ${device.deviceId} 缺少真实硬件通过证据，认证级别已降级为 ${downgradeLevel}`);
+      }
     }
 
     console.log(`数据库完整性验证完成: ${issues.length} 个问题, ${fixedIssues.length} 个已修复`);
 
     return { isValid, issues, fixedIssues };
+  }
+
+  private getCompatibleDriverIds(availableDrivers: Array<{ id: string; name?: string }>): string[] {
+    const aliases: Record<string, string[]> = {
+      'pico-logic-analyzer': ['LogicAnalyzerDriver', 'PicoLogicAnalyzerDriver'],
+      'saleae-logic': ['SaleaeLogicDriver'],
+      'rigol-siglent': ['RigolSiglentDriver'],
+      'sigrok-adapter': ['SigrokAdapter'],
+      'network-analyzer': ['NetworkLogicAnalyzerDriver']
+    };
+
+    return Array.from(new Set(availableDrivers.flatMap(driver => [
+      driver.id,
+      driver.name,
+      ...(aliases[driver.id] || [])
+    ].filter((id): id is string => Boolean(id)))));
+  }
+
+  private getRequiredCertificationDowngrade(device: DeviceCompatibilityEntry): CertificationLevel | null {
+    const requiresHardwareEvidence = device.testStatus.certificationLevel === 'certified' ||
+      device.testStatus.certificationLevel === 'verified';
+    if (!requiresHardwareEvidence || this.hasPassingHardwareEvidence(device)) {
+      return null;
+    }
+
+    const evidenceLevel = this.getEvidenceLevel(device.testStatus.certificationEvidence?.records || []);
+    if (evidenceLevel === 'fixture') {
+      return 'fixture';
+    }
+    if (device.testStatus.certificationLevel === 'verified') {
+      return 'community';
+    }
+    return 'experimental';
+  }
+
+  private hasPassingHardwareEvidence(device: DeviceCompatibilityEntry): boolean {
+    const records = device.testStatus.certificationEvidence?.records || [];
+    return records.some(record => this.isCompletePassingHardwareRecord(record));
+  }
+
+  private isCompletePassingHardwareRecord(record: CertificationEvidenceRecord): boolean {
+    return record.evidenceLevel === 'hardware' &&
+      record.result === 'pass' &&
+      Boolean(record.operatingSystem) &&
+      Boolean(record.deviceModel) &&
+      Boolean(record.firmwareVersion) &&
+      Boolean(record.commit) &&
+      Boolean(record.commandOrPath) &&
+      Boolean(record.captureConfig) &&
+      Array.isArray(record.captureConfig?.channels) &&
+      record.captureConfig.channels.length > 0 &&
+      Array.isArray(record.resultFiles) &&
+      record.resultFiles.some(file => Boolean(file.path) && Boolean(file.sha256));
+  }
+
+  private getEvidenceLevel(records: CertificationEvidenceRecord[]): EvidenceLevel {
+    if (records.some(record => record.evidenceLevel === 'hardware' && record.result === 'pass')) {
+      return 'hardware';
+    }
+    if (records.some(record => record.evidenceLevel === 'fixture' && record.result === 'pass')) {
+      return 'fixture';
+    }
+    return 'mock';
   }
 
   /**

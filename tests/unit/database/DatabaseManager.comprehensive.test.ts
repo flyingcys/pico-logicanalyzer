@@ -673,6 +673,255 @@ describe('DatabaseManager 专注业务逻辑测试', () => {
       expect(mockDatabase.addOrUpdateDevice).toHaveBeenCalled();
     });
 
+    it('应该把内置驱动 ID 与历史类名视为同一驱动', async () => {
+      mockDriverManager.getAvailableDrivers.mockReturnValue([
+        { id: 'pico-logic-analyzer', name: 'Pico Logic Analyzer' }
+      ] as any);
+
+      const classNameDevice: DeviceCompatibilityEntry = {
+        deviceId: 'pico-class-name-driver',
+        manufacturer: 'DebugVn',
+        model: 'Pico Logic Analyzer',
+        version: '1.0',
+        category: 'usb-la' as const,
+        identifiers: {},
+        driverCompatibility: {
+          primaryDriver: 'LogicAnalyzerDriver',
+          alternativeDrivers: [],
+          driverVersion: '2.0.0',
+          compatibilityLevel: 'full',
+          knownIssues: [],
+          workarounds: []
+        },
+        capabilities: {
+          channels: { digital: 24, maxVoltage: 5.0, inputImpedance: 1000000 },
+          sampling: { maxRate: 100000000, minRate: 1000, supportedRates: [1000, 100000000], bufferSize: 131072, streamingSupport: false },
+          triggers: { types: [], maxChannels: 24, patternWidth: 24, sequentialSupport: false, conditions: [] },
+          connectivity: { interfaces: ['usb'], protocols: ['custom'] },
+          features: {}
+        } as any,
+        connectionOptions: {
+          defaultConnectionString: 'auto-detect',
+          alternativeConnections: [],
+          connectionParameters: {}
+        },
+        testStatus: {
+          lastTested: new Date(),
+          testResults: {
+            driverValidation: 95,
+            functionalTests: 90,
+            performanceGrade: 'A',
+            reliability: 'excellent'
+          },
+          certificationLevel: 'fixture'
+        },
+        communityFeedback: {
+          userRating: 4.8,
+          reportCount: 1,
+          commonIssues: [],
+          userComments: []
+        },
+        metadata: {
+          addedDate: new Date(),
+          lastUpdated: new Date(),
+          maintainer: 'Test',
+          supportStatus: 'active'
+        }
+      };
+
+      mockDatabase.queryDevices.mockResolvedValue([classNameDevice]);
+
+      const result = await manager.validateDatabaseIntegrity();
+
+      expect(result.issues).toEqual([]);
+      expect(result.fixedIssues).toEqual([]);
+      expect(mockDatabase.addOrUpdateDevice).not.toHaveBeenCalled();
+    });
+
+    it('应该在缺少真实硬件证据时降级已认证状态', async () => {
+      const overstatedDevice: DeviceCompatibilityEntry = {
+        deviceId: 'overstated-device',
+        manufacturer: 'Test Corp',
+        model: 'Test Model',
+        version: '1.0',
+        category: 'usb-la' as const,
+        identifiers: {},
+        driverCompatibility: {
+          primaryDriver: 'SaleaeLogicDriver',
+          alternativeDrivers: [],
+          driverVersion: '2.0.0',
+          compatibilityLevel: 'full',
+          knownIssues: [],
+          workarounds: []
+        },
+        capabilities: {
+          channels: { digital: 8, maxVoltage: 5.0, inputImpedance: 1000000 },
+          sampling: { maxRate: 25000000, minRate: 1000, supportedRates: [1000, 25000000], bufferSize: 1000000, streamingSupport: false },
+          triggers: { types: [], maxChannels: 8, patternWidth: 8, sequentialSupport: false, conditions: [] },
+          connectivity: { interfaces: ['usb'], protocols: ['custom'] },
+          features: {}
+        } as any,
+        connectionOptions: {
+          defaultConnectionString: 'auto-detect',
+          alternativeConnections: [],
+          connectionParameters: {}
+        },
+        testStatus: {
+          lastTested: new Date(),
+          testResults: {
+            driverValidation: 95,
+            functionalTests: 90,
+            performanceGrade: 'A',
+            reliability: 'excellent'
+          },
+          certificationLevel: 'certified',
+          certificationEvidence: {
+            evidenceLevel: 'fixture',
+            records: [
+              {
+                evidenceId: 'fixture-only',
+                evidenceLevel: 'fixture',
+                date: '2026-04-28',
+                operatingSystem: 'Linux',
+                deviceModel: 'Test Model',
+                firmwareVersion: 'fixture',
+                commit: 'test',
+                commandOrPath: 'npx jest tests/unit/database/DatabaseManager.comprehensive.test.ts --runInBand',
+                captureConfig: {
+                  sampleRateHz: 1000000,
+                  preTriggerSamples: 100,
+                  postTriggerSamples: 100,
+                  channels: [0, 1],
+                  trigger: 'edge'
+                },
+                resultFiles: [
+                  { path: 'tests/fixtures/database/fixture-only.json', kind: 'json', sha256: 'fixture-hash' }
+                ],
+                result: 'pass'
+              }
+            ]
+          }
+        } as any,
+        communityFeedback: {
+          userRating: 4.8,
+          reportCount: 1,
+          commonIssues: [],
+          userComments: []
+        },
+        metadata: {
+          addedDate: new Date(),
+          lastUpdated: new Date(),
+          maintainer: 'Test',
+          supportStatus: 'active'
+        }
+      };
+
+      mockDatabase.queryDevices.mockResolvedValue([overstatedDevice]);
+
+      const result = await manager.validateDatabaseIntegrity();
+
+      expect(result.fixedIssues).toContain(
+        '设备 overstated-device 缺少真实硬件通过证据，认证级别已降级为 fixture'
+      );
+      expect(mockDatabase.addOrUpdateDevice).toHaveBeenCalledWith(expect.objectContaining({
+        testStatus: expect.objectContaining({
+          certificationLevel: 'fixture',
+          certificationEvidence: expect.objectContaining({
+            evidenceLevel: 'fixture',
+            downgradeReason: '缺少真实硬件通过证据'
+          })
+        })
+      }));
+    });
+
+    it('应该保留带真实硬件通过证据的认证状态', async () => {
+      const hardwareCertifiedDevice: DeviceCompatibilityEntry = {
+        deviceId: 'hardware-certified-device',
+        manufacturer: 'Test Corp',
+        model: 'Test Model',
+        version: '1.0',
+        category: 'usb-la' as const,
+        identifiers: {},
+        driverCompatibility: {
+          primaryDriver: 'SaleaeLogicDriver',
+          alternativeDrivers: [],
+          driverVersion: '2.0.0',
+          compatibilityLevel: 'full',
+          knownIssues: [],
+          workarounds: []
+        },
+        capabilities: {
+          channels: { digital: 8, maxVoltage: 5.0, inputImpedance: 1000000 },
+          sampling: { maxRate: 25000000, minRate: 1000, supportedRates: [1000, 25000000], bufferSize: 1000000, streamingSupport: false },
+          triggers: { types: [], maxChannels: 8, patternWidth: 8, sequentialSupport: false, conditions: [] },
+          connectivity: { interfaces: ['usb'], protocols: ['custom'] },
+          features: {}
+        } as any,
+        connectionOptions: {
+          defaultConnectionString: 'auto-detect',
+          alternativeConnections: [],
+          connectionParameters: {}
+        },
+        testStatus: {
+          lastTested: new Date(),
+          testResults: {
+            driverValidation: 95,
+            functionalTests: 90,
+            performanceGrade: 'A',
+            reliability: 'excellent'
+          },
+          certificationLevel: 'certified',
+          certificationEvidence: {
+            evidenceLevel: 'hardware',
+            records: [
+              {
+                evidenceId: 'real-hardware-pass',
+                evidenceLevel: 'hardware',
+                date: '2026-04-28',
+                operatingSystem: 'Windows 11',
+                deviceModel: 'Test Model',
+                firmwareVersion: '1.2.3',
+                serialNumber: 'TEST-001',
+                extensionVersion: '1.0.0-beta.0',
+                commit: 'abcdef0',
+                commandOrPath: 'VSCode: Logic Analyzer Start Capture',
+                captureConfig: {
+                  sampleRateHz: 1000000,
+                  preTriggerSamples: 100,
+                  postTriggerSamples: 100,
+                  channels: [0, 1, 2, 3],
+                  trigger: 'edge'
+                },
+                resultFiles: [
+                  { path: 'evidence/test.lac', kind: 'lac', sha256: 'hardware-hash' }
+                ],
+                result: 'pass'
+              }
+            ]
+          }
+        } as any,
+        communityFeedback: {
+          userRating: 4.8,
+          reportCount: 1,
+          commonIssues: [],
+          userComments: []
+        },
+        metadata: {
+          addedDate: new Date(),
+          lastUpdated: new Date(),
+          maintainer: 'Test',
+          supportStatus: 'active'
+        }
+      };
+
+      mockDatabase.queryDevices.mockResolvedValue([hardwareCertifiedDevice]);
+
+      const result = await manager.validateDatabaseIntegrity();
+
+      expect(result.fixedIssues).toEqual([]);
+      expect(mockDatabase.addOrUpdateDevice).not.toHaveBeenCalled();
+    });
+
     it('应该正确处理空数据库', async () => {
       mockDatabase.queryDevices.mockResolvedValue([]);
 

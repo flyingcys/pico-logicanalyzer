@@ -7,7 +7,15 @@
 export {
   HardwareCompatibilityDatabase,
   DeviceCompatibilityEntry,
-  CompatibilityQuery
+  CompatibilityQuery,
+  CertificationCaptureConfig,
+  CertificationEvidenceFile,
+  CertificationEvidenceRecord,
+  CertificationEvidenceSummary,
+  CertificationLevel,
+  CertificationResult,
+  DeviceCategory,
+  EvidenceLevel
 } from './HardwareCompatibilityDatabase';
 
 // 数据库管理器
