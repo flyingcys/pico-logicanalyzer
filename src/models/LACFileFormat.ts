@@ -323,11 +323,15 @@ export class LACFileFormat {
       // 创建128位值 - 使用BigInt处理大整数
       let uint128Value = BigInt(0);
 
-      for (let channelIndex = 0; channelIndex < Math.min(channels.length, 128); channelIndex++) {
+      for (let channelIndex = 0; channelIndex < channels.length; channelIndex++) {
         const channel = channels[channelIndex];
+        const bitIndex = this.getPackedSampleBitIndex(channel, channelIndex);
+        if (bitIndex < 0 || bitIndex >= 128) {
+          continue;
+        }
+
         if (channel.samples && channel.samples[sampleIndex]) {
-          // 设置对应的位 - (1 << channelIndex)
-          uint128Value |= BigInt(1) << BigInt(channelIndex);
+          uint128Value |= BigInt(1) << BigInt(bitIndex);
         }
       }
 
@@ -346,8 +350,13 @@ export class LACFileFormat {
       const channel = channels[channelIndex];
       if (!channel) continue;
 
-      // 创建位掩码 - 对应C# UInt128 mask = (UInt128)1 << ChannelIndex
-      const mask = BigInt(1) << BigInt(channelIndex);
+      const bitIndex = this.getPackedSampleBitIndex(channel, channelIndex);
+      if (bitIndex < 0 || bitIndex >= 128) {
+        channel.samples = new Uint8Array(uint128Array.length);
+        continue;
+      }
+
+      const mask = BigInt(1) << BigInt(bitIndex);
 
       // 提取样本数据
       const samples = new Uint8Array(uint128Array.length);
@@ -367,6 +376,13 @@ export class LACFileFormat {
 
       channel.samples = samples;
     }
+  }
+
+  private static getPackedSampleBitIndex(channel: AnalyzerChannel | undefined, fallbackIndex: number): number {
+    const channelNumber = channel?.channelNumber;
+    return typeof channelNumber === 'number' && Number.isFinite(channelNumber)
+      ? channelNumber
+      : fallbackIndex;
   }
 
   private static normalizeExportedCapture(raw: any): ExportedCapture {

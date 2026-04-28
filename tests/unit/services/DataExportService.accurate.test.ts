@@ -428,6 +428,32 @@ describe('DataExportService 精准业务逻辑测试', () => {
       expect(exportData.Settings.Frequency).toBe(24000000);
       expect(exportData.metadata).toBeUndefined();
     });
+
+    it('应该用 ChannelNumber 位号导出非连续通道的 LAC Samples', async () => {
+      const testSession = new CaptureSession();
+      testSession.frequency = 1000;
+      testSession.preTriggerSamples = 0;
+      testSession.postTriggerSamples = 3;
+
+      const channel2 = new AnalyzerChannel(2, 'D2');
+      channel2.samples = new Uint8Array([1, 0, 1]);
+      const channel5 = new AnalyzerChannel(5, 'D5');
+      channel5.samples = new Uint8Array([0, 1, 1]);
+      testSession.captureChannels = [channel2, channel5];
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'lac', {
+        filename: 'non-contiguous.lac',
+        timeRange: 'all'
+      });
+
+      expect(result.success).toBe(true);
+      const exportData = JSON.parse(result.data as string);
+      expect(exportData.Samples).toEqual([
+        '00000000000000000000000000000004',
+        '00000000000000000000000000000020',
+        '00000000000000000000000000000024'
+      ]);
+    });
   });
 
   describe('CSV格式导出核心算法', () => {
@@ -629,6 +655,26 @@ describe('DataExportService 精准业务逻辑测试', () => {
         channels: expect.any(Object)
       });
     });
+
+    it('应该按每个样本一个 0/1 byte 导出 JSON 通道值', async () => {
+      const testSession = new CaptureSession();
+      testSession.frequency = 1000;
+      testSession.preTriggerSamples = 0;
+      testSession.postTriggerSamples = 4;
+
+      const channel0 = new AnalyzerChannel(0, 'CH0');
+      channel0.samples = new Uint8Array([0, 1, 0, 1]);
+      testSession.captureChannels = [channel0];
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'json', {
+        filename: 'samples.json',
+        timeRange: 'all'
+      });
+
+      expect(result.success).toBe(true);
+      const jsonData = JSON.parse(result.data as string);
+      expect(jsonData.samples.map((sample: any) => sample.channels[0])).toEqual([0, 1, 0, 1]);
+    });
   });
 
   describe('VCD格式导出优化算法', () => {
@@ -702,6 +748,29 @@ describe('DataExportService 精准业务逻辑测试', () => {
       expect(result.success).toBe(true);
       expect(result.compressionRatio).toBeDefined();
       expect(result.compressionRatio!).toBeLessThan(1.0); // 应该有压缩效果
+    });
+
+    it('应该按每个样本一个 0/1 byte 生成 VCD 状态变化', async () => {
+      const testSession = new CaptureSession();
+      testSession.frequency = 1000;
+      testSession.preTriggerSamples = 0;
+      testSession.postTriggerSamples = 4;
+
+      const channel0 = new AnalyzerChannel(0, 'CH0');
+      channel0.samples = new Uint8Array([0, 1, 0, 1]);
+      testSession.captureChannels = [channel0];
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'vcd', {
+        filename: 'samples.vcd',
+        timeRange: 'all'
+      });
+
+      expect(result.success).toBe(true);
+      const vcdData = result.data as string;
+      expect(vcdData).toContain('$dumpvars\n0!\n$end');
+      expect(vcdData).toContain('#1\n1!');
+      expect(vcdData).toContain('#2\n0!');
+      expect(vcdData).toContain('#3\n1!');
     });
   });
 
