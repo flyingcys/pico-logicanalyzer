@@ -26,7 +26,10 @@ export enum ProtocolType {
 /**
  * 网络驱动模板
  * 专门用于网络连接的逻辑分析器设备
- * 支持TCP、UDP、HTTP等多种网络协议
+ *
+ * SDK_TEMPLATE_STATUS: implementation-required
+ * 该类提供 TCP/UDP/HTTP/WebSocket 连接外壳，设备握手、协议解析和采集数据
+ * 仍需由派生驱动实现并通过真实硬件或 fixture 验证。
  */
 export class NetworkDriverTemplate extends AnalyzerDriverBase {
 

@@ -8,7 +8,7 @@
 
 ## 当前校验状态（2026-04-28）
 
-旧说明中“CI 正常运行”“核心测试 100% 迁移完成”等结论已经过期。当前可验证事实：
+旧说明中“迁移完成”“CI 正常运行”“核心测试全量迁移完成”等结论已经过期。当前可验证事实：
 
 - `tests` 目录保留 5 层测试结构：`unit`、`integration`、`performance`、`stress`、`e2e`。
 - 集成、性能、压力和端到端测试中已清理旧 `utest/mocks/simple-mocks` 引用，统一使用 `tests/fixtures/mocks/simple-mocks`。

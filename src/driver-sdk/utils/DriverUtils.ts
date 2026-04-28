@@ -78,7 +78,7 @@ export class DriverUtils {
     // 生成 package.json
     const packageJson: DriverPackageInfo = {
       name: packageName,
-      version: '1.0.0',
+      version: '0.1.0',
       description: options.description,
       author: options.author,
       keywords: ['logic-analyzer', 'driver', options.driverType],
@@ -244,6 +244,7 @@ export class DriverUtils {
     documentation += `**版本**: ${packageJson.version}\n`;
     documentation += `**作者**: ${packageJson.author}\n`;
     documentation += `**质量等级**: ${packageJson.qualityLevel}\n\n`;
+    documentation += '> 实验性文档输出：`html` 和 `pdf` 选项当前只决定文件扩展名，当前内容仍为 Markdown 文本，不代表 HTML/PDF 报告生成能力已可发布。\n\n';
 
     // 支持的设备
     if (packageJson.supportedDevices && packageJson.supportedDevices.length > 0) {
@@ -307,24 +308,25 @@ export class DriverUtils {
 
 /**
  * ${className}
- * 基于${templateName}的自定义驱动实现
+ * 基于${templateName}的实验性脚手架。
+ * IMPLEMENTATION_REQUIRED: 完成设备协议、采集解析和真实硬件验证后，才能提升质量等级。
  */
 export class ${className} extends ${templateName} {
   constructor(connectionString: string) {
     super(connectionString);
     
-    // TODO: 添加自定义初始化逻辑
+    // IMPLEMENTATION_REQUIRED: 添加自定义初始化逻辑
     console.log('${className} 初始化完成');
   }
 
-  // TODO: 重写需要自定义的方法
+  // IMPLEMENTATION_REQUIRED: 重写需要自定义的方法
   // 例如：
   // protected async initializeDevice(): Promise<void> {
   //   await super.initializeDevice();
   //   // 添加设备特定的初始化代码
   // }
 
-  // TODO: 添加设备特定的方法
+  // IMPLEMENTATION_REQUIRED: 添加设备特定的方法
   // public async getDeviceSpecificInfo(): Promise<any> {
   //   // 实现设备特定的功能
   // }
@@ -345,10 +347,21 @@ ${packageInfo.description}
 
 ## 特性
 
-- 基于成熟的${driverType}驱动模板
-- 完整的TypeScript类型支持
-- 内置验证和测试框架
-- 详细的错误处理和日志记录
+- 实验性脚手架，便于创建 ${driverType} 驱动项目
+- TypeScript 类型、验证入口和测试框架骨架
+- 错误处理和日志记录的参考结构
+- 必须完成设备协议、采集解析和真实硬件验证后才能提升质量等级
+
+## 能力边界
+
+此包由 SDK 模板生成，默认 \`qualityLevel\` 为 \`experimental\`。生成代码不是可直接发布的生产驱动，也不是硬件认证记录。
+
+发布或分发前至少需要完成：
+
+- 替换连接字符串示例和设备识别逻辑。
+- 实现真实设备协议、采集数据解析和停止/断线处理。
+- 为目标设备补单元测试、fixture 或真实硬件验收记录。
+- 根据验证证据把 \`qualityLevel\` 从 \`experimental\` 提升到合适等级。
 
 ## 快速开始
 
@@ -377,7 +390,7 @@ if (result.success) {
 
 ## 示例
 
-查看 [examples/](examples/) 目录获取更多使用示例。
+查看 [examples/](examples/) 目录获取更多使用示例。示例用于说明调用形态，不能替代真实设备验证。
 
 ## 开发
 

@@ -171,9 +171,20 @@ const packet = ProtocolHelper.binary.createPacket(0x01, Buffer.from('hello'));
 
 SDK提供三种驱动模板，覆盖不同的使用场景：
 
+### 能力边界
+
+驱动模板分为两类口径：
+
+| 类型 | 含义 | 发布要求 |
+| --- | --- | --- |
+| 模板待实现 | 提供类结构、连接外壳、测试骨架和注释说明 | 不得作为真实设备能力发布 |
+| 可运行示例 | 仅演示 SDK 调用形态，可能需要 mock 或替换连接参数 | 不得替代硬件认证记录 |
+
+`DriverUtils.createDriverPackage()` 生成的包默认质量等级为 `experimental`。发布或分发前必须完成设备协议、采集解析、停止/断线处理、自动化测试和真实硬件或 fixture 验证。
+
 ### 1. 通用驱动模板 (GenericDriverTemplate)
 
-适用于所有类型的设备，提供基本的驱动结构：
+适用于搭建驱动骨架，设备连接、状态查询和采集解析需要按目标硬件补全：
 
 ```typescript
 import { GenericDriverTemplate } from '@pico-logicanalyzer/driver-sdk';
@@ -183,7 +194,7 @@ export class MyDriver extends GenericDriverTemplate {
     super(connectionString);
   }
 
-  // 重写需要自定义的方法
+  // 按目标设备补全初始化、状态查询和采集解析
   protected async initializeDevice(): Promise<void> {
     // 设备特定的初始化逻辑
   }
@@ -192,7 +203,7 @@ export class MyDriver extends GenericDriverTemplate {
 
 ### 2. 串口驱动模板 (SerialDriverTemplate)
 
-专门用于串口连接的设备：
+专门用于串口连接设备的脚手架。串口打开、命令队列和错误处理有参考实现，包格式解析和采集数据解析仍需补全：
 
 ```typescript
 import { SerialDriverTemplate } from '@pico-logicanalyzer/driver-sdk';
@@ -202,13 +213,13 @@ export class MySerialDriver extends SerialDriverTemplate {
     super(portPath, baudRate);
   }
 
-  // 自动处理串口通信、命令队列、错误处理等
+  // 按设备协议补全命令、响应包和采集数据解析
 }
 ```
 
 ### 3. 网络驱动模板 (NetworkDriverTemplate)
 
-专门用于网络连接的设备：
+专门用于网络连接设备的脚手架。网络连接外壳已有参考实现，设备握手、鉴权、协议解析和采集数据解析仍需补全：
 
 ```typescript
 import { NetworkDriverTemplate } from '@pico-logicanalyzer/driver-sdk';
@@ -218,7 +229,7 @@ export class MyNetworkDriver extends NetworkDriverTemplate {
     super(host, port, ProtocolType.HTTP);
   }
 
-  // 自动处理网络连接、HTTP/TCP/UDP通信等
+  // 按设备协议补全握手、鉴权和采集数据解析
 }
 ```
 
@@ -342,7 +353,7 @@ describe('MyDriver', () => {
 
 ### 集成测试
 
-测试与真实硬件的交互：
+测试与真实硬件或可复现 fixture 的交互：
 
 ```typescript
 describe('MyDriver Integration', () => {
@@ -445,7 +456,8 @@ queueCommand(command: Command): void {
 ```json
 {
   "name": "my-analyzer-driver",
-  "version": "1.0.0",
+  "version": "0.1.0",
+  "qualityLevel": "experimental",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -477,8 +489,9 @@ queueCommand(command: Command): void {
 - [ ] 所有测试通过
 - [ ] 驱动验证通过（评分 > 80）
 - [ ] 代码覆盖率 > 80%
-- [ ] 文档完整
-- [ ] 示例代码可运行
+- [ ] 文档说明模板待实现项和硬件限制
+- [ ] 示例代码可运行，且已标注是否依赖 mock、fixture 或真实设备
+- [ ] 真实硬件或 fixture 验证记录已归档
 - [ ] 版本号正确更新
 
 ### 4. 发布流程

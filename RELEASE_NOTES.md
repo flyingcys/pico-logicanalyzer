@@ -1,4 +1,4 @@
-# Pico Logic Analyzer VSCode Extension - 发布说明
+# Pico 逻辑分析器 VSCode 扩展发布说明
 
 > **版本**: 1.0.0-beta.0
 > **状态**: Beta / 工程整备
@@ -15,6 +15,7 @@
 - Pico、Saleae、Rigol/Siglent、sigrok 等硬件方向已有适配框架，但真实支持状态必须以 `docs/真实硬件认证矩阵.md` 为准。
 - I2C、SPI、UART 基础解码器已存在，后续需要 sigrok golden 对齐。
 - `typecheck`、分阶段 `typecheck:strict`、webview 单元测试、生产构建已有当前基线记录。
+- Driver SDK 模板用于脚手架和协议接入参考，生成包默认质量等级为 `experimental`。
 
 ## 质量门禁
 
@@ -35,6 +36,8 @@
 - 全量 `npm run test:unit` 曾出现长时间无输出，当前不作为发布证据。
 - Webview 生产构建仍有 webpack 体积警告。
 - 原版 `.lac` 兼容、真实波形工作流、设备采集 UI、解码器 golden、marker/测量/编辑、硬件认证、CLI/TUI、DSL 合成采集分别由后续 worktree 收口。
+- HTML/PDF/ZIP/项目包导出仍为实验性或规划能力；当前发布说明不得声明 PDF 报告、HTML 报告或项目包导出已经可作为用户主链路。
+- SDK 自动生成的 `html/pdf` 文档输出当前仍是 Markdown 文本写入对应扩展名，不代表报告生成能力。
 - README、功能状态矩阵、硬件认证矩阵和文档状态索引是当前能力声明的准入口。
 
 ## 升级和安装
