@@ -88,6 +88,22 @@ describe('DataExportService 精准业务逻辑测试', () => {
     return session;
   };
 
+  const createHighNumberedCaptureSession = (): CaptureSession => {
+    const session = new CaptureSession();
+    session.frequency = 1000;
+    session.preTriggerSamples = 0;
+    session.postTriggerSamples = 4;
+    session.loopCount = 0;
+
+    const channel8 = new AnalyzerChannel(8, 'D8');
+    channel8.samples = new Uint8Array([1, 0, 1, 0]);
+    const channel9 = new AnalyzerChannel(9, 'D9');
+    channel9.samples = new Uint8Array([0, 1, 0, 1]);
+
+    session.captureChannels = [channel8, channel9];
+    return session;
+  };
+
   const createTestDecoderResults = (): Map<string, DecoderResult[]> => {
     const results = new Map();
     results.set('i2c', [
@@ -387,14 +403,14 @@ describe('DataExportService 精准业务逻辑测试', () => {
       const options: ExportOptions = {
         filename: 'test.lac',
         timeRange: 'custom',
-        customStart: 100,
-        customEnd: 500
+        customStart: 2,
+        customEnd: 6
       };
 
       const result = await dataExportServiceInstance.exportWaveformData(testSession, 'lac', options);
 
       expect(result.success).toBe(true);
-      expect(result.processedSamples).toBe(400); // 500 - 100
+      expect(result.processedSamples).toBe(4); // 6 - 2
     });
 
     it('应该正确处理通道选择', async () => {
@@ -452,6 +468,31 @@ describe('DataExportService 精准业务逻辑测试', () => {
         '00000000000000000000000000000004',
         '00000000000000000000000000000020',
         '00000000000000000000000000000024'
+      ]);
+    });
+
+    it('应该按真实通道号校验并导出高编号通道 LAC', async () => {
+      const testSession = createHighNumberedCaptureSession();
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'lac', {
+        filename: 'high-channel.lac',
+        timeRange: 'all',
+        selectedChannels: [8]
+      });
+
+      expect(result.success).toBe(true);
+      const exportData = JSON.parse(result.data as string);
+      expect(exportData.Settings.CaptureChannels).toEqual([
+        expect.objectContaining({
+          ChannelNumber: 8,
+          ChannelName: 'D8'
+        })
+      ]);
+      expect(exportData.Samples).toEqual([
+        '00000000000000000000000000000100',
+        '00000000000000000000000000000000',
+        '00000000000000000000000000000100',
+        '00000000000000000000000000000000'
       ]);
     });
   });
@@ -546,6 +587,57 @@ describe('DataExportService 精准业务逻辑测试', () => {
         '2.000000,1,0',
         '3.000000,0,1'
       ]);
+    });
+
+    it('应该按真实通道号校验并导出高编号通道 CSV', async () => {
+      const testSession = createHighNumberedCaptureSession();
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'csv', {
+        filename: 'high-channel.csv',
+        timeRange: 'all',
+        selectedChannels: [8]
+      });
+
+      expect(result.success).toBe(true);
+      expect((result.data as string).split('\n')).toEqual([
+        'Time,D8',
+        '0.000000,1',
+        '1.000000,0',
+        '2.000000,1',
+        '3.000000,0'
+      ]);
+    });
+
+    it('应该拒绝 captureChannels 中不存在的通道号', async () => {
+      const testSession = createHighNumberedCaptureSession();
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'csv', {
+        filename: 'missing-channel.csv',
+        timeRange: 'all',
+        selectedChannels: [1]
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('通道选择无效');
+      expect(result.error).toContain('1');
+    });
+
+    it('应该在无样本数据时按 loopCount 计算 loop/blast 总样本数', async () => {
+      const testSession = new CaptureSession();
+      testSession.frequency = 1000;
+      testSession.preTriggerSamples = 2;
+      testSession.postTriggerSamples = 3;
+      testSession.loopCount = 2;
+      testSession.captureChannels = [new AnalyzerChannel(0, 'D0')];
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'csv', {
+        filename: 'loop.csv',
+        timeRange: 'all'
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.processedSamples).toBe(11);
+      expect((result.data as string).split('\n')).toHaveLength(12);
     });
 
     it('应该支持取消操作', async () => {
@@ -675,6 +767,28 @@ describe('DataExportService 精准业务逻辑测试', () => {
       const jsonData = JSON.parse(result.data as string);
       expect(jsonData.samples.map((sample: any) => sample.channels[0])).toEqual([0, 1, 0, 1]);
     });
+
+    it('应该按真实通道号校验并导出高编号通道 JSON', async () => {
+      const testSession = createHighNumberedCaptureSession();
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'json', {
+        filename: 'high-channel.json',
+        timeRange: 'all',
+        selectedChannels: [9]
+      });
+
+      expect(result.success).toBe(true);
+      const jsonData = JSON.parse(result.data as string);
+      expect(jsonData.channels).toEqual([
+        {
+          number: 9,
+          name: 'D9',
+          hidden: false,
+          enabled: true
+        }
+      ]);
+      expect(jsonData.samples.map((sample: any) => sample.channels[9])).toEqual([0, 1, 0, 1]);
+    });
   });
 
   describe('VCD格式导出优化算法', () => {
@@ -737,7 +851,14 @@ describe('DataExportService 精准业务逻辑测试', () => {
     });
 
     it('应该实现状态变化检测优化', async () => {
-      const testSession = createTestCaptureSession();
+      const testSession = new CaptureSession();
+      testSession.frequency = 1000;
+      testSession.preTriggerSamples = 0;
+      testSession.postTriggerSamples = 100;
+      const channel0 = new AnalyzerChannel(0, 'CH0');
+      channel0.samples = new Uint8Array(100);
+      channel0.samples.fill(1, 50);
+      testSession.captureChannels = [channel0];
       const options: ExportOptions = {
         filename: 'test.vcd',
         timeRange: 'all'
@@ -771,6 +892,24 @@ describe('DataExportService 精准业务逻辑测试', () => {
       expect(vcdData).toContain('#1\n1!');
       expect(vcdData).toContain('#2\n0!');
       expect(vcdData).toContain('#3\n1!');
+    });
+
+    it('应该按真实通道号校验并导出高编号通道 VCD', async () => {
+      const testSession = createHighNumberedCaptureSession();
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'vcd', {
+        filename: 'high-channel.vcd',
+        timeRange: 'all',
+        selectedChannels: [8]
+      });
+
+      expect(result.success).toBe(true);
+      const vcdData = result.data as string;
+      expect(vcdData).toContain('$var wire 1 ! D8 $end');
+      expect(vcdData).toContain('$dumpvars\n1!\n$end');
+      expect(vcdData).toContain('#1\n0!');
+      expect(vcdData).toContain('#2\n1!');
+      expect(vcdData).toContain('#3\n0!');
     });
   });
 
