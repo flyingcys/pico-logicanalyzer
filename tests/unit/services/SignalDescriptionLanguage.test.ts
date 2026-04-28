@@ -3,6 +3,8 @@ import {
   SignalDslParseError
 } from '../../../src/services/SignalDescriptionLanguage';
 import { LACFileFormat } from '../../../src/models/LACFileFormat';
+import * as fs from 'fs';
+import * as path from 'path';
 
 describe('SignalDescriptionLanguage', () => {
   it('parses a compact signal description into typed statements', () => {
@@ -88,5 +90,46 @@ describe('SignalDescriptionLanguage', () => {
       samples 8
       channel 0 BAD pattern bits=102
     `)).toThrow(/line 4/i);
+  });
+
+  it('reports stable diagnostics with line, column and code without throwing', () => {
+    const diagnostics = SignalDescriptionLanguage.validate(`
+      sample_rate 1MHz
+      samples 16
+      channel 0 SDA pattern bits=10102 repeat=true
+    `);
+
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'SDL_PATTERN_BITS',
+        severity: 'error',
+        line: 4,
+        column: 29
+      })
+    ]);
+  });
+
+  it('rejects unknown waveform options with precise diagnostics', () => {
+    expect(() => SignalDescriptionLanguage.parse(`
+      sample_rate 1MHz
+      samples 16
+      channel 0 CLK clock period=4 extra=true
+    `)).toThrow(/line 4, column 36/i);
+  });
+
+  it('keeps protocol example files parseable and exportable as LAC captures', () => {
+    const examplesDir = path.resolve(__dirname, '../../fixtures/signal-dsl/examples');
+    const exampleNames = ['i2c-start.dsl', 'spi-transfer.dsl', 'uart-frame.dsl', 'can-frame.dsl'];
+
+    for (const exampleName of exampleNames) {
+      const source = fs.readFileSync(path.join(examplesDir, exampleName), 'utf-8');
+      const session = SignalDescriptionLanguage.generateCaptureSession(source);
+      const exported = LACFileFormat.createFromCaptureSession(session, undefined, true);
+      const restored = LACFileFormat.convertToCaptureSession(exported);
+
+      expect(session.captureChannels.length).toBeGreaterThanOrEqual(2);
+      expect(exported.Samples).toHaveLength(session.totalSamples);
+      expect(restored.captureChannels[0].samples).toHaveLength(session.totalSamples);
+    }
   });
 });

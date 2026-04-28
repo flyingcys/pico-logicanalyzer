@@ -37,17 +37,62 @@ export interface SignalProgram {
   channels: SignalChannelStatement[];
 }
 
+export interface SignalDslDiagnostic {
+  severity: 'error';
+  code: string;
+  message: string;
+  line: number;
+  column: number;
+}
+
+interface SignalDslOption {
+  key: string;
+  value: string;
+  column: number;
+}
+
 export class SignalDslParseError extends Error {
   public readonly lineNumber: number;
+  public readonly column: number;
+  public readonly code: string;
+  public readonly diagnostic: SignalDslDiagnostic;
 
-  constructor(lineNumber: number, message: string) {
-    super(`line ${lineNumber}: ${message}`);
+  constructor(lineNumber: number, message: string, column: number = 1, code: string = 'SDL_PARSE_ERROR') {
+    super(`line ${lineNumber}, column ${column}: ${message}`);
     this.name = 'SignalDslParseError';
     this.lineNumber = lineNumber;
+    this.column = column;
+    this.code = code;
+    this.diagnostic = {
+      severity: 'error',
+      code,
+      message,
+      line: lineNumber,
+      column
+    };
   }
 }
 
 export class SignalDescriptionLanguage {
+  public static validate(source: string): SignalDslDiagnostic[] {
+    try {
+      this.parse(source);
+      return [];
+    } catch (error) {
+      if (error instanceof SignalDslParseError) {
+        return [error.diagnostic];
+      }
+
+      return [{
+        severity: 'error',
+        code: 'SDL_INTERNAL_ERROR',
+        message: error instanceof Error ? error.message : String(error),
+        line: 1,
+        column: 1
+      }];
+    }
+  }
+
   public static parse(source: string): SignalProgram {
     const program: Partial<SignalProgram> = {
       channels: []
@@ -56,7 +101,9 @@ export class SignalDescriptionLanguage {
     const lines = source.split(/\r?\n/);
     for (let index = 0; index < lines.length; index++) {
       const lineNumber = index + 1;
-      const line = this.stripComment(lines[index]).trim();
+      const uncommentedLine = this.stripComment(lines[index]);
+      const leadingWhitespace = uncommentedLine.length - uncommentedLine.trimStart().length;
+      const line = uncommentedLine.trim();
 
       if (!line) {
         continue;
@@ -67,7 +114,7 @@ export class SignalDescriptionLanguage {
 
       if (keyword === 'sample_rate' || keyword === 'samplerate' || keyword === 'rate' || keyword === 'frequency') {
         if (parts.length !== 2) {
-          throw new SignalDslParseError(lineNumber, 'sample_rate expects exactly one value');
+          throw new SignalDslParseError(lineNumber, 'sample_rate expects exactly one value', leadingWhitespace + 1, 'SDL_SAMPLE_RATE_ARITY');
         }
         program.sampleRate = this.parsePositiveInteger(parts[1], lineNumber, 'sample_rate');
         continue;
@@ -75,30 +122,30 @@ export class SignalDescriptionLanguage {
 
       if (keyword === 'samples' || keyword === 'sample_count' || keyword === 'samplecount') {
         if (parts.length !== 2) {
-          throw new SignalDslParseError(lineNumber, 'samples expects exactly one value');
+          throw new SignalDslParseError(lineNumber, 'samples expects exactly one value', leadingWhitespace + 1, 'SDL_SAMPLES_ARITY');
         }
         program.sampleCount = this.parsePositiveInteger(parts[1], lineNumber, 'samples');
         continue;
       }
 
       if (keyword === 'channel') {
-        program.channels!.push(this.parseChannel(line, lineNumber));
+        program.channels!.push(this.parseChannel(line, lineNumber, uncommentedLine));
         continue;
       }
 
-      throw new SignalDslParseError(lineNumber, `unknown statement "${parts[0]}"`);
+      throw new SignalDslParseError(lineNumber, `unknown statement "${parts[0]}"`, leadingWhitespace + 1, 'SDL_UNKNOWN_STATEMENT');
     }
 
     if (!program.sampleRate) {
-      throw new SignalDslParseError(1, 'missing sample_rate statement');
+      throw new SignalDslParseError(1, 'missing sample_rate statement', 1, 'SDL_MISSING_SAMPLE_RATE');
     }
 
     if (!program.sampleCount) {
-      throw new SignalDslParseError(1, 'missing samples statement');
+      throw new SignalDslParseError(1, 'missing samples statement', 1, 'SDL_MISSING_SAMPLES');
     }
 
     if (!program.channels || program.channels.length === 0) {
-      throw new SignalDslParseError(1, 'at least one channel statement is required');
+      throw new SignalDslParseError(1, 'at least one channel statement is required', 1, 'SDL_MISSING_CHANNELS');
     }
 
     this.validateUniqueChannels(program.channels);
@@ -137,73 +184,78 @@ export class SignalDescriptionLanguage {
     ].join('\n');
   }
 
-  private static parseChannel(line: string, lineNumber: number): SignalChannelStatement {
+  private static parseChannel(line: string, lineNumber: number, sourceLine: string): SignalChannelStatement {
     const match = /^channel\s+(\d+)\s+([A-Za-z_][A-Za-z0-9_-]*)\s+([A-Za-z_][A-Za-z0-9_-]*)(?:\s+(.*))?$/i.exec(line);
     if (!match) {
-      throw new SignalDslParseError(lineNumber, 'channel syntax is: channel <0-23> <name> <clock|pattern|constant|pulse> key=value ...');
+      throw new SignalDslParseError(lineNumber, 'channel syntax is: channel <0-23> <name> <clock|pattern|constant|pulse> key=value ...', sourceLine.search(/\S/) + 1, 'SDL_CHANNEL_SYNTAX');
     }
 
     const channelNumber = this.parseInteger(match[1], lineNumber, 'channel number');
     if (channelNumber < 0 || channelNumber > 23) {
-      throw new SignalDslParseError(lineNumber, 'channel number must be between 0 and 23');
+      throw new SignalDslParseError(lineNumber, 'channel number must be between 0 and 23', this.findColumn(sourceLine, match[1]), 'SDL_CHANNEL_RANGE');
     }
 
     return {
       channelNumber,
       name: match[2],
-      waveform: this.parseWaveform(match[3], this.parseOptions(match[4] || '', lineNumber), lineNumber)
+      waveform: this.parseWaveform(match[3], this.parseOptions(match[4] || '', lineNumber, sourceLine), lineNumber)
     };
   }
 
-  private static parseWaveform(kindValue: string, options: Map<string, string>, lineNumber: number): SignalWaveform {
+  private static parseWaveform(kindValue: string, options: Map<string, SignalDslOption>, lineNumber: number): SignalWaveform {
     const kind = kindValue.toLowerCase();
 
     if (kind === 'clock') {
+      this.rejectUnknownOptions(options, ['period', 'duty', 'phase'], lineNumber);
       return {
         kind: 'clock',
-        period: this.parsePositiveInteger(this.requiredOption(options, 'period', lineNumber), lineNumber, 'period'),
-        duty: this.parseDuty(options.get('duty') || '0.5', lineNumber),
-        phase: this.parseNonNegativeInteger(options.get('phase') || '0', lineNumber, 'phase')
+        period: this.parsePositiveInteger(this.requiredOption(options, 'period', lineNumber).value, lineNumber, 'period'),
+        duty: this.parseDuty(options.get('duty')?.value || '0.5', lineNumber),
+        phase: this.parseNonNegativeInteger(options.get('phase')?.value || '0', lineNumber, 'phase')
       };
     }
 
     if (kind === 'pattern') {
-      const bits = this.requiredOption(options, 'bits', lineNumber);
+      this.rejectUnknownOptions(options, ['bits', 'repeat', 'step'], lineNumber);
+      const bitsOption = this.requiredOption(options, 'bits', lineNumber);
+      const bits = bitsOption.value;
       if (!/^[01]+$/.test(bits)) {
-        throw new SignalDslParseError(lineNumber, 'pattern bits must contain only 0 and 1');
+        throw new SignalDslParseError(lineNumber, 'pattern bits must contain only 0 and 1', bitsOption.column, 'SDL_PATTERN_BITS');
       }
 
       return {
         kind: 'pattern',
         bits,
-        repeat: this.parseBoolean(options.get('repeat') || 'false', lineNumber, 'repeat'),
-        step: this.parsePositiveInteger(options.get('step') || '1', lineNumber, 'step')
+        repeat: this.parseBoolean(options.get('repeat')?.value || 'false', lineNumber, 'repeat'),
+        step: this.parsePositiveInteger(options.get('step')?.value || '1', lineNumber, 'step')
       };
     }
 
     if (kind === 'constant') {
+      this.rejectUnknownOptions(options, ['value'], lineNumber);
       return {
         kind: 'constant',
-        value: this.parseBit(this.requiredOption(options, 'value', lineNumber), lineNumber, 'value')
+        value: this.parseBit(this.requiredOption(options, 'value', lineNumber).value, lineNumber, 'value')
       };
     }
 
     if (kind === 'pulse') {
-      const value = this.parseBit(options.get('value') || '1', lineNumber, 'value');
+      this.rejectUnknownOptions(options, ['start', 'width', 'value', 'idle'], lineNumber);
+      const value = this.parseBit(options.get('value')?.value || '1', lineNumber, 'value');
       return {
         kind: 'pulse',
-        start: this.parseNonNegativeInteger(this.requiredOption(options, 'start', lineNumber), lineNumber, 'start'),
-        width: this.parsePositiveInteger(this.requiredOption(options, 'width', lineNumber), lineNumber, 'width'),
+        start: this.parseNonNegativeInteger(this.requiredOption(options, 'start', lineNumber).value, lineNumber, 'start'),
+        width: this.parsePositiveInteger(this.requiredOption(options, 'width', lineNumber).value, lineNumber, 'width'),
         value,
-        idle: this.parseBit(options.get('idle') || (value === 1 ? '0' : '1'), lineNumber, 'idle')
+        idle: this.parseBit(options.get('idle')?.value || (value === 1 ? '0' : '1'), lineNumber, 'idle')
       };
     }
 
-    throw new SignalDslParseError(lineNumber, `unsupported waveform "${kindValue}"`);
+    throw new SignalDslParseError(lineNumber, `unsupported waveform "${kindValue}"`, 1, 'SDL_UNSUPPORTED_WAVEFORM');
   }
 
-  private static parseOptions(rawOptions: string, lineNumber: number): Map<string, string> {
-    const options = new Map<string, string>();
+  private static parseOptions(rawOptions: string, lineNumber: number, sourceLine: string): Map<string, SignalDslOption> {
+    const options = new Map<string, SignalDslOption>();
     if (!rawOptions.trim()) {
       return options;
     }
@@ -211,12 +263,16 @@ export class SignalDescriptionLanguage {
     for (const token of rawOptions.trim().split(/\s+/)) {
       const separator = token.indexOf('=');
       if (separator <= 0 || separator === token.length - 1) {
-        throw new SignalDslParseError(lineNumber, `invalid option "${token}", expected key=value`);
+        throw new SignalDslParseError(lineNumber, `invalid option "${token}", expected key=value`, this.findColumn(sourceLine, token), 'SDL_OPTION_SYNTAX');
       }
 
       const key = token.slice(0, separator).toLowerCase();
       const value = token.slice(separator + 1).replace(/^["']|["']$/g, '');
-      options.set(key, value);
+      options.set(key, {
+        key,
+        value,
+        column: this.findColumn(sourceLine, token)
+      });
     }
 
     return options;
@@ -261,12 +317,21 @@ export class SignalDescriptionLanguage {
     return commentStart >= 0 ? line.slice(0, commentStart) : line;
   }
 
-  private static requiredOption(options: Map<string, string>, key: string, lineNumber: number): string {
+  private static requiredOption(options: Map<string, SignalDslOption>, key: string, lineNumber: number): SignalDslOption {
     const value = options.get(key);
-    if (value === undefined || value === '') {
-      throw new SignalDslParseError(lineNumber, `missing required option "${key}"`);
+    if (value === undefined || value.value === '') {
+      throw new SignalDslParseError(lineNumber, `missing required option "${key}"`, 1, 'SDL_MISSING_OPTION');
     }
     return value;
+  }
+
+  private static rejectUnknownOptions(options: Map<string, SignalDslOption>, allowedKeys: string[], lineNumber: number): void {
+    const allowed = new Set(allowedKeys);
+    for (const option of options.values()) {
+      if (!allowed.has(option.key)) {
+        throw new SignalDslParseError(lineNumber, `unknown option "${option.key}"`, option.column, 'SDL_UNKNOWN_OPTION');
+      }
+    }
   }
 
   private static parsePositiveInteger(value: string, lineNumber: number, fieldName: string): number {
@@ -355,9 +420,14 @@ export class SignalDescriptionLanguage {
     const seen = new Set<number>();
     for (const channel of channels) {
       if (seen.has(channel.channelNumber)) {
-        throw new SignalDslParseError(1, `duplicate channel ${channel.channelNumber}`);
+        throw new SignalDslParseError(1, `duplicate channel ${channel.channelNumber}`, 1, 'SDL_DUPLICATE_CHANNEL');
       }
       seen.add(channel.channelNumber);
     }
+  }
+
+  private static findColumn(sourceLine: string, token: string): number {
+    const index = sourceLine.indexOf(token);
+    return index >= 0 ? index + 1 : 1;
   }
 }
