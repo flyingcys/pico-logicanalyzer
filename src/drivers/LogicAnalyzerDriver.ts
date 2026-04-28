@@ -954,7 +954,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
 
     for (let channelIndex = 0; channelIndex < session.captureChannels.length; channelIndex++) {
       const channel = session.captureChannels[channelIndex];
-      const mask = 1 << channelIndex;
+      const mask = 1 << channel.channelNumber;
 
       channel.samples = new Uint8Array(samples.length);
       for (let sampleIndex = 0; sampleIndex < samples.length; sampleIndex++) {

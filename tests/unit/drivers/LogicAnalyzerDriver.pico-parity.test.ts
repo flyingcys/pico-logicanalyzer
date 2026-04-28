@@ -91,6 +91,14 @@ const fixture = <T>(name: string): T => {
 };
 
 const hexToBuffer = (hex: string): Buffer => Buffer.from(hex.replace(/\s+/g, ''), 'hex');
+type PicoFrameFixture = {
+  name: string;
+  mode: string;
+  channels: number[];
+  sampleCount: number;
+  frameHex: string;
+  expectedChannelSamples: Record<string, number[]>;
+};
 
 const expectedRequest = (values: {
   triggerType: TriggerType;
@@ -186,6 +194,38 @@ describe('Pico 原版协议与采集语义对齐', () => {
     expect(bytes(captureSession.captureChannels[1].samples)).toEqual(frame.expectedChannelSamples['1']);
     expect(driver.isCapturing).toBe(false);
   });
+
+  it.each(fixture<{ cases: PicoFrameFixture[] }>('pico-serial-non-contiguous-channel-frames.json').cases)(
+    '$mode 模式必须按真实 channelNumber 拆分非连续通道样本',
+    async frame => {
+      const { driver, stream, parser } = connectedDriver();
+      const captureSession = session({
+        preTriggerSamples: 2,
+        postTriggerSamples: 2,
+        captureChannels: frame.channels.map(channel)
+      });
+      let completedEvent: CaptureEventArgs | undefined;
+      driver.once('captureCompleted', event => {
+        completedEvent = event;
+      });
+
+      const start = driver.startCapture(captureSession);
+      await nextTick();
+      parser.emit('data', 'CAPTURE_STARTED');
+      await expect(start).resolves.toBe(CaptureError.None);
+
+      stream.emit('data', hexToBuffer(frame.frameHex));
+      await nextTick();
+
+      expect(completedEvent?.success).toBe(true);
+      for (const captureChannel of captureSession.captureChannels) {
+        expect(bytes(captureChannel.samples)).toEqual(
+          frame.expectedChannelSamples[String(captureChannel.channelNumber)]
+        );
+      }
+      expect(driver.isCapturing).toBe(false);
+    }
+  );
 
   it('StopCapture 在空闲时必须返回 false', async () => {
     const { driver } = connectedDriver();
