@@ -28,6 +28,12 @@ export interface WiFiDeviceInfo {
   lastSeen: Date;
   /** 是否在线 */
   isOnline: boolean;
+  /** 发现 profile 标识 */
+  discoveryProfile?: 'network-pico';
+  /** 设备验证状态 */
+  verificationStatus?: 'candidate' | 'confirmed';
+  /** 发现或验证证据摘要 */
+  evidence?: string;
 }
 
 /**
@@ -189,7 +195,10 @@ export class WiFiDeviceDiscovery {
               serialNumber: response.serial,
               signalStrength: response.rssi,
               lastSeen: new Date(),
-              isOnline: true
+              isOnline: true,
+              discoveryProfile: 'network-pico',
+              verificationStatus: 'candidate',
+              evidence: 'UDP 广播响应，未完成版本握手'
             };
 
             // 如果启用深度扫描，验证设备
@@ -285,7 +294,9 @@ export class WiFiDeviceDiscovery {
                   responseTime,
                   deviceType: 'Unknown Device',
                   lastSeen: new Date(),
-                  isOnline: true
+                  isOnline: true,
+                  verificationStatus: 'candidate',
+                  evidence: '端口开放，未完成设备 profile 握手'
                 });
               }
             }
@@ -420,7 +431,10 @@ export class WiFiDeviceDiscovery {
         responseTime: 0, // 将在调用处设置
         deviceType: 'Pico Logic Analyzer',
         lastSeen: new Date(),
-        isOnline: true
+        isOnline: true,
+        discoveryProfile: 'network-pico',
+        verificationStatus: 'confirmed',
+        evidence: `Pico 版本握手通过: ${version}`
       };
 
     } catch (error) {

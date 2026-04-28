@@ -251,6 +251,9 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
       expect(device!.deviceName).toBe('Pico Logic Analyzer (1.0.0)');
       expect(device!.deviceType).toBe('Pico Logic Analyzer');
       expect(device!.isOnline).toBe(true);
+      expect(device!.discoveryProfile).toBe('network-pico');
+      expect(device!.verificationStatus).toBe('confirmed');
+      expect(device!.evidence).toContain('版本握手');
 
       // 恢复原始VersionValidator
       require('../../../src/drivers/VersionValidator').VersionValidator = originalVersionValidator;
@@ -613,6 +616,8 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
       expect(devices).toHaveLength(1);
       expect(devices[0].ipAddress).toBe('192.168.1.100');
       expect(devices[0].deviceType).toBe('Pico Logic Analyzer');
+      expect(devices[0].verificationStatus).toBe('candidate');
+      expect(devices[0].discoveryProfile).toBe('network-pico');
     });
 
     it('应该忽略无效的广播响应', async () => {

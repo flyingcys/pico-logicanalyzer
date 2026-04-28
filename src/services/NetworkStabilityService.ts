@@ -246,6 +246,9 @@ export class NetworkStabilityService extends EventEmitter {
     // 6. 网络配置检查
     results.push(await this.checkNetworkConfiguration(host, port));
 
+    // 7. 设备握手口径检查
+    results.push(await this.checkDeviceHandshakePolicy(port));
+
     return results;
   }
 
@@ -848,5 +851,45 @@ export class NetworkStabilityService extends EventEmitter {
       timestamp: new Date(),
       severity: passed ? 'info' : 'warning'
     };
+  }
+
+  private async checkDeviceHandshakePolicy(port: number): Promise<DiagnosticResult> {
+    const startTime = Date.now();
+    const profile = this.getNetworkProfilePolicy(port);
+
+    if (!profile) {
+      return {
+        testName: '设备握手口径检查',
+        passed: false,
+        details: `端口 ${port} 未匹配已知设备发现 profile，只能作为候选设备处理`,
+        duration: Date.now() - startTime,
+        timestamp: new Date(),
+        severity: 'warning'
+      };
+    }
+
+    return {
+      testName: '设备握手口径检查',
+      passed: false,
+      details: `${profile.name} 需要 ${profile.handshake} 握手确认；仅端口开放时保持候选状态`,
+      duration: Date.now() - startTime,
+      timestamp: new Date(),
+      severity: 'warning'
+    };
+  }
+
+  private getNetworkProfilePolicy(port: number): { name: string; handshake: string } | null {
+    switch (port) {
+      case 4045:
+        return { name: 'Pico W', handshake: 'Pico 版本' };
+      case 10429:
+        return { name: 'Saleae API', handshake: 'Saleae API 枚举' };
+      case 5555:
+      case 5025:
+      case 111:
+        return { name: 'Rigol/Siglent SCPI', handshake: '*IDN?' };
+      default:
+        return null;
+    }
   }
 }
