@@ -23,7 +23,7 @@ import * as path from 'path';
 
 // Mock外部依赖 - 保持协议正确性
 jest.mock('serialport');
-jest.mock('vscode', () => require('../../../utest/mocks/simple-mocks').mockVSCode);
+jest.mock('vscode', () => require('../../../tests/fixtures/mocks/simple-mocks').mockVSCode);
 
 /**
  * 硬件到采集集成测试类

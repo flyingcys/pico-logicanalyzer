@@ -23,13 +23,27 @@ import * as path from 'path';
 import * as tmp from 'tmp';
 
 // Mock外部依赖 - 最小化Mock使用
-jest.mock('vscode', () => require('../../../utest/mocks/simple-mocks').mockVSCode);
+jest.mock('vscode', () => require('../../../tests/fixtures/mocks/simple-mocks').mockVSCode);
 
 /**
  * 生成测试LAC文件数据
  */
 function generateTestLACData(sampleCount: number): any {
+  const channels = Array.from({ length: 8 }, (_, i) => ({
+    id: i,
+    channelNumber: i,
+    channelName: `Channel_${i}`,
+    name: `Channel_${i}`,
+    enabled: true
+  }));
+
   return {
+    Settings: {
+      frequency: 24000000,
+      preTriggerSamples: 0,
+      postTriggerSamples: sampleCount,
+      captureChannels: channels
+    },
     header: {
       version: '1.0',
       deviceId: 'test-device',
@@ -37,11 +51,7 @@ function generateTestLACData(sampleCount: number): any {
       totalSamples: sampleCount,
       channels: 8
     },
-    channels: Array.from({ length: 8 }, (_, i) => ({
-      id: i,
-      name: `Channel_${i}`,
-      enabled: true
-    })),
+    channels,
     samples: {
       digital: {
         data: [new Uint8Array(sampleCount).fill(0x55)], // 测试数据模式

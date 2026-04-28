@@ -12,12 +12,18 @@
 
 `npm run validate:local` 只运行本地可快速完成的门禁和 CI dry-run 计划，不安装依赖，不触发长耗时测试。CI 使用 `npm run validate:ci` 和工作流中的补充 webview、driver、decoder、VSIX dry run 检查。
 
-当前 Quick 层暂不阻断以下旧 core smoke 测试，原因是它们已暴露业务行为漂移，需由对应功能 worktree 修复后再移回阻断门禁：
+当前 Quick 层暂不阻断测试数量为 0。以下旧 core smoke 测试已重新纳入 Quick 阻断门禁，并通过 `npm run test:ci:quick -- --skip-install` 验证：
 
 - `tests/unit/drivers/LogicAnalyzerDriver.core.test.ts`
 - `tests/unit/models/CaptureModels.core.test.ts`
 - `tests/unit/services/SessionManager.core.test.ts`
 - `tests/unit/services/ConfigurationManager.basic.test.ts`
+
+2026-04-28 在 `.worktree/03` 的分层验证结果：
+
+- `npm run test:ci:quick -- --skip-install`：通过，14 个测试文件、373 个测试，暂不阻断测试 0 个。
+- `npm run test:ci:standard -- --skip-install`：通过，18 个测试文件、383 个测试，覆盖 core、integration、performance 分组。
+- `npm run test:ci:full -- --skip-install`：通过，22 个测试文件、393 个测试，覆盖 core、integration、performance、e2e、stress 分组。
 
 ## 发布前命令
 

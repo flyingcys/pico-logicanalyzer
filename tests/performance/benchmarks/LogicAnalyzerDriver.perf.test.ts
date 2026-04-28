@@ -22,7 +22,7 @@ import { generateTestSampleData } from '../../fixtures/utils/MockHardware';
 
 // Mock外部依赖 - 最小化Mock使用
 jest.mock('serialport');
-jest.mock('vscode', () => require('../../../utest/mocks/simple-mocks').mockVSCode);
+jest.mock('vscode', () => require('../../../tests/fixtures/mocks/simple-mocks').mockVSCode);
 
 /**
  * 设备连接性能测试

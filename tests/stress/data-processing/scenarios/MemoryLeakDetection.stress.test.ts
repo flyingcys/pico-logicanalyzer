@@ -20,7 +20,7 @@ import { LoadGenerator } from '../../framework/LoadGenerator';
 import { ChunkManager } from '../framework/ChunkManager';
 
 // Mock VSCode环境
-jest.mock('vscode', () => require('../../../utest/mocks/simple-mocks').mockVSCode);
+jest.mock('vscode', () => require('../../../../tests/fixtures/mocks/simple-mocks').mockVSCode);
 
 /**
  * 内存泄漏检测压力测试类

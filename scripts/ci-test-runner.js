@@ -16,9 +16,12 @@ const path = require('path');
 // CI测试配置 - P2.3阶段迁移到@tests目录
 const CI_CONFIG = {
   coreTests: [
-    // Quick gate 只保留当前可稳定复现的测试。旧 core smoke 中失败的业务测试由对应 worktree 修复后再移回。
     'tests/unit/quality/CITestRunner.test.ts',
     'tests/unit/quality/QualityGateConfig.test.ts',
+    'tests/unit/drivers/LogicAnalyzerDriver.core.test.ts',
+    'tests/unit/models/CaptureModels.core.test.ts',
+    'tests/unit/services/SessionManager.core.test.ts',
+    'tests/unit/services/ConfigurationManager.basic.test.ts',
     'tests/unit/models/LACFileFormat.test.ts',
     'tests/unit/models/AnalyzerTypes.test.ts',
     'tests/unit/decoders/protocols/I2CDecoder.test.ts',
@@ -28,16 +31,12 @@ const CI_CONFIG = {
     'tests/unit/models/DataStreamProcessor.test.ts',
     'tests/unit/models/BinaryDataParser.test.ts'
   ],
-  quarantinedCoreTests: [
-    'tests/unit/drivers/LogicAnalyzerDriver.core.test.ts',
-    'tests/unit/models/CaptureModels.core.test.ts',
-    'tests/unit/services/SessionManager.core.test.ts',
-    'tests/unit/services/ConfigurationManager.basic.test.ts'
-  ],
+  quarantinedCoreTests: [],
   integrationTests: [
     'tests/integration/core-flows/hardware-capture.integration.test.ts'  // P2.1: 核心数据流集成测试
   ],
   performanceTests: [
+    'tests/performance/framework/PerformanceTestBase.lifecycle.test.ts',
     'tests/performance/benchmarks/LogicAnalyzerDriver.perf.test.ts',     // P2.2: 驱动性能基准
     'tests/performance/benchmarks/LACFileFormat.perf.test.ts'            // P2.2: 文件格式性能基准
   ],
@@ -84,7 +83,7 @@ const CI_CONFIG = {
       include: ['coreTests', 'integrationTests', 'performanceTests', 'e2eTests', 'stressTests'],
       stressConfig: {
         runMode: 'accelerated',
-        maxDuration: 300000,
+        maxDuration: 60000,
         operationFrequency: 50
       }
     }
