@@ -75,6 +75,8 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
 
   describe('扫描配置处理核心逻辑', () => {
     it('应该提供正确的默认配置', async () => {
+      expect((discoveryService as any).defaultConfig.ports).toEqual([4045, 10429, 5555, 5025, 111]);
+
       const mockNetworkInterfaces = require('os').networkInterfaces;
       mockNetworkInterfaces.mockReturnValue({
         'eth0': [{
@@ -105,7 +107,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
         const result = await discoveryService.scanForDevices();
         
         expect(result).toBeDefined();
-        expect(result.ports).toEqual([4045, 80, 8080, 8000, 3000]);
+        expect(result.ports).toEqual([4045, 10429, 5555, 5025, 111]);
         expect(result.status).toBe('completed');
         expect(typeof result.scanDuration).toBe('number');
       } catch (error) {

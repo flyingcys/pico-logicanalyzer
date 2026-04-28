@@ -151,10 +151,10 @@
           },
           "default": [
             4045,
-            80,
-            8080,
-            8000,
-            3000
+            10429,
+            5555,
+            5025,
+            111
           ],
           "description": "Default ports to scan for network devices"
         },
@@ -244,7 +244,7 @@
     "db:query": "ts-node scripts/manage-database.ts query",
     "db:stats": "ts-node scripts/manage-database.ts stats",
     "db:discover": "ts-node scripts/manage-database.ts discover",
-    "db:validate": "ts-node scripts/manage-database.ts validate --fix",
+    "db:validate": "node -r ts-node/register/transpile-only scripts/manage-database.ts validate --fix",
     "db:export": "ts-node scripts/manage-database.ts export ./data/hardware-compatibility-backup.json",
     "db:import": "ts-node scripts/manage-database.ts import",
     "db:template": "ts-node scripts/manage-database.ts template",
