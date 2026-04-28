@@ -60,5 +60,35 @@ describe('质量门禁配置', () => {
     expect(vscodeIgnore).toContain('.husky/');
     expect(vscodeIgnore).toContain('.vscode/');
     expect(vscodeIgnore).toContain('.recovery-checkpoints/');
+    expect(vscodeIgnore).toContain('ci-test-report.json');
+  });
+
+  it('发布检查应该使用当前 tests 目录和分层 CI 命令', () => {
+    const releaseCheck = readText('scripts/release-check.ts');
+
+    expect(releaseCheck).toContain("'tests/unit'");
+    expect(releaseCheck).toContain('npm run test:ci:quick -- --skip-install');
+    expect(releaseCheck).toContain('npm run package:dry');
+    expect(releaseCheck).not.toContain("'test/unit'");
+    expect(releaseCheck).not.toContain("execSync('npm test'");
+  });
+
+  it('发布和文档收敛应该有当前状态文档，不继续发布正式版话术', () => {
+    const releaseGate = readText('docs/release-gate.md');
+    const docIndex = readText('docs/文档状态索引.md');
+    const worktreeLog = readText('docs/worktrees/10-quality-release-docs.md');
+    const changelog = readText('CHANGELOG.md');
+    const releaseNotes = readText('RELEASE_NOTES.md');
+
+    expect(releaseGate).toContain('发布阻断条件');
+    expect(releaseGate).toContain('VSIX smoke test');
+    expect(docIndex).toContain('| 文档 | 状态 | 使用口径 |');
+    expect(docIndex).toContain('历史分析');
+    expect(worktreeLog).toContain('范围内');
+    expect(worktreeLog).toContain('验收结论');
+    expect(changelog).toContain('质量门禁');
+    expect(changelog).not.toContain('github.com/your-repo');
+    expect(releaseNotes).toContain('Beta');
+    expect(releaseNotes).not.toContain('首个正式版本');
   });
 });

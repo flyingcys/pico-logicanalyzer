@@ -24,6 +24,7 @@ jest*.js
 utest/
 utest-temp/
 tests/
+ci-test-report.json
 
 # 文档和计划
 docs/

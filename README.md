@@ -13,8 +13,10 @@
 - `npm run test:webview:unit -- --runInBand` 通过，2 个测试套件、37 个测试。
 - `npm run build:production` 通过，但 Webview 产物仍有 webpack 体积警告。
 - `npm run test:unit -- --silent` 仍需拆分定位长耗时或开放句柄。
-- `node scripts/ci-test-runner.js --layer=quick --dry-run` 用于本地验证 CI 执行计划，不会安装依赖或运行长测试。
+- `npm run validate:local` 用于本地快速门禁；`node scripts/ci-test-runner.js --layer=quick --dry-run` 可查看 CI 执行计划，不会安装依赖或运行长测试。
+- Quick 层暂不阻断 4 个旧 core smoke 测试，修复责任按功能 worktree 拆分，详见 [发布门槛](docs/release-gate.md)。
 - 功能声明以 [功能状态矩阵](docs/功能状态矩阵.md) 和 [真实硬件认证矩阵](docs/真实硬件认证矩阵.md) 为准。
+- 发布检查以 [发布门槛](docs/release-gate.md) 和 [文档状态索引](docs/文档状态索引.md) 为准。
 - 详细差距见 [logicanalyzer 差距深度分析](docs/logicanalyzer-差距深度分析-2026-04-27.md)，下一阶段并行拆分见 [2026-04-28 并行 Worktree 对齐计划](docs/parallel-worktrees-2026-04-28.md)。
 
 ## 🎯 项目愿景
@@ -84,8 +86,6 @@
 
 ## 📋 支持的硬件
 
-| 厂商 | 型号 | 通道数 | 最大频率 | 状态 |
-|------|------|--------|----------|------|
 | 厂商 | 型号 | 通道数 | 最大频率 | 状态 |
 |------|------|--------|----------|------|
 | Pico Logic | Pico / Pico W / Pico 2 系列 | 24 | 依固件能力 | 实验性，待真实硬件认证 |
@@ -168,6 +168,9 @@ npm run lint
 
 # 本地质量门禁
 npm run validate
+
+# 查看 quick/standard/full 分层测试计划
+node scripts/ci-test-runner.js --layer=quick --dry-run
 ```
 
 ### 添加新硬件支持
@@ -191,8 +194,8 @@ npm run validate
 
 - **测试目录**: 当前包含单元、集成、性能、压力和端到端测试目录。
 - **迁移状态**: 测试从旧 `utest` 目录向 `tests` 目录迁移尚未完全收口，仍有测试文件引用 `../../../utest/mocks/simple-mocks`。
-- **当前风险**: 最近一次 `npm run test:unit -- --silent` 超过 3 分钟无输出，需先定位卡住/长耗时测试。
-- **发布门槛**: `npm run typecheck`、核心单元测试、集成测试、构建和发布检查均通过后，才可重新声明覆盖率和发布状态。
+- **当前风险**: 全量 `npm run test:unit` 曾长时间无输出，发布证据应优先使用 `npm run test:ci:quick|standard|full` 分层命令。
+- **发布门槛**: `npm run validate:local`、分层测试、`npm run build:production`、`npm run package:dry` 和 VSIX smoke test 均通过后，才可重新声明覆盖率和发布状态。
 
 ## 📈 版本历史
 

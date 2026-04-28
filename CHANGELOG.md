@@ -6,7 +6,26 @@
 
 ## [未发布]
 
+### 新增
+
+- 建立 `docs/release-gate.md` 质量门禁，统一本地、CI、发布前检查和 VSIX smoke test 门槛。
+- 建立 `docs/文档状态索引.md`，区分当前有效文档、历史分析和已归档材料。
+- `scripts/ci-test-runner.js` 的 dry-run 计划输出 quick/standard/full 测试分组和时间上限。
+
+### 变更
+
+- `npm run test:unit` 不再内置 `--maxWorkers`，避免与调用方追加 `--runInBand` 冲突。
+- `scripts/release-check.ts` 改用当前 `tests` 目录、Quick 分层测试和 `package:dry`。
+- README、RELEASE_NOTES 和测试文档改为 Beta/工程整备口径，不再声明未验证的正式发布能力。
+
+### 已知限制
+
+- 全量 `npm run test:unit` 仍需继续定位长耗时或开放句柄，发布证据应使用分层测试命令。
+- 真实硬件支持状态以 `docs/真实硬件认证矩阵.md` 为准。
+
 ## [1.0.0] - 2024-01-XX
+
+> 历史规划记录，未达到当前发布门槛。当前状态以 `[未发布]`、README、功能状态矩阵和发布门槛为准。
 
 ### 新增 ✨
 - **硬件支持**
@@ -215,8 +234,8 @@
 
 如需帮助或报告问题，请访问：
 
-- 📋 [问题跟踪](https://github.com/your-repo/vscode-logicanalyzer/issues)
-- 💬 [讨论区](https://github.com/your-repo/vscode-logicanalyzer/discussions)
+- 📋 [问题跟踪](https://github.com/pico-logicanalyzer/vscode-logic-analyzer/issues)
+- 💬 [讨论区](https://github.com/pico-logicanalyzer/vscode-logic-analyzer/discussions)
 - 📖 [文档](https://docs.logicanalyzer-vscode.com)
 - 📧 [技术支持](mailto:support@logicanalyzer-vscode.com)
 

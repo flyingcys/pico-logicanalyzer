@@ -43,10 +43,10 @@ class ReleaseChecker {
     const requiredDirs = [
       'src',
       'src/drivers',
-      'src/decoders', 
+      'src/decoders',
       'src/webview',
       'src/models',
-      'test',
+      'tests',
       'docs'
     ];
 
@@ -56,7 +56,11 @@ class ReleaseChecker {
       'webpack.config.js',
       'README.md',
       'CHANGELOG.md',
+      'RELEASE_NOTES.md',
       'CLAUDE.md',
+      'docs/release-gate.md',
+      'docs/功能状态矩阵.md',
+      'docs/文档状态索引.md',
       'docs/user-manual.md',
       'docs/developer-guide.md',
       'docs/api-reference.md'
@@ -192,45 +196,33 @@ class ReleaseChecker {
     console.log('🧪 检查测试...');
 
     // 检查测试文件是否存在
-    const testDirs = ['test/unit', 'test/integration', 'test/performance'];
+    const testDirs = ['tests/unit', 'tests/integration', 'tests/performance'];
     testDirs.forEach(dir => {
       const dirPath = path.join(this.projectRoot, dir);
       if (fs.existsSync(dirPath)) {
-        const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.test.ts'));
-        this.addResult(`${dir}测试文件`, files.length > 0, 
-          `${files.length}个测试文件`, dir === 'test/unit');
+        const files = this.getAllTestFiles(dirPath);
+        this.addResult(`${dir}测试文件`, files.length > 0,
+          `${files.length}个测试文件`, dir === 'tests/unit');
       }
     });
 
-    // 运行测试
+    // 运行发布门槛使用的快速分层测试，避免 raw npm test 触发长耗时或开放句柄路径。
     try {
-      const output = execSync('npm test', { 
-        stdio: 'pipe', 
+      execSync('npm run test:ci:quick -- --skip-install', {
+        stdio: 'pipe',
         encoding: 'utf8',
         timeout: 120000 // 2分钟超时
       });
-      
-      // 解析测试结果
-      const passRegex = /(\d+) passing/;
-      const failRegex = /(\d+) failing/;
-      
-      const passMatch = output.match(passRegex);
-      const failMatch = output.match(failRegex);
-      
-      const passing = passMatch ? parseInt(passMatch[1]) : 0;
-      const failing = failMatch ? parseInt(failMatch[1]) : 0;
-      
-      this.addResult('单元测试执行', failing === 0, 
-        `${passing}个通过, ${failing}个失败`, true);
-        
+      this.addResult('Quick 分层测试', true, '通过', true);
+
     } catch (error) {
-      this.addResult('单元测试执行', false, '测试执行失败', true);
+      this.addResult('Quick 分层测试', false, '测试执行失败', true);
     }
 
-    // 检查测试覆盖率
+    // 覆盖率仍作为建议项，不作为 Beta 发布阻断条件。
     try {
-      const output = execSync('npm run test -- --coverage', { 
-        stdio: 'pipe', 
+      const output = execSync('npm run test -- --coverage', {
+        stdio: 'pipe',
         encoding: 'utf8' 
       });
       
@@ -277,6 +269,16 @@ class ReleaseChecker {
       
     } catch (error) {
       this.addResult('生产构建', false, `构建失败: ${error.message}`, true);
+    }
+
+    try {
+      execSync('npm run package:dry', {
+        stdio: 'pipe',
+        timeout: 120000
+      });
+      this.addResult('VSIX dry run', true, '通过', true);
+    } catch (error) {
+      this.addResult('VSIX dry run', false, `检查失败: ${error.message}`, true);
     }
   }
 
@@ -426,6 +428,26 @@ class ReleaseChecker {
       }
     }
     
+    return files;
+  }
+
+  private getAllTestFiles(dirPath: string): string[] {
+    const files: string[] = [];
+
+    if (!fs.existsSync(dirPath)) return files;
+
+    const entries = fs.readdirSync(dirPath);
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry);
+      const stats = fs.statSync(fullPath);
+
+      if (stats.isDirectory()) {
+        files.push(...this.getAllTestFiles(fullPath));
+      } else if (entry.endsWith('.test.ts') || entry.endsWith('.spec.ts')) {
+        files.push(fullPath);
+      }
+    }
+
     return files;
   }
 

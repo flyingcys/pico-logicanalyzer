@@ -214,7 +214,7 @@
     "test:watchAll": "jest --watchAll",
     "test:coverage": "jest --coverage",
     "test:coverage:open": "jest --coverage && open coverage/lcov-report/index.html",
-    "test:unit": "jest --testPathPattern=unit --maxWorkers=2",
+    "test:unit": "jest --testPathPattern=unit",
     "test:integration": "jest --testPathPattern=integration --runInBand",
     "test:e2e": "jest --testPathPattern=e2e --runInBand --detectOpenHandles",
     "test:performance": "jest --testPathPattern=performance --runInBand --forceExit",

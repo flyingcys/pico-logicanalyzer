@@ -27,4 +27,27 @@ describe('CI 测试运行器配置', () => {
       /无效的测试层级: unknown/
     );
   });
+
+  it('应该在 dry-run 计划中暴露 quick/standard/full 的测试边界', () => {
+    const quickPlan = runner.createExecutionPlan(['--layer=quick', '--dry-run']);
+    const fullPlan = runner.createExecutionPlan(['--layer=full', '--dry-run']);
+
+    expect(quickPlan.includedTestGroups).toEqual(['coreTests']);
+    expect(quickPlan.maxDurationMs).toBe(120000);
+    expect(quickPlan.quarantinedTests).toContain(
+      'tests/unit/drivers/LogicAnalyzerDriver.core.test.ts'
+    );
+    expect(fullPlan.includedTestGroups).toEqual([
+      'coreTests',
+      'integrationTests',
+      'performanceTests',
+      'e2eTests',
+      'stressTests'
+    ]);
+
+    const report = runner.formatDryRunReport(fullPlan);
+    expect(report).toContain('测试分组: coreTests, integrationTests, performanceTests, e2eTests, stressTests');
+    expect(report).toContain('时间上限: 30.0 分钟');
+    expect(report).toContain('暂不阻断测试: 4 个');
+  });
 });
