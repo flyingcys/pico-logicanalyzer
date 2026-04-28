@@ -1640,7 +1640,7 @@ export class DataExportService extends ServiceLifecycleBase {
    */
   private adjustSampleRange(session: CaptureSession, options: ExportOptions): void {
     const { startSample, endSample } = this.getSampleRange(session, options);
-    const totalOriginalSamples = session.preTriggerSamples + session.postTriggerSamples;
+    const totalOriginalSamples = this.getTotalSampleCount(session);
 
     // 如果是全部范围，不需要调整
     if (options.timeRange === 'all' || (startSample === 0 && endSample === totalOriginalSamples)) {
@@ -1670,9 +1670,7 @@ export class DataExportService extends ServiceLifecycleBase {
    * 获取样本范围 - 增强版本，支持更多选择模式
    */
   private getSampleRange(session: CaptureSession, options: ExportOptions): { startSample: number; endSample: number } {
-    const totalSamples = session.preTriggerSamples + session.postTriggerSamples;
-    const maxSamples = Math.max(totalSamples, session.captureChannels.reduce((max, ch) =>
-      Math.max(max, ch.samples?.length || 0), 0));
+    const maxSamples = this.getTotalSampleCount(session);
 
     switch (options.timeRange) {
       case 'custom':
@@ -1732,7 +1730,7 @@ export class DataExportService extends ServiceLifecycleBase {
   ): ExportMetadata {
     const { startSample, endSample } = this.getSampleRange(session, options);
     const exportedSamples = endSample - startSample;
-    const totalSamples = session.preTriggerSamples + session.postTriggerSamples;
+    const totalSamples = this.getTotalSampleCount(session);
     const selectedChannels = options.selectedChannels || this.getAllChannelIndices(session);
 
     return {
@@ -2053,6 +2051,27 @@ Generated with VSCode Logic Analyzer Extension
     return session.captureChannels.map(ch => ch.channelNumber).filter(n => n !== undefined);
   }
 
+  private getTotalSampleCount(session: CaptureSession): number {
+    const sampleCounts = (session.captureChannels || [])
+      .map(channel => channel.samples?.length || 0)
+      .filter(sampleCount => sampleCount > 0);
+
+    if (sampleCounts.length > 0) {
+      return Math.max(...sampleCounts);
+    }
+
+    const preTriggerSamples = Math.max(0, session.preTriggerSamples || 0);
+    const postTriggerSamples = Math.max(0, session.postTriggerSamples || 0);
+    const loopCount = Math.max(0, session.loopCount || 0);
+    const settingsTotal = preTriggerSamples + postTriggerSamples * (loopCount + 1);
+
+    if (settingsTotal > 0) {
+      return settingsTotal;
+    }
+
+    return Math.max(0, this.uiStateManager.getTotalSamples());
+  }
+
   private getSampleValue(channel: AnalyzerChannel | undefined, sampleIndex: number): number {
     if (!channel?.samples || sampleIndex < 0 || sampleIndex >= channel.samples.length) {
       return 0;
@@ -2093,7 +2112,7 @@ Generated with VSCode Logic Analyzer Extension
 
       if (conversionResult.success && conversionResult.data?.session) {
         const { session } = conversionResult.data;
-        const totalSamples = session.preTriggerSamples + session.postTriggerSamples;
+        const totalSamples = this.getTotalSampleCount(session);
         const channels = session.captureChannels?.length || 1;
 
         estimatedSize = this.estimateFileSize(totalSamples, channels, format);
@@ -2131,8 +2150,8 @@ Generated with VSCode Logic Analyzer Extension
 
     // 验证通道选择
     if (options.selectedChannels && options.selectedChannels.length > 0) {
-      const maxChannel = session.captureChannels?.length || 0;
-      const invalidChannels = options.selectedChannels.filter(ch => ch < 0 || ch >= maxChannel);
+      const availableChannels = new Set((session.captureChannels || []).map(ch => ch.channelNumber));
+      const invalidChannels = options.selectedChannels.filter(ch => !availableChannels.has(ch));
       if (invalidChannels.length > 0) {
         return `通道选择无效：通道 ${invalidChannels.join(', ')} 不存在`;
       }
