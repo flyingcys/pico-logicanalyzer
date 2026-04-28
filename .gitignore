@@ -25,6 +25,7 @@ yarn-error.log*
 coverage/
 .nyc_output
 *.lcov
+ci-test-report.json
 
 # 运行时数据
 pids

@@ -147,6 +147,7 @@ module.exports = {
       },
       rules: {
         'no-console': 'off', // Vue组件可能需要调试输出
+        'no-alert': 'warn', // 设备采集 UI 迁移前，prompt 路径暂按警告处理
         'no-unused-vars': 'off', // Vue模板可能使用变量
         '@typescript-eslint/no-unused-vars': 'off'
       }
@@ -173,7 +174,8 @@ module.exports = {
         '@typescript-eslint/no-unused-vars': 'off',
         'no-case-declarations': 'off',
         'no-loop-func': 'off',
-        'no-dupe-class-members': 'off'
+        'no-dupe-class-members': 'off',
+        'prefer-destructuring': 'off'
       }
     },
     

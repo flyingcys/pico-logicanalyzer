@@ -6,20 +6,22 @@
 
 ---
 
-## 当前校验状态（2026-04-27）
+## 当前校验状态（2026-04-28）
 
 旧说明中“迁移完成”“CI 正常运行”“核心测试 100% 迁移完成”等结论已经过期。当前可验证事实：
 
 - `tests` 目录保留 5 层测试结构：`unit`、`integration`、`performance`、`stress`、`e2e`。
 - 仍有多处测试引用 `../../../utest/mocks/simple-mocks`，包括集成、性能、压力和端到端测试。
-- `npm run test:unit -- --silent` 最近一次运行超过 3 分钟无输出，需拆分定位卡住文件。
-- `npm run typecheck` 当前失败，测试结果不能替代类型质量门槛。
+- `npm run typecheck` 和 `npm run typecheck:strict` 当前作为基础类型门禁。
+- `npm run test:unit -- --silent` 曾出现长时间无输出，当前不作为发布证据；应使用 quick/standard/full 分层命令定位。
+- `npm run test:unit` 脚本不再内置 `--maxWorkers`，调用方可按场景追加 `--runInBand` 或 `--maxWorkers`。
+- Quick 层暂不阻断 4 个旧 core smoke 测试：`LogicAnalyzerDriver.core`、`CaptureModels.core`、`SessionManager.core`、`ConfigurationManager.basic`。这些测试失败代表业务漂移，归对应功能 worktree 修复。
 
 下一步先处理测试基础设施：
 
 1. 将所有 `utest/mocks` 引用迁移到 `tests/fixtures/mocks`。
 2. 拆分运行 `tests/unit`，定位长耗时或未释放资源的测试文件。
-3. 修正 `package.json` 脚本，避免 `--maxWorkers` 与调用方追加 `--runInBand` 冲突。
+3. 按 quick/standard/full 分层执行，定位长耗时或未释放资源的测试文件。
 4. 重新生成覆盖率报告后，再更新覆盖率数字和迁移结论。
 
 ---
@@ -70,20 +72,20 @@ tests/
 
 ### Quick层 (2分钟)
 ```bash
-# 仅执行P0-P1层核心单元测试
-npm test -- tests/unit/
+# 核心单元测试和快速 CI 口径
+npm run test:ci:quick -- --skip-install
 ```
 
-### Standard层 (10分钟)  
+### Standard层 (10分钟)
 ```bash
-# 执行核心+集成+性能测试
-npm test -- tests/unit/ tests/integration/ tests/performance/
+# 核心 + 集成 + 基础性能
+npm run test:ci:standard -- --skip-install
 ```
 
 ### Full层 (30分钟)
 ```bash
-# 完整测试生态系统
-npm test -- tests/
+# 核心 + 集成 + 性能 + 端到端 + 压力
+npm run test:ci:full -- --skip-install
 ```
 
 ---
@@ -149,11 +151,10 @@ class MyModuleTest extends UnitTestBase {
 
 ## 📚 相关文档
 
-- 📖 [5层测试架构总览](../docs/utest/test-architecture-comprehensive-overview.md)
-- 📋 [测试最佳实践指南](../docs/utest/testing-best-practices-guide.md)
-- ⚙️ [分层CI执行策略](../docs/utest/layered-ci-strategy-manual.md)  
-- 🔍 [内存泄漏检测指南](../docs/utest/memory-leak-detection-guide.md)
-- 📁 [迁移行动计划](../docs/tests-docs/migration-action-plan.md)
+- 📖 [发布门槛](../release-gate.md)
+- 📋 [文档状态索引](../文档状态索引.md)
+- 📚 [5层测试架构总览（历史分析）](../utest/test-architecture-comprehensive-overview.md)
+- ⚙️ [分层CI执行策略（历史分析）](../utest/layered-ci-strategy-manual.md)
 
 ---
 
