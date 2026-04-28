@@ -580,7 +580,7 @@ export class SPIDecoder extends DecoderBase {
   /**
    * 重置解码器状态
    */
-  protected reset(): void {
+  protected override reset(): void {
     super.reset();
     this.bitCount = 0;
     this.misoData = 0;

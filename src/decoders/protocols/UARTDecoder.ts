@@ -422,7 +422,12 @@ export class UARTDecoder extends DecoderBase {
       return null;
     }
 
-    const endOfFrame = this.idleStart[rxtx] + this.frameLenSampleCount;
+    const idleStart = this.idleStart[rxtx];
+    if (idleStart === null) {
+      return null;
+    }
+
+    const endOfFrame = idleStart + this.frameLenSampleCount;
     if (endOfFrame < this.sampleIndex) {
       return null;
     }
@@ -451,7 +456,12 @@ export class UARTDecoder extends DecoderBase {
       return;
     }
 
-    const diff = this.sampleIndex - this.breakStart[rxtx];
+    const breakStart = this.breakStart[rxtx];
+    if (breakStart === null) {
+      return;
+    }
+
+    const diff = this.sampleIndex - breakStart;
     if (diff >= this.breakMinSampleCount) {
       const ss = this.frameStart[rxtx];
       const es = this.sampleIndex;
@@ -480,12 +490,17 @@ export class UARTDecoder extends DecoderBase {
       this.idleStart[rxtx] = this.sampleIndex;
     }
 
-    const diff = this.sampleIndex - this.idleStart[rxtx];
+    const idleStart = this.idleStart[rxtx];
+    if (idleStart === null) {
+      return;
+    }
+
+    const diff = this.sampleIndex - idleStart;
     if (diff < this.frameLenSampleCount) {
       return;
     }
 
-    const ss = this.idleStart[rxtx];
+    const ss = idleStart;
     const es = this.sampleIndex;
     this.handleIdle(rxtx, ss, es);
     this.idleStart[rxtx] = es;
@@ -799,35 +814,42 @@ export class UARTDecoder extends DecoderBase {
         return;
 
       case 'GET DATA BITS':
-        this.state[rxtx] = 'GET PARITY BIT';
         if (this.parity !== 'none') {
+          this.state[rxtx] = 'GET PARITY BIT';
           return;
         }
-        // FALLTHROUGH - 没有校验位时直接进入停止位
+        this.state[rxtx] = 'GET STOP BITS';
+        if (this.stopBitsCount > 0) {
+          return;
+        }
+        return this.completeFrame(rxtx, frameEnd);
 
       case 'GET PARITY BIT':
         this.state[rxtx] = 'GET STOP BITS';
         if (this.stopBitsCount > 0) {
           return;
         }
-        // FALLTHROUGH - 没有停止位时直接进入帧处理
+        return this.completeFrame(rxtx, frameEnd);
 
       case 'GET STOP BITS':
-        // 后处理之前接收的UART帧。将读取位置推进到帧最后一位时间之后。
-        // 这样下一个START位的开始就不会落在之前接收的UART帧的末尾。
-        // 这提高了在有故障输入数据时的鲁棒性。
-        const ss = this.frameStart[rxtx];
-        const es = this.sampleIndex + Math.ceil(this.bitWidth / 2);
-        this.handleFrame(rxtx, ss, es);
-        this.state[rxtx] = 'WAIT FOR START BIT';
-        this.idleStart[rxtx] = frameEnd;
-        return;
+        return this.completeFrame(rxtx, frameEnd);
 
       default:
         // 未处理的状态，实际上是编程错误
         this.state[rxtx] = 'WAIT FOR START BIT';
         return;
     }
+  }
+
+  private completeFrame(rxtx: number, frameEnd: number): void {
+    // 后处理之前接收的UART帧。将读取位置推进到帧最后一位时间之后。
+    // 这样下一个START位的开始就不会落在之前接收的UART帧的末尾。
+    // 这提高了在有故障输入数据时的鲁棒性。
+    const ss = this.frameStart[rxtx];
+    const es = this.sampleIndex + Math.ceil(this.bitWidth / 2);
+    this.handleFrame(rxtx, ss, es);
+    this.state[rxtx] = 'WAIT FOR START BIT';
+    this.idleStart[rxtx] = frameEnd;
   }
 
   /**
@@ -880,7 +902,7 @@ export class UARTDecoder extends DecoderBase {
   /**
    * 重置解码器状态
    */
-  protected reset(): void {
+  protected override reset(): void {
     super.reset();
     this.frameStart = [-1, -1];
     this.frameValid = [true, true];

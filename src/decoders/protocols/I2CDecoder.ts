@@ -456,7 +456,7 @@ export class I2CDecoder extends DecoderBase {
   /**
    * 重置解码器状态
    */
-  protected reset(): void {
+  protected override reset(): void {
     super.reset();
     this.state = I2CDecoderState.IDLE;
     this.isWrite = null;

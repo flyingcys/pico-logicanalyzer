@@ -10,6 +10,7 @@ import type {
   DecoderOptionValue,
   DecoderSelectedChannel
 } from './types';
+import { getPerformanceMemory } from './performanceMemory';
 
 /**
  * 流式处理配置
@@ -188,10 +189,11 @@ export abstract class StreamingDecoderBase {
           }
 
           // 内存使用监控
-          if (performance.memory) {
+          const memory = getPerformanceMemory();
+          if (memory) {
             statistics.peakMemoryUsage = Math.max(
               statistics.peakMemoryUsage,
-              performance.memory.usedJSHeapSize
+              memory.usedJSHeapSize
             );
           }
 
@@ -413,7 +415,7 @@ export class PerformanceMonitor {
    */
   addCheckpoint(name: string): void {
     const time = performance.now() - this.startTime;
-    const memory = performance.memory?.usedJSHeapSize;
+    const memory = getPerformanceMemory()?.usedJSHeapSize;
 
     this.checkpoints.push({ name, time, memory });
   }
@@ -440,7 +442,8 @@ export class PerformanceMonitor {
     }));
 
     let memoryUsage;
-    if (performance.memory) {
+    const memory = getPerformanceMemory();
+    if (memory) {
       const memoryValues = this.checkpoints
         .map(cp => cp.memory)
         .filter(m => m !== undefined) as number[];
@@ -448,7 +451,7 @@ export class PerformanceMonitor {
       if (memoryValues.length > 0) {
         memoryUsage = {
           peak: Math.max(...memoryValues),
-          current: performance.memory.usedJSHeapSize,
+          current: memory.usedJSHeapSize,
           growth: memoryValues[memoryValues.length - 1] - memoryValues[0]
         };
       }
