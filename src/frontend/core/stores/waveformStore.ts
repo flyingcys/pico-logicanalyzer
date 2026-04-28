@@ -44,6 +44,13 @@ export interface SerializedWaveformInteractions {
   markers: WaveformMarker[];
 }
 
+export interface LacSelectedRegion {
+  firstSample: number;
+  lastSample: number;
+  regionName: string;
+  color: string;
+}
+
 interface LoadCaptureContextOptions {
   sampleRate: number;
   channels: AnalyzerChannel[];
@@ -54,11 +61,19 @@ interface LoadCaptureContextOptions {
 
 type PasteMode = 'insert' | 'overwrite';
 
+interface WaveformEditSnapshot {
+  channels: AnalyzerChannel[];
+  totalSamples: number;
+  selection: WaveformSelection | null;
+}
+
 const MARKER_COLORS: Record<WaveformMarkerType, string> = {
   user: '#00ffff',
   trigger: '#ffffff',
   burst: '#f0ffff'
 };
+
+const MAX_EDIT_HISTORY = 50;
 
 function cloneChannel(channel: AnalyzerChannel): AnalyzerChannel {
   const cloned = channel.clone
@@ -117,6 +132,10 @@ function calculateTotalSamples(channels: AnalyzerChannel[], fallback = 0): numbe
     (maxSamples, channel) => Math.max(maxSamples, channel.samples?.length ?? 0),
     fallback
   );
+}
+
+function cloneChannels(channels: AnalyzerChannel[]): AnalyzerChannel[] {
+  return channels.map(cloneChannel);
 }
 
 function calculateFrequency(
@@ -206,6 +225,8 @@ export const useWaveformStore = defineStore('frontend-waveform', {
     markers: [] as WaveformMarker[],
     regions: [] as WaveformRegion[],
     clipboard: null as Uint8Array[] | null,
+    undoStack: [] as WaveformEditSnapshot[],
+    redoStack: [] as WaveformEditSnapshot[],
     lastMeasurement: null as WaveformMeasurement | null
   }),
   actions: {
@@ -215,6 +236,8 @@ export const useWaveformStore = defineStore('frontend-waveform', {
       this.totalSamples = calculateTotalSamples(this.channels, options.totalSamples ?? 0);
       this.selection = null;
       this.clipboard = null;
+      this.undoStack = [];
+      this.redoStack = [];
       this.lastMeasurement = null;
       this.markers = [];
       this.regions = [];
@@ -411,6 +434,60 @@ export const useWaveformStore = defineStore('frontend-waveform', {
       this.markers = (payload.markers || []).map(marker => ({ ...marker }));
     },
 
+    exportSelectedRegionsForLac(): LacSelectedRegion[] {
+      return this.regions.map(region => ({
+        firstSample: region.startSample,
+        lastSample: region.endSample,
+        regionName: region.name,
+        color: region.color
+      }));
+    },
+
+    captureEditSnapshot(): WaveformEditSnapshot {
+      return {
+        channels: cloneChannels(this.channels),
+        totalSamples: this.totalSamples,
+        selection: this.selection ? { ...this.selection } : null
+      };
+    },
+
+    restoreEditSnapshot(snapshot: WaveformEditSnapshot) {
+      this.channels = cloneChannels(snapshot.channels);
+      this.totalSamples = snapshot.totalSamples;
+      this.selection = snapshot.selection ? { ...snapshot.selection } : null;
+      this.setViewRange(this.viewRange.firstSample, this.viewRange.visibleSamples);
+    },
+
+    pushUndoSnapshot() {
+      this.undoStack.push(this.captureEditSnapshot());
+      if (this.undoStack.length > MAX_EDIT_HISTORY) {
+        this.undoStack.shift();
+      }
+      this.redoStack = [];
+    },
+
+    undoLastEdit(): boolean {
+      const previous = this.undoStack.pop();
+      if (!previous) {
+        return false;
+      }
+
+      this.redoStack.push(this.captureEditSnapshot());
+      this.restoreEditSnapshot(previous);
+      return true;
+    },
+
+    redoLastEdit(): boolean {
+      const next = this.redoStack.pop();
+      if (!next) {
+        return false;
+      }
+
+      this.undoStack.push(this.captureEditSnapshot());
+      this.restoreEditSnapshot(next);
+      return true;
+    },
+
     measureSelection(channelIndex?: number): WaveformMeasurement | null {
       if (!this.selection) {
         return null;
@@ -487,6 +564,7 @@ export const useWaveformStore = defineStore('frontend-waveform', {
         Math.max(1, this.totalSamples)
       );
       const deleteCount = range.sampleCount;
+      this.pushUndoSnapshot();
       this.channels = this.channels.map(channel => {
         const cloned = cloneChannel(channel);
         cloned.samples = spliceSamples(
@@ -505,10 +583,15 @@ export const useWaveformStore = defineStore('frontend-waveform', {
 
     insertSamples(sampleIndex: number, sampleCount: number, fillValue = 0) {
       const safeCount = Math.max(0, Math.floor(sampleCount) || 0);
+      if (safeCount === 0) {
+        return;
+      }
+
       const insertAt = Math.max(0, Math.min(Math.floor(sampleIndex) || 0, this.totalSamples));
       const fillSamples = new Uint8Array(safeCount);
       fillSamples.fill(fillValue ? 1 : 0);
 
+      this.pushUndoSnapshot();
       this.channels = this.channels.map(channel => {
         const cloned = cloneChannel(channel);
         cloned.samples = spliceSamples(
@@ -530,6 +613,11 @@ export const useWaveformStore = defineStore('frontend-waveform', {
 
       const pasteAt = Math.max(0, Math.min(Math.floor(sampleIndex) || 0, this.totalSamples));
       const pasteLength = this.clipboard[0]?.length ?? 0;
+      if (pasteLength === 0) {
+        return false;
+      }
+
+      this.pushUndoSnapshot();
       this.channels = this.channels.map((channel, index) => {
         const cloned = cloneChannel(channel);
         const samples = cloned.samples || new Uint8Array();
@@ -569,6 +657,7 @@ export const useWaveformStore = defineStore('frontend-waveform', {
       const shifted = new Uint8Array(segment.length);
       shifted.fill(fillValue ? 1 : 0);
 
+      this.pushUndoSnapshot();
       for (let index = 0; index < segment.length; index++) {
         const target = index + offsetSamples;
         if (target >= 0 && target < shifted.length) {
