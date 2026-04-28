@@ -5,6 +5,7 @@ import * as VueServerRenderer from '@vue/server-renderer';
 (global as any).Vue = Vue;
 (global as any).VueCompilerDOM = VueCompilerDOM;
 (global as any).VueServerRenderer = VueServerRenderer;
+(global as any).__WEBVIEW_JEST__ = true;
 
 if (!global.localStorage) {
   global.localStorage = {

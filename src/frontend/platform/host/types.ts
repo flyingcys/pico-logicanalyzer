@@ -14,6 +14,7 @@ export type HostCommandName =
   | 'getCachedDevices'
   | 'getStatus'
   | 'repeatCapture'
+  | 'runDecoder'
   | 'runNetworkDiagnostics'
   | 'saveFile'
   | 'scanForDevices'

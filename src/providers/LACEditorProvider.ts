@@ -5,6 +5,13 @@ import { hardwareDriverManager } from '../drivers/HardwareDriverManager';
 import { CaptureError, TriggerType } from '../models/AnalyzerTypes';
 import { AnalyzerChannel, CaptureSession } from '../models/CaptureModels';
 import { LACFileFormat } from '../models/LACFileFormat';
+import { DecoderManager, type DecoderExecutionResult } from '../decoders/DecoderManager';
+import type {
+  ChannelData,
+  DecoderOptionValue,
+  DecoderResult,
+  DecoderSelectedChannel
+} from '../decoders/types';
 import { DataExportService, type ExportOptions } from '../services/DataExportService';
 import { NetworkStabilityService, type DiagnosticResult } from '../services/NetworkStabilityService';
 import { WiFiDeviceDiscovery, type WiFiDeviceInfo } from '../services/WiFiDeviceDiscovery';
@@ -40,6 +47,26 @@ interface HostCaptureConfig {
   loopCount?: number;
   measureBursts?: boolean;
   channels: HostCaptureChannelConfig[];
+}
+
+interface HostRunDecoderRequest {
+  decoderId?: string;
+  channelMapping?: unknown;
+  options?: unknown;
+}
+
+interface HostRunDecoderResponse {
+  decoderId: string;
+  decoderName: string;
+  success: boolean;
+  executionTime: number;
+  results: DecoderResult[];
+  error?: string;
+  performanceStats?: {
+    totalSamples: number;
+    processingSpeed: number;
+    memoryUsage?: number;
+  };
 }
 
 export function createConnectedDeviceInfo({
@@ -563,6 +590,9 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
         case 'runNetworkDiagnostics':
           return this.runNetworkDiagnostics(payload);
 
+        case 'runDecoder':
+          return await this.runDecoderForDocument(document, payload);
+
         case 'connectDevice':
           return this.connectDeviceFromPayload(payload);
 
@@ -613,6 +643,224 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
         error: error instanceof Error ? error.message : String(error)
       };
     }
+  }
+
+  private async runDecoderForDocument(
+    document: vscode.TextDocument,
+    payload: unknown
+  ): Promise<HostCommandResult<HostRunDecoderResponse>> {
+    const request = this.readRunDecoderRequest(payload);
+    const decoderId = request.decoderId || 'i2c';
+    const manager = new DecoderManager();
+    const decoder = manager.getDecoder(decoderId);
+
+    if (!decoder) {
+      return {
+        success: true,
+        data: {
+          decoderId,
+          decoderName: decoderId,
+          success: false,
+          executionTime: 0,
+          results: [],
+          error: `Decoder not found: ${decoderId}`
+        }
+      };
+    }
+
+    const exportedCapture = this.parseLACFile(document.getText());
+    const session = LACFileFormat.convertToCaptureSession(exportedCapture);
+    const sampleRate = this.resolveSessionSampleRate(session);
+
+    if (sampleRate <= 0) {
+      throw new Error('采样率无效，无法执行协议解码');
+    }
+
+    const channels = this.toDecoderChannels(session.captureChannels);
+    if (channels.length === 0) {
+      throw new Error('当前文件没有可解码样本');
+    }
+
+    const channelMapping = this.normalizeDecoderChannelMapping(request.channelMapping);
+    const options = this.normalizeDecoderOptions(request.options);
+
+    if (decoderId === 'i2c') {
+      this.validateI2CDecoderInput(channels, channelMapping);
+    }
+
+    const result = await manager.executeDecoder(
+      decoderId,
+      sampleRate,
+      channels,
+      options,
+      channelMapping
+    );
+
+    return {
+      success: true,
+      data: this.toHostRunDecoderResponse(decoderId, result)
+    };
+  }
+
+  private readRunDecoderRequest(payload: unknown): HostRunDecoderRequest {
+    if (!this.isRecord(payload)) {
+      return {};
+    }
+
+    return {
+      decoderId: this.readString(payload, 'decoderId'),
+      channelMapping: payload.channelMapping,
+      options: payload.options
+    };
+  }
+
+  private resolveSessionSampleRate(session: CaptureSession): number {
+    const sampleRate = session.frequency || this.readNumber(session, 'sampleRate') || 0;
+    return Number.isFinite(sampleRate) ? sampleRate : 0;
+  }
+
+  private toDecoderChannels(captureChannels: AnalyzerChannel[]): ChannelData[] {
+    return captureChannels
+      .filter(channel => channel.samples instanceof Uint8Array && channel.samples.length > 0)
+      .map(channel => ({
+        channelNumber: channel.channelNumber,
+        channelName: channel.channelName || channel.textualChannelNumber,
+        samples: new Uint8Array(channel.samples),
+        hidden: channel.hidden
+      }));
+  }
+
+  private normalizeDecoderChannelMapping(value: unknown): DecoderSelectedChannel[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .filter((item): item is Record<string, unknown> => this.isRecord(item))
+      .map(item => ({
+        captureIndex: this.readNumber(item, 'captureIndex') ?? -1,
+        decoderIndex: this.readNumber(item, 'decoderIndex') ?? -1,
+        name: this.readString(item, 'name')
+      }))
+      .filter(item =>
+        Number.isInteger(item.captureIndex) &&
+        item.captureIndex >= 0 &&
+        Number.isInteger(item.decoderIndex) &&
+        item.decoderIndex >= 0
+      );
+  }
+
+  private normalizeDecoderOptions(value: unknown): DecoderOptionValue[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .filter((item): item is Record<string, unknown> => this.isRecord(item))
+      .map(item => ({
+        optionIndex: this.readNumber(item, 'optionIndex') ?? -1,
+        value: item.value
+      }))
+      .filter(item => Number.isInteger(item.optionIndex) && item.optionIndex >= 0);
+  }
+
+  private validateI2CDecoderInput(
+    channels: ChannelData[],
+    channelMapping: DecoderSelectedChannel[]
+  ): void {
+    const sclMapping = channelMapping.find(mapping => mapping.decoderIndex === 0);
+    const sdaMapping = channelMapping.find(mapping => mapping.decoderIndex === 1);
+
+    if (!sclMapping || !sdaMapping) {
+      throw new Error('I2C 解码需要 SCL 和 SDA 两个通道');
+    }
+
+    const sclChannel = channels[sclMapping.captureIndex];
+    const sdaChannel = channels[sdaMapping.captureIndex];
+    if (!sclChannel || !sdaChannel) {
+      throw new Error('I2C 解码需要 SCL 和 SDA 两个通道');
+    }
+
+    if (sclMapping.captureIndex === sdaMapping.captureIndex) {
+      throw new Error('SCL 和 SDA 不能映射到同一采集通道');
+    }
+  }
+
+  private toHostRunDecoderResponse(
+    decoderId: string,
+    result: DecoderExecutionResult
+  ): HostRunDecoderResponse {
+    return {
+      decoderId,
+      decoderName: result.decoderName,
+      success: result.success,
+      executionTime: result.executionTime,
+      results: result.results.map(item => ({
+        startSample: item.startSample,
+        endSample: item.endSample,
+        annotationType: item.annotationType,
+        values: Array.isArray(item.values) ? item.values.map(String) : [],
+        rawData: this.toJsonSafeValue(item.rawData),
+        shape: item.shape
+      })),
+      error: result.error,
+      performanceStats: result.performanceStats
+        ? {
+          totalSamples: result.performanceStats.totalSamples,
+          processingSpeed: result.performanceStats.processingSpeed,
+          memoryUsage: result.performanceStats.memoryUsage
+        }
+        : undefined
+    };
+  }
+
+  private toJsonSafeValue(value: unknown, seen = new WeakSet<object>()): any {
+    if (
+      value === null ||
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
+    ) {
+      return value;
+    }
+
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (typeof value === 'bigint') {
+      return value.toString();
+    }
+
+    if (value instanceof Uint8Array) {
+      return Array.from(value);
+    }
+
+    if (Array.isArray(value)) {
+      return value.map(item => this.toJsonSafeValue(item, seen));
+    }
+
+    if (typeof value === 'object') {
+      if (seen.has(value)) {
+        return null;
+      }
+      seen.add(value);
+
+      if (value instanceof Date) {
+        return value.toISOString();
+      }
+
+      const output: Record<string, unknown> = {};
+      for (const [key, child] of Object.entries(value)) {
+        const safeChild = this.toJsonSafeValue(child, seen);
+        if (safeChild !== undefined) {
+          output[key] = safeChild;
+        }
+      }
+      return output;
+    }
+
+    return String(value);
   }
 
   private async connectToNetworkDevice(payload: unknown): Promise<HostCommandResult> {

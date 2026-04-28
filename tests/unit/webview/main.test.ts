@@ -719,6 +719,206 @@ describe('deviceStore 采集工作流状态', () => {
   });
 });
 
+describe('decoderStore I2C 解码状态', () => {
+  beforeEach(() => {
+    const actualPinia = jest.requireActual('pinia');
+    actualPinia.setActivePinia(actualPinia.createPinia());
+  });
+
+  it('decoderStore 应根据当前通道初始化 I2C 映射', () => {
+    const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
+    const store = useDecoderStore();
+
+    store.initializeI2CMapping([
+      { channelNumber: 0, channelName: 'SCL', hidden: false },
+      { channelNumber: 1, channelName: 'SDA', hidden: false }
+    ]);
+
+    expect(store.i2cMapping).toEqual({
+      sclCaptureIndex: 0,
+      sdaCaptureIndex: 1
+    });
+    expect(store.channelConflicts).toEqual([]);
+  });
+
+  it('decoderStore 应阻止 SCL 和 SDA 同通道', () => {
+    const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
+    const store = useDecoderStore();
+
+    store.initializeI2CMapping([
+      { channelNumber: 0, channelName: 'D0', hidden: false },
+      { channelNumber: 1, channelName: 'D1', hidden: false }
+    ]);
+    store.setI2CMapping('sda', 0);
+
+    expect(store.channelConflicts).toContain('SCL 和 SDA 不能映射到同一采集通道');
+  });
+
+  it('runI2CDecoder 成功时应保存结果', async () => {
+    const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
+    const store = useDecoderStore();
+    store.initializeI2CMapping([
+      { channelNumber: 0, channelName: 'SCL', hidden: false },
+      { channelNumber: 1, channelName: 'SDA', hidden: false }
+    ]);
+    const host = {
+      sendCommand: jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          decoderId: 'i2c',
+          decoderName: 'I2C',
+          success: true,
+          executionTime: 3,
+          results: [
+            { startSample: 1, endSample: 2, annotationType: 0, values: ['START'] },
+            { startSample: 3, endSample: 4, annotationType: 1, values: ['ACK'] }
+          ]
+        }
+      })
+    };
+    const sessionStore = {
+      hasData: true,
+      sampleRate: 1000000,
+      channels: [
+        { channelNumber: 0, channelName: 'SCL', hidden: false },
+        { channelNumber: 1, channelName: 'SDA', hidden: false }
+      ]
+    };
+
+    await store.runI2CDecoder(host, sessionStore);
+
+    expect(host.sendCommand).toHaveBeenCalledWith('runDecoder', {
+      decoderId: 'i2c',
+      channelMapping: [
+        { captureIndex: 0, decoderIndex: 0, name: 'SCL' },
+        { captureIndex: 1, decoderIndex: 1, name: 'SDA' }
+      ],
+      options: []
+    });
+    expect(store.decoderResults).toHaveLength(2);
+    expect(store.lastExecutionTime).toBe(3);
+    expect(store.decoderErrors).toEqual([]);
+  });
+
+  it('runI2CDecoder 失败时应保存错误', async () => {
+    const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
+    const store = useDecoderStore();
+    store.initializeI2CMapping([
+      { channelNumber: 0, channelName: 'SCL', hidden: false },
+      { channelNumber: 1, channelName: 'SDA', hidden: false }
+    ]);
+    const host = {
+      sendCommand: jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          decoderId: 'i2c',
+          decoderName: 'I2C',
+          success: false,
+          executionTime: 1,
+          results: [],
+          error: '采样率无效，无法执行协议解码'
+        }
+      })
+    };
+
+    await store.runI2CDecoder(host, {
+      hasData: true,
+      sampleRate: 0,
+      channels: [
+        { channelNumber: 0, channelName: 'SCL', hidden: false },
+        { channelNumber: 1, channelName: 'SDA', hidden: false }
+      ]
+    });
+
+    expect(store.decoderResults).toEqual([]);
+    expect(store.decoderErrors[0]).toBe('采样率无效，无法执行协议解码');
+    expect(store.lastExecutionTime).toBe(1);
+  });
+});
+
+describe('AppSidebarRight 协议解码面板', () => {
+  it('AppSidebarRight 应显示 I2C 运行按钮和结果内容', async () => {
+    if (!(globalThis as typeof globalThis & { __WEBVIEW_JEST__?: boolean }).__WEBVIEW_JEST__) {
+      return;
+    }
+
+    await jest.isolateModulesAsync(async () => {
+      jest.unmock('vue');
+      jest.unmock('pinia');
+      jest.unmock('../../../src/frontend/app/components/AppSidebarRight.vue');
+
+      const { createApp, nextTick } = await import('vue');
+      const { createPinia } = await import('pinia');
+      const { useSessionStore } = await import('../../../src/frontend/core/stores/sessionStore');
+      const AppSidebarRight = (await import('../../../src/frontend/app/components/AppSidebarRight.vue')).default;
+      const host = {
+        sendCommand: jest.fn().mockResolvedValue({
+          success: true,
+          data: {
+            decoderId: 'i2c',
+            decoderName: 'I2C',
+            success: true,
+            executionTime: 4,
+            results: [
+              { startSample: 1, endSample: 2, annotationType: 0, values: ['START'] },
+              { startSample: 3, endSample: 4, annotationType: 1, values: ['ACK'] },
+              { startSample: 5, endSample: 6, annotationType: 2, values: ['STOP'] }
+            ]
+          }
+        })
+      };
+      const mountPoint = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+      document.body.appendChild(mountPoint);
+
+      const app = createApp(AppSidebarRight);
+      app.use(createPinia());
+      app.provide('host', host);
+      app.mount(mountPoint);
+
+      const sessionStore = useSessionStore();
+      sessionStore.applyDocument({
+        uri: 'file:///tmp/i2c.lac',
+        fileName: 'i2c.lac',
+        content: JSON.stringify({
+          captureSession: {
+            sampleRate: 1000000,
+            totalSamples: 8,
+            captureChannels: [
+              { channelNumber: 0, channelName: 'SCL', samples: [1, 0, 1, 0] },
+              { channelNumber: 1, channelName: 'SDA', samples: [1, 1, 0, 0] }
+            ]
+          }
+        })
+      });
+
+      await nextTick();
+      await Promise.resolve();
+
+      const runButton = Array.from(mountPoint.querySelectorAll('button')).find(button =>
+        button.textContent?.includes('运行 I2C 解码')
+      ) as HTMLButtonElement | undefined;
+
+      expect(runButton).toBeTruthy();
+      expect(runButton?.disabled).toBe(false);
+
+      runButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await nextTick();
+      await Promise.resolve();
+      await nextTick();
+
+      expect(host.sendCommand).toHaveBeenCalledWith('runDecoder', expect.objectContaining({
+        decoderId: 'i2c'
+      }));
+      expect(mountPoint.textContent).toContain('START');
+      expect(mountPoint.textContent).toContain('ACK');
+      expect(mountPoint.textContent).toContain('STOP');
+
+      app.unmount();
+      mountPoint.remove();
+    });
+  });
+});
+
 describe('vscodeHost 实现', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1369,6 +1569,128 @@ describe('LACEditorProvider 契约', () => {
     }));
   };
 
+  const mockVsCodeForProvider = () => {
+    jest.doMock('vscode', () => ({
+      commands: { executeCommand: jest.fn() },
+      window: {
+        registerCustomEditorProvider: jest.fn(),
+        showInformationMessage: jest.fn(),
+        showErrorMessage: jest.fn(),
+        showSaveDialog: jest.fn()
+      },
+      workspace: {
+        applyEdit: jest.fn(),
+        onDidChangeTextDocument: jest.fn(() => ({ dispose: jest.fn() }))
+      },
+      Uri: {
+        joinPath: jest.fn(),
+        file: jest.fn()
+      },
+      Range: jest.fn(),
+      WorkspaceEdit: jest.fn()
+    }), { virtual: true });
+  };
+
+  const createProvider = async () => {
+    mockProviderDependencies();
+    mockVsCodeForProvider();
+
+    const { LACEditorProvider } = await import('../../../src/providers/LACEditorProvider');
+    return new LACEditorProvider({ extensionUri: { fsPath: '/tmp/extension' } } as any);
+  };
+
+  const createLacDocument = (content: unknown) => ({
+    getText: () => JSON.stringify(content),
+    save: jest.fn().mockResolvedValue(true),
+    lineCount: 1,
+    uri: { toString: () => 'file:///tmp/i2c.lac', fsPath: '/tmp/i2c.lac' }
+  });
+
+  const packDigitalSamples = (channels: Uint8Array[]): string[] => {
+    const sampleCount = channels[0]?.length ?? 0;
+    const samples: string[] = [];
+
+    for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+      let packed = BigInt(0);
+
+      channels.forEach((channel, channelIndex) => {
+        if (channel[sampleIndex]) {
+          packed |= BigInt(1) << BigInt(channelIndex);
+        }
+      });
+
+      samples.push(packed.toString(16).padStart(32, '0'));
+    }
+
+    return samples;
+  };
+
+  const generateI2CSequence = (sequence: Array<{ type: string; value?: number }>) => {
+    const scl: number[] = [1, 1, 1, 1];
+    const sda: number[] = [1, 1, 1, 1];
+
+    for (const item of sequence) {
+      switch (item.type) {
+        case 'start':
+          scl.push(1, 1, 1, 1);
+          sda.push(1, 1, 0, 0);
+          break;
+
+        case 'stop':
+          scl.push(1, 1, 1, 1);
+          sda.push(0, 0, 1, 1);
+          break;
+
+        case 'byte':
+          for (let bit = 7; bit >= 0; bit--) {
+            const bitValue = ((item.value ?? 0) >> bit) & 1;
+            scl.push(0, 0, 1, 1);
+            sda.push(bitValue, bitValue, bitValue, bitValue);
+          }
+          break;
+
+        case 'ack':
+          scl.push(0, 0, 1, 1);
+          sda.push(0, 0, 0, 0);
+          break;
+
+        case 'nack':
+          scl.push(0, 0, 1, 1);
+          sda.push(1, 1, 1, 1);
+          break;
+      }
+    }
+
+    return {
+      scl: new Uint8Array(scl),
+      sda: new Uint8Array(sda)
+    };
+  };
+
+  const createI2CLacPayload = (channels: Array<{ ChannelNumber: number; ChannelName: string }>, samples?: string[]) => ({
+    Settings: {
+      Frequency: 1000000,
+      PreTriggerSamples: 0,
+      PostTriggerSamples: samples?.length ?? 0,
+      CaptureChannels: channels.map(channel => ({
+        ...channel,
+        Hidden: false
+      }))
+    },
+    ...(samples ? { Samples: samples } : {})
+  });
+
+  const defaultI2CPayload = {
+    decoderId: 'i2c',
+    channelMapping: [
+      { captureIndex: 0, decoderIndex: 0, name: 'SCL' },
+      { captureIndex: 1, decoderIndex: 1, name: 'SDA' }
+    ],
+    options: [
+      { optionIndex: 0, value: 'shifted' }
+    ]
+  };
+
   it('manifest 缺失时应提示错误并抛出异常', async () => {
     await jest.isolateModulesAsync(async () => {
       const showErrorMessage = jest.fn();
@@ -1756,6 +2078,114 @@ describe('LACEditorProvider 契约', () => {
         error: '采集配置无效'
       });
       expect(startCapture).not.toHaveBeenCalled();
+    });
+  });
+
+  it('executeHostCommand runDecoder 应返回 I2C 解码结果', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const provider = await createProvider();
+      const i2c = generateI2CSequence([
+        { type: 'start' },
+        { type: 'byte', value: 0xA0 },
+        { type: 'ack' },
+        { type: 'byte', value: 0x12 },
+        { type: 'ack' },
+        { type: 'stop' }
+      ]);
+      const document = createLacDocument(createI2CLacPayload(
+        [
+          { ChannelNumber: 0, ChannelName: 'CH0' },
+          { ChannelNumber: 1, ChannelName: 'CH1' }
+        ],
+        packDigitalSamples([i2c.scl, i2c.sda])
+      ));
+
+      const result = await (provider as any).executeHostCommand(
+        document,
+        'runDecoder',
+        defaultI2CPayload
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        decoderId: 'i2c',
+        success: true,
+        results: expect.any(Array)
+      });
+      expect(result.data.results.length).toBeGreaterThan(0);
+      expect(result.data.results.some((item: any) =>
+        item.values.includes('START') || item.values.includes('ACK')
+      )).toBe(true);
+    });
+  });
+
+  it('runDecoder 应拒绝 settings-only 文档', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const provider = await createProvider();
+      const document = createLacDocument(createI2CLacPayload([
+        { ChannelNumber: 0, ChannelName: 'CH0' },
+        { ChannelNumber: 1, ChannelName: 'CH1' }
+      ]));
+
+      await expect((provider as any).executeHostCommand(
+        document,
+        'runDecoder',
+        defaultI2CPayload
+      )).resolves.toEqual({
+        success: false,
+        error: '当前文件没有可解码样本'
+      });
+    });
+  });
+
+  it('runDecoder 应拒绝单通道 I2C 映射', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const provider = await createProvider();
+      const samples = packDigitalSamples([new Uint8Array([1, 0, 1, 0])]);
+      const document = createLacDocument(createI2CLacPayload([
+        { ChannelNumber: 0, ChannelName: 'CH0' }
+      ], samples));
+
+      await expect((provider as any).executeHostCommand(
+        document,
+        'runDecoder',
+        defaultI2CPayload
+      )).resolves.toEqual({
+        success: false,
+        error: 'I2C 解码需要 SCL 和 SDA 两个通道'
+      });
+    });
+  });
+
+  it('runDecoder 应拒绝 SCL/SDA 同通道', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const provider = await createProvider();
+      const samples = packDigitalSamples([
+        new Uint8Array([1, 0, 1, 0]),
+        new Uint8Array([1, 1, 0, 0])
+      ]);
+      const document = createLacDocument(createI2CLacPayload(
+        [
+          { ChannelNumber: 0, ChannelName: 'CH0' },
+          { ChannelNumber: 1, ChannelName: 'CH1' }
+        ],
+        samples
+      ));
+
+      await expect((provider as any).executeHostCommand(
+        document,
+        'runDecoder',
+        {
+          ...defaultI2CPayload,
+          channelMapping: [
+            { captureIndex: 0, decoderIndex: 0, name: 'SCL' },
+            { captureIndex: 0, decoderIndex: 1, name: 'SDA' }
+          ]
+        }
+      )).resolves.toEqual({
+        success: false,
+        error: 'SCL 和 SDA 不能映射到同一采集通道'
+      });
     });
   });
 

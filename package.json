@@ -211,6 +211,7 @@
     "pretest": "npm run build && npm run lint",
     "test": "jest",
     "test:webview:unit": "jest --config jest.webview.config.js --runInBand",
+    "test:webview:smoke": "node tests/unit/webview/webview-browser-smoke.js",
     "test:watch": "jest --watch",
     "test:watchAll": "jest --watchAll",
     "test:coverage": "jest --coverage",

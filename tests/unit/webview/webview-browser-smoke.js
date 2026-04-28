@@ -1,8 +1,12 @@
 const { pathToFileURL } = require('url');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { chromium } = require('playwright');
+const { spawn } = require('child_process');
 
-const htmlUrl = pathToFileURL(path.resolve(__dirname, '../../../out/webview/html/index.html')).toString();
+const htmlPath = path.resolve(__dirname, '../../../out/webview/html/index.html');
+const htmlUrl = pathToFileURL(htmlPath).toString();
+const i2cFixturePath = path.resolve(__dirname, '../../fixtures/lac/i2c-ui-smoke.lac.json');
 
 function documentData(fileName, content) {
   return {
@@ -23,6 +27,10 @@ function bootstrap(document) {
       canConnectDevice: false
     }
   };
+}
+
+function fixtureDocument(fileName, fixturePath) {
+  return documentData(fileName, fs.readFileSync(fixturePath, 'utf8'));
 }
 
 const sampleDocument = documentData(
@@ -68,61 +76,314 @@ const scenarios = [
   {
     name: 'samples',
     document: sampleDocument
+  },
+  {
+    name: 'i2c-fixture',
+    document: fixtureDocument('i2c-ui-smoke.lac', i2cFixturePath),
+    decoderSmoke: true
   }
 ];
 
-async function openScenario(browser, scenario) {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.addInitScript(data => {
-    window.__FRONTEND_BOOTSTRAP__ = data;
-  }, bootstrap(scenario.document));
-  await page.goto(htmlUrl, { waitUntil: 'networkidle' });
-  await page.waitForSelector('.app-header', { timeout: 10000 });
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitFor(predicate, timeoutMs, message) {
+  const started = Date.now();
+  let lastError;
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const result = await predicate();
+      if (result) {
+        return result;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    await delay(50);
+  }
+
+  throw new Error(`${message}${lastError ? `: ${lastError.message}` : ''}`);
+}
+
+async function waitForDevToolsPort(userDataDir) {
+  const activePortFile = path.join(userDataDir, 'DevToolsActivePort');
+  return waitFor(() => {
+    if (!fs.existsSync(activePortFile)) {
+      return null;
+    }
+    const [port] = fs.readFileSync(activePortFile, 'utf8').trim().split('\n');
+    return port ? Number(port) : null;
+  }, 10000, 'Chrome DevTools port was not created');
+}
+
+async function terminateChrome(chrome) {
+  if (chrome.exitCode !== null || chrome.signalCode !== null) {
+    return;
+  }
+
+  const exited = new Promise(resolve => chrome.once('exit', resolve));
+  chrome.kill('SIGTERM');
+  await Promise.race([exited, delay(3000)]);
+  if (chrome.exitCode === null && chrome.signalCode === null) {
+    chrome.kill('SIGKILL');
+    await Promise.race([exited, delay(3000)]);
+  }
+}
+
+class CDPPage {
+  constructor(socket) {
+    this.socket = socket;
+    this.nextId = 1;
+    this.pending = new Map();
+    this.loadEvents = 0;
+
+    socket.addEventListener('message', event => {
+      const message = JSON.parse(event.data);
+      if (message.id && this.pending.has(message.id)) {
+        const { resolve, reject } = this.pending.get(message.id);
+        this.pending.delete(message.id);
+        if (message.error) {
+          reject(new Error(message.error.message));
+        } else {
+          resolve(message.result);
+        }
+        return;
+      }
+
+      if (message.method === 'Page.loadEventFired') {
+        this.loadEvents++;
+      }
+    });
+  }
+
+  send(method, params = {}) {
+    const id = this.nextId++;
+    const payload = JSON.stringify({ id, method, params });
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.socket.send(payload);
+    });
+  }
+
+  async evaluate(expression) {
+    const result = await this.send('Runtime.evaluate', {
+      expression,
+      awaitPromise: true,
+      returnByValue: true
+    });
+    if (result.exceptionDetails) {
+      throw new Error(result.exceptionDetails.text || 'Runtime.evaluate failed');
+    }
+    return result.result?.value;
+  }
+
+  async waitForExpression(expression, message, timeoutMs = 10000) {
+    return waitFor(() => this.evaluate(expression), timeoutMs, message);
+  }
+
+  async close() {
+    this.socket.close();
+  }
+}
+
+async function createPage(browserPort, scenario) {
+  const targetResponse = await fetch(`http://127.0.0.1:${browserPort}/json/new?about:blank`, {
+    method: 'PUT'
+  });
+  if (!targetResponse.ok) {
+    throw new Error(`failed to create Chrome target: ${targetResponse.status}`);
+  }
+
+  const target = await targetResponse.json();
+  const socket = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => {
+    socket.addEventListener('open', resolve, { once: true });
+    socket.addEventListener('error', reject, { once: true });
+  });
+
+  const page = new CDPPage(socket);
+  await page.send('Page.enable');
+  await page.send('Runtime.enable');
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 1440,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false
+  });
+  await page.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: `window.__FRONTEND_BOOTSTRAP__ = ${JSON.stringify(bootstrap(scenario.document))};`
+  });
+  const currentLoadEvents = page.loadEvents;
+  await page.send('Page.navigate', { url: htmlUrl });
+  await waitFor(() => page.loadEvents > currentLoadEvents, 10000, 'page did not finish loading');
+  await page.waitForExpression(
+    'Boolean(document.querySelector(".app-header"))',
+    'app header was not rendered'
+  );
   return page;
 }
 
+async function installRunDecoderMock(page) {
+  await page.evaluate(`(() => {
+    const context = window.__LOGIC_ANALYZER_FRONTEND__;
+    if (!context?.host) {
+      throw new Error('frontend host context is not available');
+    }
+
+    const originalSendCommand = context.host.sendCommand.bind(context.host);
+    context.host.sendCommand = async (command, payload) => {
+      if (command !== 'runDecoder') {
+        return originalSendCommand(command, payload);
+      }
+
+      return {
+        success: true,
+        data: {
+          decoderId: 'i2c',
+          decoderName: 'I²C',
+          success: true,
+          executionTime: 1,
+          results: [
+            { startSample: 6, endSample: 6, annotationType: 0, values: ['START', 'S'] },
+            { startSample: 10, endSample: 42, annotationType: 7, values: ['Address write: 50', 'AW: 50', '50'], rawData: 80 },
+            { startSample: 42, endSample: 46, annotationType: 3, values: ['ACK', 'A'] },
+            { startSample: 46, endSample: 78, annotationType: 9, values: ['Data write: 3C', 'DW: 3C', '3C'], rawData: 60 },
+            { startSample: 78, endSample: 82, annotationType: 3, values: ['ACK', 'A'] },
+            { startSample: 82, endSample: 82, annotationType: 2, values: ['STOP', 'P'] }
+          ],
+          performanceStats: {
+            totalSamples: 84,
+            processingSpeed: 84000000
+          }
+        }
+      };
+    };
+    return true;
+  })()`);
+}
+
+async function verifyI2CDecoderSmoke(page) {
+  await installRunDecoderMock(page);
+
+  const hasRunButton = await page.evaluate(
+    'Array.from(document.querySelectorAll("button")).some(button => /运行 I2C 解码/.test(button.textContent || ""))'
+  );
+  if (hasRunButton) {
+    await page.evaluate(`(() => {
+      const button = Array.from(document.querySelectorAll('button')).find(item => /运行 I2C 解码/.test(item.textContent || ''));
+      button.click();
+      return true;
+    })()`);
+    await page.waitForExpression('document.body.innerText.includes("START")', 'START result was not rendered');
+    await page.waitForExpression('document.body.innerText.includes("ACK")', 'ACK result was not rendered');
+    await page.waitForExpression('document.body.innerText.includes("STOP")', 'STOP result was not rendered');
+    return 'i2c-ui: decoder-button/results';
+  }
+
+  await page.waitForExpression(
+    'Array.from(document.querySelectorAll("button")).some(button => /协议解码/.test(button.textContent || ""))',
+    'decoder tab was not rendered'
+  );
+  const result = await page.evaluate(`(async () => {
+    const context = window.__LOGIC_ANALYZER_FRONTEND__;
+    return context.host.sendCommand('runDecoder', {
+      decoderId: 'i2c',
+      channelMapping: [
+        { captureIndex: 0, decoderIndex: 0, name: 'SCL' },
+        { captureIndex: 1, decoderIndex: 1, name: 'SDA' }
+      ],
+      options: []
+    });
+  })()`);
+
+  const values = JSON.stringify(result);
+  if (!result.success || !values.includes('START') || !values.includes('ACK') || !values.includes('STOP')) {
+    throw new Error(`unexpected runDecoder mock result: ${values}`);
+  }
+
+  return 'i2c-contract: runDecoder-mock/results';
+}
+
 (async () => {
+  if (!fs.existsSync(htmlPath)) {
+    throw new Error(`Webview HTML build output does not exist: ${htmlPath}. Run npm run build:frontend:html first.`);
+  }
+
   const executablePath = process.env.CHROME_PATH || '/usr/bin/google-chrome';
-  const browser = await chromium.launch({
-    executablePath,
-    headless: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage']
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'logic-analyzer-webview-smoke-'));
+  const chrome = spawn(executablePath, [
+    '--headless=new',
+    '--remote-debugging-port=0',
+    `--user-data-dir=${userDataDir}`,
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
+    'about:blank'
+  ], {
+    stdio: ['ignore', 'ignore', 'pipe']
   });
+  const stderrChunks = [];
+  chrome.stderr.on('data', chunk => stderrChunks.push(chunk));
+  chrome.on('exit', code => {
+    if (code !== null && code !== 0) {
+      process.stderr.write(Buffer.concat(stderrChunks).toString());
+    }
+  });
+  const browserPort = await waitForDevToolsPort(userDataDir);
   const results = [];
 
   try {
     for (const scenario of scenarios) {
-      const page = await openScenario(browser, scenario);
+      const page = await createPage(browserPort, scenario);
       if (scenario.expectedText) {
-        await page.waitForSelector(`[data-testid="waveform-state"]:has-text("${scenario.expectedText}")`);
+        await page.waitForExpression(
+          `Boolean(document.querySelector('[data-testid="waveform-state"]')) && document.body.innerText.includes(${JSON.stringify(scenario.expectedText)})`,
+          `${scenario.name} state text was not rendered`
+        );
         results.push(`${scenario.name}: ${scenario.expectedText}`);
       } else {
-        await page.waitForSelector('canvas.waveform-stage__canvas');
-        const stateCount = await page.locator('[data-testid="waveform-state"]').count();
+        await page.waitForExpression(
+          'Boolean(document.querySelector("canvas.waveform-stage__canvas"))',
+          `${scenario.name} waveform canvas was not rendered`
+        );
+        const stateCount = await page.evaluate(
+          'document.querySelectorAll("[data-testid=\\"waveform-state\\"]").length'
+        );
         if (stateCount !== 0) {
           throw new Error('samples scenario should not show waveform-state overlay');
         }
 
-        const exportButton = page.locator('[data-testid="webview-export-button"]');
-        await exportButton.waitFor();
-        if (!(await exportButton.isEnabled())) {
+        await page.waitForExpression(
+          'Boolean(document.querySelector("[data-testid=\\"webview-export-button\\"]"))',
+          `${scenario.name} export button was not rendered`
+        );
+        const exportButtonEnabled = await page.evaluate(
+          '!document.querySelector("[data-testid=\\"webview-export-button\\"]").disabled'
+        );
+        if (!exportButtonEnabled) {
           throw new Error('export button should be enabled for samples document');
         }
-        await exportButton.click();
+        await page.evaluate('document.querySelector("[data-testid=\\"webview-export-button\\"]").click()');
 
-        const deviceError = await page.evaluate(async () => {
+        const deviceError = await page.evaluate(`(async () => {
           const context = window.__LOGIC_ANALYZER_FRONTEND__;
           return context.host.sendCommand('startCapture', { config: { frequency: 1000000 } });
-        });
+        })()`);
         if (deviceError.success || !String(deviceError.error || '').includes('请先连接')) {
           throw new Error(`unexpected device error result: ${JSON.stringify(deviceError)}`);
         }
-        results.push(`samples: canvas/export/device-error:${deviceError.error}`);
+        if (scenario.decoderSmoke) {
+          const decoderResult = await verifyI2CDecoderSmoke(page);
+          results.push(`${scenario.name}: canvas/export/device-error:${deviceError.error}/${decoderResult}`);
+        } else {
+          results.push(`samples: canvas/export/device-error:${deviceError.error}`);
+        }
       }
       await page.close();
     }
   } finally {
-    await browser.close();
+    await terminateChrome(chrome);
+    fs.rmSync(userDataDir, { recursive: true, force: true });
   }
 
   console.log(results.join('\n'));
