@@ -1,0 +1,41 @@
+{
+  "settings": {
+    "frequency": 2000000,
+    "preTriggerSamples": 1,
+    "postTriggerSamples": 3,
+    "loopCount": 0,
+    "measureBursts": false,
+    "captureChannels": [
+      {
+        "channelNumber": 0,
+        "channelName": "CH0",
+        "hidden": false,
+        "samples": [1, 0, 1, 1]
+      },
+      {
+        "channelNumber": 1,
+        "channelName": "CH1",
+        "hidden": false,
+        "samples": [0, 1, 0, 1]
+      }
+    ],
+    "triggerType": 1,
+    "triggerChannel": 0,
+    "triggerInverted": false,
+    "triggerBitCount": 1,
+    "triggerPattern": 0
+  },
+  "selectedRegions": [
+    {
+      "firstSample": 1,
+      "lastSample": 3,
+      "regionName": "lowercase-region",
+      "color": {
+        "r": 10,
+        "g": 20,
+        "b": 30,
+        "a": 180
+      }
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "Settings": {
+    "Frequency": 1000000,
+    "PreTriggerSamples": 1,
+    "PostTriggerSamples": 2,
+    "LoopCount": 0,
+    "MeasureBursts": false,
+    "CaptureChannels": [
+      {
+        "ChannelNumber": 2,
+        "ChannelName": "SDA",
+        "ChannelColor": 3368703,
+        "Hidden": false,
+        "Minimized": false
+      },
+      {
+        "ChannelNumber": 5,
+        "ChannelName": "SCL",
+        "ChannelColor": 16755200,
+        "Hidden": false,
+        "Minimized": false
+      }
+    ],
+    "TriggerType": 1,
+    "TriggerChannel": 2,
+    "TriggerInverted": false,
+    "TriggerBitCount": 1,
+    "TriggerPattern": 0
+  },
+  "Samples": [
+    "00000000000000000000000000000004",
+    "00000000000000000000000000000020",
+    "00000000000000000000000000000024"
+  ],
+  "SelectedRegions": [
+    {
+      "FirstSample": 0,
+      "LastSample": 2,
+      "RegionName": "I2C Address",
+      "R": 32,
+      "G": 128,
+      "B": 220,
+      "A": 200
+    }
+  ]
+}
