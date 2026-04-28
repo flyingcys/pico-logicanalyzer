@@ -1,0 +1,226 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "i2c.write-byte.normal",
+      "protocol": "i2c",
+      "category": "normal",
+      "sampleRate": 1000000,
+      "input": {
+        "kind": "i2c-operations",
+        "operations": [
+          { "type": "start" },
+          { "type": "byte", "value": 160 },
+          { "type": "ack" },
+          { "type": "byte", "value": 18 },
+          { "type": "ack" },
+          { "type": "stop" }
+        ]
+      },
+      "options": [{ "optionIndex": 0, "value": "shifted" }],
+      "expected": [
+        { "annotationType": 0, "values": ["Start", "S"] },
+        { "annotationType": 7, "rawData": 80, "values": ["Address write: 50", "AW: 50", "50"] },
+        { "annotationType": 3, "values": ["ACK", "A"] },
+        { "annotationType": 9, "rawData": 18, "values": ["Data write: 12", "DW: 12", "12"] },
+        { "annotationType": 3, "values": ["ACK", "A"] },
+        { "annotationType": 2, "values": ["Stop", "P"] }
+      ]
+    },
+    {
+      "id": "i2c.address-nack.error",
+      "protocol": "i2c",
+      "category": "error",
+      "sampleRate": 1000000,
+      "input": {
+        "kind": "i2c-operations",
+        "operations": [
+          { "type": "start" },
+          { "type": "byte", "value": 160 },
+          { "type": "nack" },
+          { "type": "stop" }
+        ]
+      },
+      "options": [{ "optionIndex": 0, "value": "shifted" }],
+      "expected": [
+        { "annotationType": 7, "rawData": 80, "values": ["Address write: 50", "AW: 50", "50"] },
+        { "annotationType": 4, "values": ["NACK", "N"] },
+        { "annotationType": 2, "values": ["Stop", "P"] }
+      ]
+    },
+    {
+      "id": "i2c.repeated-start-read.boundary",
+      "protocol": "i2c",
+      "category": "boundary",
+      "sampleRate": 1000000,
+      "input": {
+        "kind": "i2c-operations",
+        "operations": [
+          { "type": "start" },
+          { "type": "byte", "value": 160 },
+          { "type": "ack" },
+          { "type": "byte", "value": 0 },
+          { "type": "ack" },
+          { "type": "restart" },
+          { "type": "byte", "value": 161 },
+          { "type": "ack" },
+          { "type": "byte", "value": 90 },
+          { "type": "nack" },
+          { "type": "stop" }
+        ]
+      },
+      "options": [{ "optionIndex": 0, "value": "shifted" }],
+      "expected": [
+        { "annotationType": 1, "values": ["Start repeat", "Sr"] },
+        { "annotationType": 6, "rawData": 80, "values": ["Address read: 50", "AR: 50", "50"] },
+        { "annotationType": 8, "rawData": 90, "values": ["Data read: 5A", "DR: 5A", "5A"] },
+        { "annotationType": 4, "values": ["NACK", "N"] },
+        { "annotationType": 2, "values": ["Stop", "P"] }
+      ]
+    },
+    {
+      "id": "spi.mode0-transfer.normal",
+      "protocol": "spi",
+      "category": "normal",
+      "sampleRate": 1000000,
+      "input": {
+        "kind": "spi-transfer",
+        "miso": [1, 0, 1, 0, 0, 1, 0, 1],
+        "mosi": [0, 0, 1, 1, 1, 1, 0, 0],
+        "cs": "active-low"
+      },
+      "options": [
+        { "optionIndex": 0, "value": "active-low" },
+        { "optionIndex": 1, "value": "0" },
+        { "optionIndex": 2, "value": "0" },
+        { "optionIndex": 3, "value": "msb-first" },
+        { "optionIndex": 4, "value": 8 }
+      ],
+      "expected": [
+        { "annotationType": 0, "rawData": 165, "values": ["A5"] },
+        { "annotationType": 1, "rawData": 60, "values": ["3C"] },
+        { "annotationType": 5, "values": ["A5"] },
+        { "annotationType": 6, "values": ["3C"] }
+      ]
+    },
+    {
+      "id": "spi.cs-gap-resets-word.error",
+      "protocol": "spi",
+      "category": "error",
+      "sampleRate": 1000000,
+      "input": {
+        "kind": "logic-channels",
+        "channels": [
+          { "channelNumber": 0, "channelName": "CLK", "samples": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0] },
+          { "channelNumber": 1, "channelName": "MISO", "samples": [1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1] },
+          { "channelNumber": 2, "channelName": "MOSI", "samples": [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0] },
+          { "channelNumber": 3, "channelName": "CS", "samples": [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1] }
+        ]
+      },
+      "options": [
+        { "optionIndex": 0, "value": "active-low" },
+        { "optionIndex": 1, "value": "0" },
+        { "optionIndex": 2, "value": "0" },
+        { "optionIndex": 3, "value": "msb-first" },
+        { "optionIndex": 4, "value": 8 }
+      ],
+      "expected": []
+    },
+    {
+      "id": "spi.lsb-first.boundary",
+      "protocol": "spi",
+      "category": "boundary",
+      "sampleRate": 1000000,
+      "input": {
+        "kind": "spi-transfer",
+        "miso": [1, 0, 1, 0, 0, 1, 0, 1],
+        "mosi": [0, 0, 1, 1, 1, 1, 0, 0],
+        "cs": "active-low"
+      },
+      "options": [
+        { "optionIndex": 0, "value": "active-low" },
+        { "optionIndex": 1, "value": "0" },
+        { "optionIndex": 2, "value": "0" },
+        { "optionIndex": 3, "value": "lsb-first" },
+        { "optionIndex": 4, "value": 8 }
+      ],
+      "expected": [
+        { "annotationType": 0, "rawData": 165, "values": ["A5"] },
+        { "annotationType": 1, "rawData": 60, "values": ["3C"] }
+      ]
+    },
+    {
+      "id": "uart.8n1.normal",
+      "protocol": "uart",
+      "category": "normal",
+      "sampleRate": 115200,
+      "input": {
+        "kind": "logic-channels",
+        "channels": [
+          { "channelNumber": 0, "channelName": "RX", "samples": [1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1] }
+        ]
+      },
+      "options": [
+        { "optionIndex": 0, "value": 115200 },
+        { "optionIndex": 1, "value": "8" },
+        { "optionIndex": 2, "value": "none" },
+        { "optionIndex": 3, "value": "1.0" },
+        { "optionIndex": 5, "value": "hex" }
+      ],
+      "expected": [
+        { "annotationType": 2, "values": ["Start bit", "Start", "S"] },
+        { "annotationType": 0, "rawData": 85, "values": ["55"] },
+        { "annotationType": 8, "values": ["Stop bit", "Stop", "T"] }
+      ]
+    },
+    {
+      "id": "uart.even-parity-error.error",
+      "protocol": "uart",
+      "category": "error",
+      "sampleRate": 115200,
+      "input": {
+        "kind": "logic-channels",
+        "channels": [
+          { "channelNumber": 0, "channelName": "RX", "samples": [1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1] }
+        ]
+      },
+      "options": [
+        { "optionIndex": 0, "value": 115200 },
+        { "optionIndex": 1, "value": "8" },
+        { "optionIndex": 2, "value": "even" },
+        { "optionIndex": 3, "value": "1.0" },
+        { "optionIndex": 5, "value": "hex" }
+      ],
+      "expected": [
+        { "annotationType": 0, "rawData": 85, "values": ["55"] },
+        { "annotationType": 6, "values": ["Parity error", "Parity err", "PE"] },
+        { "annotationType": 8, "values": ["Stop bit", "Stop", "T"] }
+      ]
+    },
+    {
+      "id": "uart.tx-channel.boundary",
+      "protocol": "uart",
+      "category": "boundary",
+      "sampleRate": 115200,
+      "input": {
+        "kind": "logic-channels",
+        "channels": [
+          { "channelNumber": 0, "channelName": "RX", "samples": [] },
+          { "channelNumber": 1, "channelName": "TX", "samples": [1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1] }
+        ]
+      },
+      "options": [
+        { "optionIndex": 0, "value": 115200 },
+        { "optionIndex": 1, "value": "8" },
+        { "optionIndex": 2, "value": "none" },
+        { "optionIndex": 3, "value": "1.0" },
+        { "optionIndex": 5, "value": "hex" }
+      ],
+      "expected": [
+        { "annotationType": 3, "values": ["Start bit", "Start", "S"] },
+        { "annotationType": 1, "rawData": 170, "values": ["AA"] },
+        { "annotationType": 9, "values": ["Stop bit", "Stop", "T"] }
+      ]
+    }
+  ]
+}
