@@ -39,7 +39,9 @@ describe('质量门禁配置', () => {
     expect(featureMatrix).toContain('| 功能域 | 当前状态 | 证据 | 下一步 |');
     expect(featureMatrix).toContain('模拟');
     expect(featureMatrix).toContain('实验性');
-    expect(hardwareMatrix).toContain('| 硬件 | 连接方式 | 认证状态 | 必测项 | 证据记录 |');
+    expect(hardwareMatrix).toContain('| 硬件 | 连接方式 | 检测口径 | 适配状态 | 认证等级 | 必测项 | 证据记录 |');
+    expect(hardwareMatrix).toContain('framework');
+    expect(hardwareMatrix).toContain('candidate');
     expect(hardwareMatrix).toContain('Pico W');
     expect(hardwareMatrix).toContain('多设备');
   });
