@@ -21,6 +21,7 @@ export interface FrontendSampleRegion {
 
 interface SessionState {
   fileName: string;
+  documentContent: string;
   sampleRate: number;
   totalSamples: number;
   preTriggerSamples: number;
@@ -306,6 +307,7 @@ function readBursts(sessionPayload: JsonRecord): number[] | null {
 function createEmptyState(fileName = ''): SessionState {
   return {
     fileName,
+    documentContent: '',
     sampleRate: 0,
     totalSamples: 0,
     preTriggerSamples: 0,
@@ -333,6 +335,7 @@ export const useSessionStore = defineStore('frontend-session', {
       if (!rootPayload) {
         Object.assign(this, {
           ...createEmptyState(fileName),
+          documentContent: document.content,
           documentState: 'invalid' as FrontendDocumentState
         });
         return;
@@ -358,6 +361,7 @@ export const useSessionStore = defineStore('frontend-session', {
 
       Object.assign(this, {
         fileName,
+        documentContent: document.content,
         sampleRate,
         preTriggerSamples,
         postTriggerSamples,

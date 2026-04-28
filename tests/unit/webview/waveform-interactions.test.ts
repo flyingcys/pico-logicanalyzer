@@ -7,6 +7,10 @@ import { createApp, nextTick } from 'vue';
 import AppWaveformStage from '../../../src/frontend/app/components/AppWaveformStage.vue';
 import { AnalyzerChannel } from '../../../src/models/CaptureModels';
 import { WaveformRenderer } from '../../../src/frontend/core/engines/WaveformRenderer';
+import {
+  buildWebviewExportRequest,
+  mergeWaveformRegionsIntoLacDocument
+} from '../../../src/frontend/core/services/exportRequestService';
 import { useSessionStore } from '../../../src/frontend/core/stores/sessionStore';
 import { useWaveformStore } from '../../../src/frontend/core/stores/waveformStore';
 
@@ -198,6 +202,108 @@ describe('waveformStore 交互状态', () => {
         color: 'rgba(34, 197, 94, 0.220)'
       }
     ]);
+  });
+});
+
+describe('Webview 导出与区域保存请求', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it('应把选区、真实通道号、区域、marker 和测量状态放入导出请求', () => {
+    const sessionStore = useSessionStore();
+    const waveformStore = useWaveformStore();
+
+    waveformStore.loadCaptureContext({
+      sampleRate: 1000000,
+      channels: [
+        createChannel(2, [0, 1, 0, 1, 0, 1]),
+        createChannel(8, [1, 1, 0, 0, 1, 1])
+      ]
+    });
+    waveformStore.selectRange(1, 4, 1);
+    waveformStore.createRegionFromSelection('导出窗口', 'rgba(34, 197, 94, 0.220)');
+    waveformStore.addMarker(3, 'user', { name: 'M1' });
+    waveformStore.measureSelection(1);
+    waveformStore.setViewRange(2, 3);
+
+    const payload = buildWebviewExportRequest(sessionStore, waveformStore, 'vcd');
+
+    expect(payload).toMatchObject({
+      source: 'webview',
+      format: 'vcd',
+      timeRange: 'custom',
+      customStart: 1,
+      customEnd: 5,
+      selectedChannels: [2, 8],
+      selection: {
+        startSample: 1,
+        endSample: 4,
+        channelIndex: 1
+      },
+      visibleRange: {
+        firstSample: 2,
+        visibleSamples: 3
+      },
+      selectedRegions: [
+        {
+          firstSample: 1,
+          lastSample: 4,
+          regionName: '导出窗口',
+          color: 'rgba(34, 197, 94, 0.220)'
+        }
+      ],
+      markers: [
+        expect.objectContaining({
+          name: 'M1',
+          sample: 3,
+          type: 'user'
+        })
+      ],
+      measurement: expect.objectContaining({
+        channelIndex: 1,
+        startSample: 1,
+        endSample: 4
+      })
+    });
+  });
+
+  it('应把 Webview 区域保存为 .lac SelectedRegions，不把 marker/测量状态写入 .lac', () => {
+    const waveformStore = useWaveformStore();
+    waveformStore.loadCaptureContext({
+      sampleRate: 1000000,
+      channels: [createChannel(0, [0, 1, 0, 1, 0])]
+    });
+    waveformStore.selectRange(1, 3);
+    waveformStore.createRegionFromSelection('保存窗口', 'rgba(10, 20, 30, 0.500)');
+    waveformStore.addMarker(2, 'user', { name: 'M1' });
+    waveformStore.measureSelection(0);
+
+    const savedContent = mergeWaveformRegionsIntoLacDocument(
+      JSON.stringify({
+        Settings: {
+          Frequency: 1000000,
+          CaptureChannels: [{ ChannelNumber: 0, ChannelName: 'D0' }]
+        },
+        Samples: ['0', '1', '0', '1', '0']
+      }),
+      waveformStore
+    );
+    const parsed = JSON.parse(savedContent);
+
+    expect(parsed.SelectedRegions).toEqual([
+      {
+        FirstSample: 1,
+        LastSample: 3,
+        RegionName: '保存窗口',
+        R: 10,
+        G: 20,
+        B: 30,
+        A: 128
+      }
+    ]);
+    expect(parsed.Markers).toBeUndefined();
+    expect(parsed.Measurement).toBeUndefined();
   });
 });
 

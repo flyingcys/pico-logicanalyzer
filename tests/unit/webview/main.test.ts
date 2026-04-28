@@ -577,8 +577,51 @@ describe('bootstrap 初始化流程', () => {
       expect(setCommandDispatcher).toHaveBeenCalledWith(expect.any(Function));
 
       const dispatcher = setCommandDispatcher.mock.calls[0][0];
-      await expect(dispatcher('exportData', { scope: 'selection' })).resolves.toBe('host-result');
-      expect(host.sendCommand).toHaveBeenCalledWith('exportData', { scope: 'selection' });
+      const { AnalyzerChannel } = await import('../../../src/models/CaptureModels');
+      const { useWaveformStore } = await import('../../../src/frontend/core/stores/waveformStore');
+      const waveformStore = useWaveformStore();
+      const channel2 = new AnalyzerChannel(2, 'D2');
+      channel2.samples = Uint8Array.from([0, 1, 0, 1, 0, 1]);
+      const channel8 = new AnalyzerChannel(8, 'D8');
+      channel8.samples = Uint8Array.from([1, 1, 0, 0, 1, 1]);
+      waveformStore.loadCaptureContext({
+        sampleRate: 12000000,
+        channels: [channel2, channel8]
+      });
+      waveformStore.selectRange(1, 4, 1);
+      waveformStore.createRegionFromSelection('导出窗口', 'rgba(10, 20, 30, 0.500)');
+
+      await expect(dispatcher('exportData', { format: 'vcd' })).resolves.toBe('host-result');
+      expect(host.sendCommand).toHaveBeenCalledWith('exportData', expect.objectContaining({
+        source: 'webview',
+        format: 'vcd',
+        timeRange: 'custom',
+        customStart: 1,
+        customEnd: 5,
+        selectedChannels: [2, 8],
+        selectedRegions: [
+          {
+            firstSample: 1,
+            lastSample: 4,
+            regionName: '导出窗口',
+            color: 'rgba(10, 20, 30, 0.500)'
+          }
+        ]
+      }));
+
+      await dispatcher('saveFile');
+      const savedContent = JSON.parse(host.saveDocument.mock.calls[0][0]);
+      expect(savedContent.SelectedRegions).toEqual([
+        {
+          FirstSample: 1,
+          LastSample: 4,
+          RegionName: '导出窗口',
+          R: 10,
+          G: 20,
+          B: 30,
+          A: 128
+        }
+      ]);
       expect(mountPoint.textContent).toContain('bootstrap.lac');
       expect(mountPoint.querySelector('.app-header-stub')?.textContent).toContain('bootstrap.lac');
       expect(mountPoint.querySelector('.app-sidebar-left-stub')?.textContent).toContain('left-container');
