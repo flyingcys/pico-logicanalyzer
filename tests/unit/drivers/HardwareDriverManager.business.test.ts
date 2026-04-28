@@ -85,7 +85,7 @@ jest.mock('../../../src/drivers/MultiAnalyzerDriver', () => ({
 jest.doMock('../../../src/drivers/HardwareDriverManager', () => jest.requireActual('../../../src/drivers/HardwareDriverManager'));
 
 // 在Mock配置完成后，导入真实的HardwareDriverManager
-const { HardwareDriverManager, SerialDetector } = jest.requireActual('../../../src/drivers/HardwareDriverManager');
+const { HardwareDriverManager, NetworkDetector, SerialDetector } = jest.requireActual('../../../src/drivers/HardwareDriverManager');
 
 describe('HardwareDriverManager 业务逻辑专项测试', () => {
   let manager: InstanceType<typeof HardwareDriverManager>;
@@ -312,6 +312,82 @@ describe('HardwareDriverManager 业务逻辑专项测试', () => {
 
       expect(manager.forgetDevice(first.id)).toBe(true);
       expect(manager.getKnownDevices().map((device: any) => device.id)).toEqual([second.id]);
+    });
+
+    it('应该提供统一发现配置，区分框架可用与真实硬件认证状态', () => {
+      const profiles = manager.getDiscoveryProfiles();
+
+      expect(profiles.map((profile: any) => profile.id)).toEqual([
+        'pico-logic-analyzer',
+        'network-pico',
+        'saleae-logic',
+        'rigol-siglent-scpi',
+        'sigrok-cli'
+      ]);
+      expect(profiles[0]).toMatchObject({
+        usbIds: [{ vendorId: '1209', productId: '3020' }],
+        defaultPorts: [],
+        requiresHandshake: false,
+        adapterStatus: 'hardware-pending',
+        certificationLevel: 'fixture'
+      });
+      expect(profiles[1]).toMatchObject({
+        defaultPorts: [4045],
+        handshake: 'pico-version',
+        requiresHandshake: true,
+        adapterStatus: 'hardware-pending'
+      });
+      expect(profiles[2]).toMatchObject({
+        defaultPorts: [10429],
+        handshake: 'saleae-api',
+        adapterStatus: 'framework',
+        certificationLevel: 'experimental'
+      });
+      expect(profiles[3]).toMatchObject({
+        defaultPorts: [5555, 5025, 111],
+        handshake: 'scpi-idn',
+        adapterStatus: 'framework'
+      });
+      expect(profiles[4]).toMatchObject({
+        cliCommand: 'sigrok-cli --scan',
+        adapterStatus: 'framework'
+      });
+    });
+
+    it('网络检测器应该复用统一端口并只把握手通过的 Pico TCP 标为高置信设备', () => {
+      expect(NetworkDetector.getDefaultPorts()).toEqual([4045, 10429, 5555, 5025, 111]);
+
+      const verifiedPico = NetworkDetector.fromProbeResult({
+        host: '192.168.1.20',
+        port: 4045,
+        protocol: 'pico-version',
+        handshakeVerified: true,
+        deviceName: 'Pico Logic Analyzer WiFi',
+        version: 'LOGIC_ANALYZER_V1_0'
+      });
+      const openOnlyPicoPort = NetworkDetector.fromProbeResult({
+        host: '192.168.1.21',
+        port: 4045,
+        protocol: 'tcp-open',
+        handshakeVerified: false
+      });
+
+      expect(verifiedPico).toMatchObject({
+        id: 'network-pico-192.168.1.20-4045',
+        name: 'Pico Logic Analyzer WiFi',
+        connectionString: '192.168.1.20:4045',
+        confidence: 92,
+        verificationRequired: false,
+        driverType: AnalyzerDriverType.Network,
+        discoveredBy: 'network:pico-version'
+      });
+      expect(openOnlyPicoPort).toMatchObject({
+        id: 'network-candidate-192.168.1.21-4045',
+        name: 'Network Device Candidate (192.168.1.21:4045)',
+        confidence: 35,
+        verificationRequired: true,
+        discoveredBy: 'network:tcp-open'
+      });
     });
 
     it('应该正确匹配pico设备', async () => {

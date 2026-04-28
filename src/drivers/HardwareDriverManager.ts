@@ -32,7 +32,98 @@ export interface DetectedDevice {
   verificationRequired?: boolean;
   known?: boolean;
   discoveredBy?: string;
+  discoveryProtocol?: string;
+  adapterStatus?: 'hardware-pending' | 'framework' | 'hardware-certified';
+  certificationLevel?: 'fixture' | 'candidate' | 'experimental' | 'verified' | 'certified' | 'community';
+  version?: string;
 }
+
+export interface DiscoveryProfile {
+  id: string;
+  driverId: string;
+  displayName: string;
+  connectionTypes: Array<'serial' | 'network' | 'usb' | 'cli'>;
+  usbIds: Array<{ vendorId: string; productId: string }>;
+  defaultPorts: number[];
+  handshake?: 'pico-version' | 'saleae-api' | 'scpi-idn' | 'sigrok-cli';
+  requiresHandshake: boolean;
+  adapterStatus: 'hardware-pending' | 'framework' | 'hardware-certified';
+  certificationLevel: 'fixture' | 'candidate' | 'experimental' | 'verified' | 'certified' | 'community';
+  cliCommand?: string;
+}
+
+export interface NetworkProbeResult {
+  host: string;
+  port: number;
+  protocol: 'pico-version' | 'saleae-api' | 'scpi-idn' | 'tcp-open';
+  handshakeVerified: boolean;
+  deviceName?: string;
+  version?: string;
+  manufacturer?: string;
+}
+
+const DISCOVERY_PROFILES: DiscoveryProfile[] = [
+  {
+    id: 'pico-logic-analyzer',
+    driverId: 'pico-logic-analyzer',
+    displayName: 'Pico Logic Analyzer USB',
+    connectionTypes: ['serial'],
+    usbIds: [{ vendorId: '1209', productId: '3020' }],
+    defaultPorts: [],
+    requiresHandshake: false,
+    adapterStatus: 'hardware-pending',
+    certificationLevel: 'fixture'
+  },
+  {
+    id: 'network-pico',
+    driverId: 'network-analyzer',
+    displayName: 'Pico Logic Analyzer TCP',
+    connectionTypes: ['network'],
+    usbIds: [],
+    defaultPorts: [4045],
+    handshake: 'pico-version',
+    requiresHandshake: true,
+    adapterStatus: 'hardware-pending',
+    certificationLevel: 'experimental'
+  },
+  {
+    id: 'saleae-logic',
+    driverId: 'saleae-logic',
+    displayName: 'Saleae Logic 2 API',
+    connectionTypes: ['network', 'usb'],
+    usbIds: [],
+    defaultPorts: [10429],
+    handshake: 'saleae-api',
+    requiresHandshake: true,
+    adapterStatus: 'framework',
+    certificationLevel: 'experimental'
+  },
+  {
+    id: 'rigol-siglent-scpi',
+    driverId: 'rigol-siglent',
+    displayName: 'Rigol/Siglent SCPI',
+    connectionTypes: ['network'],
+    usbIds: [],
+    defaultPorts: [5555, 5025, 111],
+    handshake: 'scpi-idn',
+    requiresHandshake: true,
+    adapterStatus: 'framework',
+    certificationLevel: 'experimental'
+  },
+  {
+    id: 'sigrok-cli',
+    driverId: 'sigrok-adapter',
+    displayName: 'sigrok-cli',
+    connectionTypes: ['cli', 'usb'],
+    usbIds: [],
+    defaultPorts: [],
+    handshake: 'sigrok-cli',
+    requiresHandshake: true,
+    adapterStatus: 'framework',
+    certificationLevel: 'experimental',
+    cliCommand: 'sigrok-cli --scan'
+  }
+];
 
 /**
  * 驱动注册信息
@@ -187,6 +278,19 @@ export class HardwareDriverManager extends EventEmitter {
     return this.getRegisteredDrivers();
   }
 
+  getDiscoveryProfiles(): DiscoveryProfile[] {
+    return HardwareDriverManager.getDiscoveryProfiles();
+  }
+
+  static getDiscoveryProfiles(): DiscoveryProfile[] {
+    return DISCOVERY_PROFILES.map(profile => ({
+      ...profile,
+      connectionTypes: [...profile.connectionTypes],
+      usbIds: profile.usbIds.map(id => ({ ...id })),
+      defaultPorts: [...profile.defaultPorts]
+    }));
+  }
+
   /**
    * 检测硬件设备
    */
@@ -213,9 +317,10 @@ export class HardwareDriverManager extends EventEmitter {
 
       // 缓存结果
       this.detectionCache.set(cacheKey, mergedDevices);
-      setTimeout(() => {
+      const cacheExpiry = setTimeout(() => {
         this.detectionCache.delete(cacheKey);
       }, this.cacheTimeout);
+      cacheExpiry.unref?.();
 
       console.log(`检测到 ${mergedDevices.length} 个设备`);
       this.emit('devicesDetected', mergedDevices);
@@ -771,8 +876,8 @@ export class NetworkDetector implements IDeviceDetector {
     const devices: DetectedDevice[] = [];
 
     try {
-      // 扫描常见的网络逻辑分析器端口
-      const commonPorts = [24000, 5555, 8080, 10000];
+      // 扫描统一发现配置中的网络端口，端口开放只作为候选，真实设备还需握手确认。
+      const commonPorts = NetworkDetector.getDefaultPorts();
       const baseIPs = this.getLocalNetworkRange();
 
       // 并行扫描多个IP地址
@@ -820,14 +925,12 @@ export class NetworkDetector implements IDeviceDetector {
       try {
         const isOpen = await this.checkPort(host, port);
         if (isOpen) {
-          return {
-            id: `network-${host}-${port}`,
-            name: `Network Logic Analyzer (${host}:${port})`,
-            type: 'network',
-            connectionString: `${host}:${port}`,
-            driverType: AnalyzerDriverType.Network,
-            confidence: 60
-          };
+          return NetworkDetector.fromProbeResult({
+            host,
+            port,
+            protocol: 'tcp-open',
+            handshakeVerified: false
+          });
         }
       } catch (error) {
         continue;
@@ -856,6 +959,71 @@ export class NetworkDetector implements IDeviceDetector {
         resolve(false);
       });
     });
+  }
+
+  static getDefaultPorts(): number[] {
+    const ports = HardwareDriverManager.getDiscoveryProfiles()
+      .flatMap(profile => profile.defaultPorts);
+    return Array.from(new Set(ports));
+  }
+
+  static fromProbeResult(probe: NetworkProbeResult): DetectedDevice {
+    const connectionString = `${probe.host}:${probe.port}`;
+    const baseDevice = {
+      type: 'network' as const,
+      connectionString,
+      driverType: AnalyzerDriverType.Network,
+      discoveryProtocol: probe.protocol,
+      discoveredBy: `network:${probe.protocol}`,
+      version: probe.version
+    };
+
+    if (probe.protocol === 'pico-version' && probe.handshakeVerified) {
+      return {
+        ...baseDevice,
+        id: `network-pico-${probe.host}-${probe.port}`,
+        name: probe.deviceName || `Pico Logic Analyzer (${connectionString})`,
+        confidence: 92,
+        verificationRequired: false,
+        adapterStatus: 'hardware-pending',
+        certificationLevel: 'experimental'
+      };
+    }
+
+    if (probe.protocol === 'saleae-api' && probe.handshakeVerified) {
+      return {
+        ...baseDevice,
+        id: `saleae-api-${probe.host}-${probe.port}`,
+        name: probe.deviceName || `Saleae Logic API (${connectionString})`,
+        confidence: 70,
+        verificationRequired: true,
+        adapterStatus: 'framework',
+        certificationLevel: 'experimental'
+      };
+    }
+
+    if (probe.protocol === 'scpi-idn' && probe.handshakeVerified) {
+      const manufacturer = probe.manufacturer || 'SCPI';
+      return {
+        ...baseDevice,
+        id: `scpi-${manufacturer.toLowerCase()}-${probe.host}-${probe.port}`,
+        name: probe.deviceName || `${manufacturer} SCPI Instrument (${connectionString})`,
+        confidence: 72,
+        verificationRequired: true,
+        adapterStatus: 'framework',
+        certificationLevel: 'experimental'
+      };
+    }
+
+    return {
+      ...baseDevice,
+      id: `network-candidate-${probe.host}-${probe.port}`,
+      name: probe.deviceName || `Network Device Candidate (${connectionString})`,
+      confidence: 35,
+      verificationRequired: true,
+      adapterStatus: 'framework',
+      certificationLevel: 'experimental'
+    };
   }
 }
 

@@ -79,7 +79,7 @@ export class WiFiDeviceDiscovery {
   private defaultConfig: ScanConfiguration = {
     timeout: 3000,
     concurrency: 50,
-    ports: [4045, 80, 8080, 8000, 3000], // Pico默认4045，加上常见的Web端口
+    ports: [4045, 10429, 5555, 5025, 111],
     deepScan: true,
     enableBroadcast: true
   };
