@@ -9,14 +9,18 @@
 最近一次质量基线验证结果（2026-04-28）：
 
 - `npm run typecheck` 通过，是当前基础类型门禁。
-- `npm run typecheck:strict` 通过，是分阶段 strict gate。
-- `npm run test:webview:unit -- --runInBand` 通过，2 个测试套件、37 个测试。
-- `npm run build:production` 通过，但 Webview 产物仍有 webpack 体积警告。
+- `npm run typecheck:strict` 通过，是分阶段 strict gate；当前 strict gate 仍只覆盖少量入口，不代表全仓库 strict 完成。
+- `npm run lint` 通过，但有 22 条 Vue 模板格式 warning。
+- `npm run test:webview:unit -- --runInBand` 通过，2 个测试套件、49 个测试。
+- `npm run test:ci:quick -- --skip-install` 通过，10 个 quick 核心测试文件、305 个测试。
+- `npm run build:production` 通过，但 Webview 两个入口 JS 各约 2.19 MiB，source map 各约 7.47 MiB，仍有 webpack 体积警告。
+- `npm run package:dry` 通过。
 - `npm run test:unit -- --silent` 仍需拆分定位长耗时或开放句柄。
 - `npm run validate:local` 用于本地快速门禁；`node scripts/ci-test-runner.js --layer=quick --dry-run` 可查看 CI 执行计划，不会安装依赖或运行长测试。
 - Quick 层暂不阻断 4 个旧 core smoke 测试，修复责任按功能 worktree 拆分，详见 [发布门槛](docs/release-gate.md)。
 - 功能声明以 [功能状态矩阵](docs/功能状态矩阵.md) 和 [真实硬件认证矩阵](docs/真实硬件认证矩阵.md) 为准。
 - 发布检查以 [发布门槛](docs/release-gate.md) 和 [文档状态索引](docs/文档状态索引.md) 为准。
+- 当前深度 review 和后续任务总览见 [当前代码深度 Review 与后续任务总览（2026-04-28）](docs/code-review-and-next-tasks-2026-04-28.md)。
 - 详细差距见 [logicanalyzer 差距深度分析](docs/logicanalyzer-差距深度分析-2026-04-27.md)，下一阶段并行拆分见 [2026-04-28 并行 Worktree 对齐计划](docs/parallel-worktrees-2026-04-28.md)。
 
 ## 🎯 项目愿景

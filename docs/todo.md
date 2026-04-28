@@ -1,13 +1,14 @@
 # VSCode 逻辑分析器插件 - 开发任务清单
 
-## 当前修正结论（2026-04-27）
+## 当前修正结论（2026-04-28）
 
-本文件保留历史阶段任务，但大量“已完成”“生产级”“100%”结论来自早期计划或阶段总结，不能直接作为当前发布状态。最新审查结论：
+本文件保留历史阶段任务，但大量“已完成”“生产级”“100%”结论来自早期计划或阶段总结，不能直接作为当前发布状态。最新深度 review、风险排序和后续任务总清单见 `docs/code-review-and-next-tasks-2026-04-28.md`。当前摘要：
 
-- 构建：`npm run build` 可通过，但 webpack 使用 `transpileOnly`，构建不能证明类型正确。
-- 类型：`npm run typecheck` 失败，发布前必须清零。
-- 测试：测试目录结构已建立，但仍有 `utest/mocks` 旧路径引用；`npm run test:unit -- --silent` 最近一次运行超过 3 分钟无输出。
-- 文档：README、测试说明和结构说明已开始按当前事实修正；后续以 `docs/current-status-and-next-steps-2026-04-27.md` 为新的任务入口。
+- 构建：`npm run build:production` 和 `npm run package:dry` 通过，但 Webview bundle 仍有体积 warning；webpack 使用 `transpileOnly`，构建不能单独证明类型正确。
+- 类型：`npm run typecheck` 和 `npm run typecheck:strict` 通过，但主 `tsconfig.json` 仍关闭 strict，strict gate 覆盖范围较小。
+- 测试：`npm run test:webview:unit -- --runInBand` 通过 2 个套件、49 个测试；`npm run test:ci:quick -- --skip-install` 通过 10 个 quick 核心测试文件、305 个测试；仍有 8 个测试文件引用旧 `utest/mocks`。
+- 代码：Pico 采集通道样本拆分、导出通道校验、loop/blast 样本范围计算是当前优先修复项。
+- 文档：README、功能状态矩阵、测试说明和文档索引已按 2026-04-28 证据更新。
 
 ### 新的优先级
 
