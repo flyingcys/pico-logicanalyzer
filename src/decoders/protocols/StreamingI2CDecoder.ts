@@ -133,9 +133,9 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
   ): Promise<void> {
     // 设置通道映射
     for (const channel of selectedChannels) {
-      if (channel.name === 'scl') {
+      if (channel.name === 'scl' && channel.channel !== undefined) {
         this.channels.scl = channel.channel;
-      } else if (channel.name === 'sda') {
+      } else if (channel.name === 'sda' && channel.channel !== undefined) {
         this.channels.sda = channel.channel;
       }
     }

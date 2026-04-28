@@ -381,7 +381,10 @@
 </script>
 
 <template>
-  <section ref="containerRef" class="waveform-stage">
+  <section
+    ref="containerRef"
+    class="waveform-stage"
+  >
     <canvas
       ref="canvasRef"
       class="waveform-stage__canvas"
@@ -405,15 +408,44 @@
         <span class="waveform-stage__meta">{{ waveformStore.totalSamples }} samples</span>
       </div>
       <div class="waveform-stage__actions">
-        <button class="tool-button" title="缩小" :disabled="!hasSamples" @click="zoomOut">-</button>
-        <button class="tool-button" title="放大" :disabled="!hasSamples" @click="zoomIn">+</button>
-        <button class="tool-button" title="适应窗口" :disabled="!hasSamples" @click="fitToWindow">
+        <button
+          class="tool-button"
+          title="缩小"
+          :disabled="!hasSamples"
+          @click="zoomOut"
+        >
+          -
+        </button>
+        <button
+          class="tool-button"
+          title="放大"
+          :disabled="!hasSamples"
+          @click="zoomIn"
+        >
+          +
+        </button>
+        <button
+          class="tool-button"
+          title="适应窗口"
+          :disabled="!hasSamples"
+          @click="fitToWindow"
+        >
           1:1
         </button>
-        <button class="tool-button" title="添加标记" :disabled="!hasSamples" @click="addMarker">
+        <button
+          class="tool-button"
+          title="添加标记"
+          :disabled="!hasSamples"
+          @click="addMarker"
+        >
           M
         </button>
-        <button class="tool-button" title="创建区域" :disabled="!hasSamples" @click="createRegion">
+        <button
+          class="tool-button"
+          title="创建区域"
+          :disabled="!hasSamples"
+          @click="createRegion"
+        >
           R
         </button>
         <button
@@ -508,10 +540,13 @@
         :value="waveformStore.viewRange.firstSample"
         :disabled="!hasSamples"
         @input="handlePreviewInput"
-      />
+      >
     </div>
 
-    <div v-if="measurementText" class="waveform-stage__measurement">
+    <div
+      v-if="measurementText"
+      class="waveform-stage__measurement"
+    >
       {{ measurementText }}
     </div>
   </section>

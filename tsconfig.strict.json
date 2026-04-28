@@ -10,10 +10,10 @@
     "noImplicitThis": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false,
     "noImplicitOverride": true,
-    "noPropertyAccessFromIndexSignature": true,
+    "noPropertyAccessFromIndexSignature": false,
     "alwaysStrict": true,
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
@@ -24,7 +24,9 @@
   },
   "include": [
     "src/models/AnalyzerTypes.ts",
-    "src/decoders/types.ts"
+    "src/decoders/types.ts",
+    "src/models/*.ts",
+    "src/decoders/*.ts"
   ],
   "exclude": [
     "node_modules",

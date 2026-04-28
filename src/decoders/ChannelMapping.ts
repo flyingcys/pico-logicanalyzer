@@ -409,6 +409,9 @@ export class ChannelMappingManager {
   public fromDecoderSelectedChannels(channels: DecoderSelectedChannel[]): Record<string, number> {
     const mapping: Record<string, number> = {};
     for (const channel of channels) {
+      if (channel.name === undefined || channel.channel === undefined) {
+        continue;
+      }
       mapping[channel.name] = channel.channel;
     }
     return mapping;

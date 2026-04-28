@@ -5,6 +5,7 @@
  */
 
 import type { ChannelData, DecoderResult } from './types';
+import { getPerformanceMemory } from './performanceMemory';
 
 /**
  * 内存使用统计
@@ -98,14 +99,14 @@ export class PerformanceOptimizer {
    * 获取内存使用统计
    */
   public getMemoryStats(): MemoryStats {
-    if (performance.memory) {
-      const { memory } = performance;
+    const memory = getPerformanceMemory();
+    if (memory) {
       return {
         usedHeapSize: memory.usedJSHeapSize,
         totalHeapSize: memory.totalJSHeapSize,
         heapUsagePercent: (memory.usedJSHeapSize / memory.totalJSHeapSize) * 100,
         heapSizeLimit: memory.jsHeapSizeLimit,
-        externalMemory: (memory as any).externalMemory
+        externalMemory: memory.externalMemory
       };
     }
 

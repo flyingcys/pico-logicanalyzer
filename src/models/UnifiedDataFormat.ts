@@ -135,6 +135,7 @@ export interface ExtensionData {
   saleae?: SaleaeExtensionData;
   rigol?: RigolExtensionData;
   generic?: GenericExtensionData;
+  [key: string]: unknown;
 }
 
 // LAC文件格式接口（兼容原软件）
@@ -404,7 +405,7 @@ export class UnifiedDataFormat {
       },
       channels: captureChannels.map((ch) => ({
         channelNumber: ch.channelNumber || 0,
-        channelName: ch.channelName || `Channel ${ch.channelNumber + 1}`,
+        channelName: ch.channelName || `Channel ${(ch.channelNumber || 0) + 1}`,
         channelColor: toChannelColorString(ch.channelColor),
         enabled: !ch.hidden,
         hidden: ch.hidden || false

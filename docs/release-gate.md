@@ -12,6 +12,17 @@
 
 `npm run validate:local` 只运行本地可快速完成的门禁和 CI dry-run 计划，不安装依赖，不触发长耗时测试。CI 使用 `npm run validate:ci` 和工作流中的补充 webview、driver、decoder、VSIX dry run 检查。
 
+## 严格类型门禁现状
+
+`npm run typecheck:strict` 当前覆盖 `src/models/*.ts` 和 `src/decoders/*.ts`，会连带检查这些入口直接依赖的协议解码器文件。该门禁启用 TypeScript `strict`、`noImplicitAny`、`strictNullChecks`、`noImplicitOverride`、`noImplicitReturns` 和 `noFallthroughCasesInSwitch`。
+
+剩余类型债记录：
+
+- `noUncheckedIndexedAccess` 暂未对扩大后的范围启用；开启后需要逐项收口数组和映射索引访问。
+- `exactOptionalPropertyTypes` 暂未对扩大后的范围启用；开启后需要区分省略字段和显式 `undefined`。
+- `noPropertyAccessFromIndexSignature` 暂未对扩大后的范围启用；开启后需要统一动态扩展字段访问方式。
+- Webview lint 门禁当前要求 `npm run lint` 输出 0 warning，避免 Vue 模板格式 warning 常态化。
+
 当前 Quick 层暂不阻断以下旧 core smoke 测试，原因是它们已暴露业务行为漂移，需由对应功能 worktree 修复后再移回阻断门禁：
 
 - `tests/unit/drivers/LogicAnalyzerDriver.core.test.ts`

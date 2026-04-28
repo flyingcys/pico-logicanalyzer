@@ -20,6 +20,7 @@ import {
   DecoderAnnotation,
   ChannelData
 } from './types';
+import { getPerformanceMemory } from './performanceMemory';
 
 export type DecoderExecutionMode = 'regular' | 'streaming';
 
@@ -547,7 +548,7 @@ export class DecoderManager {
         performanceStats: {
           totalSamples,
           processingSpeed,
-          memoryUsage: performance.memory?.usedJSHeapSize
+          memoryUsage: getPerformanceMemory()?.usedJSHeapSize
         }
       };
     } catch (error) {
