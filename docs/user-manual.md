@@ -456,6 +456,39 @@ await exporter.saveToFile(results, 'output.csv');
 - **自动报告生成**: 生成标准化的分析报告
 - **定时任务**: 设置定期执行的分析任务
 
+### 合成采集 DSL
+
+合成采集用于在没有硬件的情况下生成可打开的 `.lac` 文件，适合演示、回归测试和协议 fixture 准备。当前能力为实验性。
+
+#### 最小示例
+
+```text
+sample_rate 1MHz
+samples 64
+channel 0 CLK clock period=8 duty=50%
+channel 1 DATA pattern bits=10110010 repeat=true
+channel 2 CS constant value=1
+channel 3 IRQ pulse start=16 width=8 value=1
+```
+
+#### 语法说明
+
+- `sample_rate`: 采样率，支持整数、`k`/`khz`、`m`/`mhz`。
+- `samples`: 每个通道生成的样本数。
+- `channel`: 通道号范围为 `0-23`，名称后接波形类型和 `key=value` 参数。
+- `clock`: 必填 `period`，可选 `duty`、`phase`。
+- `pattern`: 必填 `bits`，可选 `repeat`、`step`。
+- `constant`: 必填 `value`。
+- `pulse`: 必填 `start`、`width`，可选 `value`、`idle`。
+
+#### 生成文件
+
+1. 打开或新建一个包含 DSL 的文本文件。
+2. 在命令面板执行 `Logic Analyzer: Create Synthetic Capture`。
+3. 选择保存路径后会生成 `.lac` 文件，并自动打开。
+
+解析错误会显示行号和列号。示例 DSL 位于 `tests/fixtures/signal-dsl/examples/`，错误示例位于 `tests/fixtures/signal-dsl/errors/`。
+
 ### 性能优化
 
 #### 大数据处理
