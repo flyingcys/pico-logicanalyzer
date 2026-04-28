@@ -27,7 +27,7 @@ function readExportFormat(payload: unknown): 'lac' | 'csv' | 'json' | 'vcd' {
     return 'csv';
   }
 
-  const format = (payload as { format?: unknown }).format;
+  const { format } = payload as { format?: unknown };
   return format === 'lac' || format === 'csv' || format === 'json' || format === 'vcd'
     ? format
     : 'csv';

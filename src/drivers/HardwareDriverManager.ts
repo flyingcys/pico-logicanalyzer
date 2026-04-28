@@ -1,11 +1,12 @@
 import { EventEmitter } from 'events';
-import { AnalyzerDriverBase } from './AnalyzerDriverBase';
+import { AnalyzerDriverBase, OutputPacket } from './AnalyzerDriverBase';
 import { LogicAnalyzerDriver } from './LogicAnalyzerDriver';
 import { SaleaeLogicDriver } from './SaleaeLogicDriver';
 import { RigolSiglentDriver } from './RigolSiglentDriver';
 import { SigrokAdapter } from './SigrokAdapter';
 import { NetworkLogicAnalyzerDriver } from './NetworkLogicAnalyzerDriver';
 import { MultiAnalyzerDriver } from './MultiAnalyzerDriver';
+import { VersionValidator } from './VersionValidator';
 import {
   AnalyzerDriverType,
   AnalyzerDeviceInfo
@@ -33,6 +34,10 @@ export interface DetectedDevice {
   known?: boolean;
   discoveredBy?: string;
   discoveryProtocol?: string;
+  profileId?: string;
+  handshakeVerified?: boolean;
+  discoveryState?: 'candidate' | 'confirmed';
+  discoveryEvidence?: string;
   adapterStatus?: 'hardware-pending' | 'framework' | 'hardware-certified';
   certificationLevel?: 'fixture' | 'candidate' | 'experimental' | 'verified' | 'certified' | 'community';
   version?: string;
@@ -56,6 +61,7 @@ export interface NetworkProbeResult {
   host: string;
   port: number;
   protocol: 'pico-version' | 'saleae-api' | 'scpi-idn' | 'tcp-open';
+  profileId?: string;
   handshakeVerified: boolean;
   deviceName?: string;
   version?: string;
@@ -925,9 +931,19 @@ export class NetworkDetector implements IDeviceDetector {
       try {
         const isOpen = await this.checkPort(host, port);
         if (isOpen) {
+          const profiles = NetworkDetector.getProfilesForPort(port);
+
+          for (const profile of profiles) {
+            const verifiedProbe = await this.performProfileHandshake(host, port, profile);
+            if (verifiedProbe?.handshakeVerified) {
+              return NetworkDetector.fromProbeResult(verifiedProbe);
+            }
+          }
+
           return NetworkDetector.fromProbeResult({
             host,
             port,
+            profileId: profiles[0]?.id,
             protocol: 'tcp-open',
             handshakeVerified: false
           });
@@ -961,21 +977,165 @@ export class NetworkDetector implements IDeviceDetector {
     });
   }
 
+  private async performProfileHandshake(
+    host: string,
+    port: number,
+    profile: DiscoveryProfile
+  ): Promise<NetworkProbeResult | null> {
+    switch (profile.handshake) {
+      case 'pico-version':
+        return this.performPicoVersionHandshake(host, port, profile.id);
+      case 'scpi-idn':
+        return this.performScpiIdnHandshake(host, port, profile.id);
+      case 'saleae-api':
+      case 'sigrok-cli':
+      default:
+        return null;
+    }
+  }
+
+  private async performPicoVersionHandshake(
+    host: string,
+    port: number,
+    profileId: string
+  ): Promise<NetworkProbeResult | null> {
+    return new Promise((resolve) => {
+      const socket = new (require('net').Socket)();
+      let responseData = '';
+      const timeout = setTimeout(() => {
+        socket.destroy();
+        resolve(null);
+      }, 1000);
+
+      socket.connect(port, host, () => {
+        try {
+          const packet = new OutputPacket();
+          packet.addByte(0);
+          socket.write(packet.serialize());
+        } catch {
+          clearTimeout(timeout);
+          socket.destroy();
+          resolve(null);
+        }
+      });
+
+      socket.on('data', (data: Buffer) => {
+        responseData += data.toString();
+        const lines = responseData.split('\n').filter(line => line.trim());
+
+        if (lines.length < 5) return;
+
+        clearTimeout(timeout);
+        socket.destroy();
+
+        const version = lines[0].trim();
+        const deviceVersion = VersionValidator.getVersion(version);
+        const hasDeviceShape =
+          /^FREQ:[0-9]+$/.test(lines[1].trim()) &&
+          /^BLASTFREQ:[0-9]+$/.test(lines[2].trim()) &&
+          /^BUFFER:[0-9]+$/.test(lines[3].trim()) &&
+          /^CHANNELS:[0-9]+$/.test(lines[4].trim());
+
+        if (!deviceVersion.isValid || !hasDeviceShape) {
+          resolve(null);
+          return;
+        }
+
+        resolve({
+          host,
+          port,
+          profileId,
+          protocol: 'pico-version',
+          handshakeVerified: true,
+          deviceName: 'Pico Logic Analyzer WiFi',
+          version
+        });
+      });
+
+      socket.on('error', () => {
+        clearTimeout(timeout);
+        resolve(null);
+      });
+    });
+  }
+
+  private async performScpiIdnHandshake(
+    host: string,
+    port: number,
+    profileId: string
+  ): Promise<NetworkProbeResult | null> {
+    return new Promise((resolve) => {
+      const socket = new (require('net').Socket)();
+      const timeout = setTimeout(() => {
+        socket.destroy();
+        resolve(null);
+      }, 1000);
+
+      socket.connect(port, host, () => {
+        socket.write('*IDN?\n');
+      });
+
+      socket.on('data', (data: Buffer) => {
+        clearTimeout(timeout);
+        socket.destroy();
+        const response = data.toString().trim();
+        const lower = response.toLowerCase();
+        const manufacturer = lower.includes('rigol') ? 'Rigol' : lower.includes('siglent') ? 'Siglent' : undefined;
+
+        if (!manufacturer) {
+          resolve(null);
+          return;
+        }
+
+        resolve({
+          host,
+          port,
+          profileId,
+          protocol: 'scpi-idn',
+          handshakeVerified: true,
+          manufacturer,
+          deviceName: `${manufacturer} SCPI Instrument (${host}:${port})`,
+          version: response
+        });
+      });
+
+      socket.on('error', () => {
+        clearTimeout(timeout);
+        resolve(null);
+      });
+    });
+  }
+
   static getDefaultPorts(): number[] {
     const ports = HardwareDriverManager.getDiscoveryProfiles()
       .flatMap(profile => profile.defaultPorts);
     return Array.from(new Set(ports));
   }
 
+  static getProfilesForPort(port: number): DiscoveryProfile[] {
+    return HardwareDriverManager.getDiscoveryProfiles().filter(
+      profile => profile.connectionTypes.includes('network') && profile.defaultPorts.includes(port)
+    );
+  }
+
   static fromProbeResult(probe: NetworkProbeResult): DetectedDevice {
     const connectionString = `${probe.host}:${probe.port}`;
+    const profileId = probe.profileId || NetworkDetector.getProfileIdForProbe(probe);
+    const discoveryState: DetectedDevice['discoveryState'] = probe.handshakeVerified ? 'confirmed' : 'candidate';
+    const discoveryEvidence = probe.handshakeVerified
+      ? `${probe.protocol} 握手已确认`
+      : `端口 ${probe.port} 开放，仍需 ${profileId || '对应 profile'} 握手确认`;
     const baseDevice = {
       type: 'network' as const,
       connectionString,
       driverType: AnalyzerDriverType.Network,
       discoveryProtocol: probe.protocol,
       discoveredBy: `network:${probe.protocol}`,
-      version: probe.version
+      profileId,
+      version: probe.version,
+      handshakeVerified: probe.handshakeVerified,
+      discoveryState,
+      discoveryEvidence
     };
 
     if (probe.protocol === 'pico-version' && probe.handshakeVerified) {
@@ -1024,6 +1184,13 @@ export class NetworkDetector implements IDeviceDetector {
       adapterStatus: 'framework',
       certificationLevel: 'experimental'
     };
+  }
+
+  private static getProfileIdForProbe(probe: NetworkProbeResult): string | undefined {
+    if (probe.protocol === 'pico-version') return 'network-pico';
+    if (probe.protocol === 'saleae-api') return 'saleae-logic';
+    if (probe.protocol === 'scpi-idn') return 'rigol-siglent-scpi';
+    return NetworkDetector.getProfilesForPort(probe.port)[0]?.id;
   }
 }
 
@@ -1086,7 +1253,14 @@ export class SaleaeDetector implements IDeviceDetector {
         type: 'usb',
         connectionString: 'localhost:10429',
         driverType: AnalyzerDriverType.Serial,
-        confidence: 95
+        confidence: 70,
+        profileId: 'saleae-logic',
+        handshakeVerified: false,
+        discoveryState: 'candidate',
+        discoveryEvidence: 'Saleae API 端口开放，仍需 API 枚举返回设备清单',
+        verificationRequired: true,
+        adapterStatus: 'framework',
+        certificationLevel: 'experimental'
       });
     } catch (error) {
       console.warn('Query Saleae devices failed:', error);
@@ -1195,7 +1369,14 @@ export class SigrokDetector implements IDeviceDetector {
           type: 'usb',
           connectionString: `${driver}:${connection}`,
           driverType: AnalyzerDriverType.Serial,
-          confidence: 85
+          confidence: 85,
+          profileId: 'sigrok-cli',
+          handshakeVerified: true,
+          discoveryState: 'confirmed',
+          discoveryEvidence: 'sigrok-cli --scan 返回设备连接串',
+          verificationRequired: true,
+          adapterStatus: 'framework',
+          certificationLevel: 'experimental'
         });
       }
     }

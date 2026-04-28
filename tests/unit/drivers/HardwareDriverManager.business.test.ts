@@ -85,7 +85,13 @@ jest.mock('../../../src/drivers/MultiAnalyzerDriver', () => ({
 jest.doMock('../../../src/drivers/HardwareDriverManager', () => jest.requireActual('../../../src/drivers/HardwareDriverManager'));
 
 // 在Mock配置完成后，导入真实的HardwareDriverManager
-const { HardwareDriverManager, NetworkDetector, SerialDetector } = jest.requireActual('../../../src/drivers/HardwareDriverManager');
+const {
+  HardwareDriverManager,
+  NetworkDetector,
+  SaleaeDetector,
+  SerialDetector,
+  SigrokDetector
+} = jest.requireActual('../../../src/drivers/HardwareDriverManager');
 
 describe('HardwareDriverManager 业务逻辑专项测试', () => {
   let manager: InstanceType<typeof HardwareDriverManager>;
@@ -379,14 +385,82 @@ describe('HardwareDriverManager 业务逻辑专项测试', () => {
         confidence: 92,
         verificationRequired: false,
         driverType: AnalyzerDriverType.Network,
-        discoveredBy: 'network:pico-version'
+        discoveredBy: 'network:pico-version',
+        profileId: 'network-pico',
+        discoveryState: 'confirmed',
+        handshakeVerified: true
       });
       expect(openOnlyPicoPort).toMatchObject({
         id: 'network-candidate-192.168.1.21-4045',
         name: 'Network Device Candidate (192.168.1.21:4045)',
         confidence: 35,
         verificationRequired: true,
-        discoveredBy: 'network:tcp-open'
+        discoveredBy: 'network:tcp-open',
+        discoveryState: 'candidate',
+        handshakeVerified: false
+      });
+    });
+
+    it('网络扫描应该先执行 profile 握手，失败时只返回候选设备', async () => {
+      const detector = new NetworkDetector();
+      (detector as any).checkPort = jest.fn().mockResolvedValue(true);
+
+      (detector as any).performProfileHandshake = jest.fn().mockResolvedValueOnce({
+        host: '192.168.1.20',
+        port: 4045,
+        protocol: 'pico-version',
+        profileId: 'network-pico',
+        handshakeVerified: true,
+        deviceName: 'Pico Logic Analyzer WiFi',
+        version: 'LOGIC_ANALYZER_V1_0'
+      });
+
+      const verified = await (detector as any).scanHostPorts('192.168.1.20', [4045]);
+
+      expect((detector as any).performProfileHandshake).toHaveBeenCalledWith(
+        '192.168.1.20',
+        4045,
+        expect.objectContaining({ id: 'network-pico', handshake: 'pico-version' })
+      );
+      expect(verified).toMatchObject({
+        id: 'network-pico-192.168.1.20-4045',
+        profileId: 'network-pico',
+        discoveryState: 'confirmed',
+        handshakeVerified: true,
+        confidence: 92
+      });
+
+      (detector as any).performProfileHandshake = jest.fn().mockResolvedValueOnce(null);
+      const candidate = await (detector as any).scanHostPorts('192.168.1.30', [10429]);
+
+      expect(candidate).toMatchObject({
+        id: 'network-candidate-192.168.1.30-10429',
+        profileId: 'saleae-logic',
+        discoveryState: 'candidate',
+        handshakeVerified: false,
+        verificationRequired: true
+      });
+    });
+
+    it('Saleae 和 sigrok 发现结果应该带 profile 证据状态', async () => {
+      const saleaeDetector = new SaleaeDetector();
+      const saleaeDevices = await (saleaeDetector as any).querySaleaeDevices();
+      expect(saleaeDevices[0]).toMatchObject({
+        profileId: 'saleae-logic',
+        discoveryState: 'candidate',
+        handshakeVerified: false,
+        verificationRequired: true
+      });
+
+      const sigrokDetector = new SigrokDetector();
+      const sigrokDevices = (sigrokDetector as any).parseSigrokScanOutput(
+        'fx2lafw:conn=1.2 - FX2 Logic Analyzer\n'
+      );
+      expect(sigrokDevices[0]).toMatchObject({
+        profileId: 'sigrok-cli',
+        discoveryState: 'confirmed',
+        handshakeVerified: true,
+        discoveryEvidence: 'sigrok-cli --scan 返回设备连接串'
       });
     });
 

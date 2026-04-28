@@ -626,6 +626,17 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
         expect(configTest.details).toContain('默认端口 (4045)');
       }
     });
+
+    it('应该给网络发现 profile 输出握手确认口径', async () => {
+      const handshakeTest = await (networkStabilityService as any).checkDeviceHandshakePolicy(10429);
+      expect(handshakeTest).toMatchObject({
+        testName: '设备握手口径检查',
+        passed: false,
+        severity: 'warning'
+      });
+      expect(handshakeTest.details).toContain('Saleae API');
+      expect(handshakeTest.details).toContain('候选');
+    });
   });
 
   describe('事件系统和EventEmitter继承验证', () => {
