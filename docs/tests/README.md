@@ -16,7 +16,7 @@
 - `npm run test:ci:quick -- --skip-install` 当前通过，14 个 quick 核心测试文件、373 个测试。
 - `npm run test:ci:standard -- --skip-install` 当前通过，18 个测试文件、383 个测试。
 - `npm run test:ci:full -- --skip-install` 当前通过，22 个测试文件、393 个测试。
-- `npm run test:webview:unit -- --runInBand` 当前通过，2 个测试套件、49 个测试。
+- `npm run test:webview:unit -- --runInBand` 当前通过，2 个测试套件、51 个测试。
 - `npm run test:unit -- --silent` 曾出现长时间无输出，当前不作为发布证据；应使用 quick/standard/full 分层命令定位。
 - `npm run test:unit` 脚本不再内置 `--maxWorkers`，调用方可按场景追加 `--runInBand` 或 `--maxWorkers`。
 - Quick 层暂不阻断测试已收口为 0 个；`LogicAnalyzerDriver.core`、`CaptureModels.core`、`SessionManager.core`、`ConfigurationManager.basic` 已重新纳入 quick 阻断门禁。

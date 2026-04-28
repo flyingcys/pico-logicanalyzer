@@ -4,10 +4,31 @@
 适用范围: 本仓库 VSCode 插件实现（`src/*`）与对照原版（`logicanalyzer/*`）
 目标读者: 核心开发、维护者、贡献者
 
+## 当前修正口径（2026-04-28）
+
+本文保留历史详细任务拆解，但其中的时间线、协议数量目标和“100%”类表述不能直接作为当前发布状态。当前有效的 review 结论、验证证据和下一步任务以 [`docs/code-review-and-next-tasks-2026-04-28.md`](code-review-and-next-tasks-2026-04-28.md)、[`docs/release-gate.md`](release-gate.md)、[`docs/功能状态矩阵.md`](功能状态矩阵.md) 为准。
+
+本轮实跑基线：
+
+- `npm run validate:local` 通过。
+- `npm run test:webview:unit -- --runInBand` 通过，2 个测试套件、51 个测试。
+- `npm run test:ci:quick -- --skip-install` 通过，14 个测试文件、373 个测试。
+- `npm run test:ci:standard -- --skip-install` 通过，18 个测试文件、383 个测试。
+- `npm run test:ci:full -- --skip-install` 通过，22 个测试文件、393 个测试。
+- `npm run package:dry` 通过，并触发生产构建。
+
+当前优先事项：
+
+1. 真实硬件认证：补 Pico / Pico W / Pico 2、Saleae、SCPI、sigrok 的可追溯设备记录。
+2. 发布前 smoke：补真实浏览器 Webview、VSIX 安装、导出按钮和无设备错误路径验证。
+3. 测试基础设施：清理 Full 层对 `--forceExit` 的依赖，重新生成覆盖率报告。
+4. 类型门禁：从 `src/models/*`、`src/decoders/*` 继续扩到 drivers、services、frontend。
+5. 文档收口：继续把旧文档中的“生产级”“100%”“迁移完成”降级为历史分析或补证据。
+
 ## 1. 目标与非目标
 
 - 目标
-  - 持续对齐原版 C# 驱动/数据链路/文件格式能力，确保与硬件协议 100% 兼容。
+  - 持续对齐原版 C# 驱动/数据链路/文件格式能力，协议兼容性以 golden 测试和真实硬件认证记录为准。
   - 大幅提升协议解码覆盖面（从 3 类到 30+，最终迈向 100+）。
   - 完整打通 Webview 交互与数据导出、设备管理、网络诊断等服务。
   - 引入/移植 SDL（Signal Description Language）能力，支撑测试样本生成与自动化用例。
@@ -21,7 +42,7 @@
 
 - M1（近期，2–3 周）
   - 协议解码：首批 8–12 个协议转换与验证（CAN、LIN、I2S、MDIO、OneWire、I2C filter、SPI Flash、SD、JTAG/SWD、UART 变体、SPI 变体）。
-  - Webview 导出入口打通（CSV/JSON/VCD/LAC/ZIP 工程包）。
+  - Webview 已接入 CSV/JSON/VCD/LAC 主链路；近期补取消/失败/选区/区域导出测试，ZIP 工程包仍按实验性处理。
   - `.tcs` 采集设置文件读写支持。
   - 流式解码路径的性能监控与可视化（前端卡片显示）。
 
@@ -42,7 +63,7 @@
 
 ### A. 协议解码能力补齐（高优先）
 
-- 背景/目标：原版 Python 解码器 130+；当前插件仅 I2C/SPI/UART（TS）。需按优先级批量转换并完善流式支持。
+- 背景/目标：原版 Python 解码器 130+；当前插件已有 I2C/SPI/UART/CAN/LIN/I2S（TS）核心解码器。下一步需扩充真实 golden 样本、能力声明和长尾协议计划。
 
 - 范围
   - 基于 `src/tools/PythonDecoderAnalyzer.ts` + `src/tools/TypeScriptCodeGenerator.ts` 的半自动转换链。
@@ -82,11 +103,11 @@
 
 - 工期：1–2 人日。
 
-### C. Webview 导出入口打通（高优先）
+### C. Webview 导出主链路完善（高优先）
 
-- 背景/目标：`LACEditorProvider` 的 `export` 分支为 TODO；`DataExportService` 已具备能力。
+- 背景/目标：`LACEditorProvider.exportData()` 已接入 `DataExportService`，当前主链路支持 LAC/CSV/JSON/VCD。下一步补用户取消、保存失败、格式不支持、选区导出、区域导出和真实文件 smoke。
 
-- 范围：将 Webview 导出动作与 `DataExportService` 对接，支持 CSV/JSON/VCD/LAC/ZIP。
+- 范围：稳定 Webview 导出动作与 `DataExportService` 的主链路；CSV/JSON/VCD/LAC 作为当前主链路，ZIP/报告类导出继续标注实验性。
 
 - 子任务
   1) 消息协议：`webview` -> `LACEditorProvider` 发送导出请求（格式、范围、通道、是否含解码结果等）。

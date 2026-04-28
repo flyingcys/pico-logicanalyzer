@@ -8,13 +8,16 @@
 
 - 主仓库：`/home/share/samba/vscode-extension/pico-logicanalyzer`
 - 当前分支：`master`
-- 本地状态：`master` 相对 `origin/master` 超前 27、落后 1；存在未跟踪原版参考目录 `logicanalyzer/`。
+- 本地状态：`master` 相对 `origin/master` 超前 74、落后 1；存在未提交的原版参考目录状态 `logicanalyzer/`，本轮文档更新不得误提交该目录。
 - 本次验证：
   - `npm run typecheck`：通过。
   - `npm run typecheck:strict`：通过。
-  - `npm run test:webview:unit -- --runInBand`：通过，2 个测试套件、37 个测试。
-  - `npm run build:production`：通过，有 webpack 体积警告。
-  - `npm run test:unit -- --silent`：仍需拆分定位长耗时或开放句柄。
+  - `npm run test:webview:unit -- --runInBand`：通过，2 个测试套件、51 个测试。
+  - `npm run test:ci:quick -- --skip-install`：通过，14 个测试文件、373 个测试。
+  - `npm run test:ci:standard -- --skip-install`：通过，18 个测试文件、383 个测试。
+  - `npm run test:ci:full -- --skip-install`：通过，22 个测试文件、393 个测试，用时约 7.5 分钟。
+  - `npm run package:dry`：通过，并触发生产构建；Webview 运行时入口约 2.19 MiB，仍需按 release gate 继续管控预算。
+  - `npm run test:unit -- --silent`：不作为当前发布证据，仍需拆分定位长耗时或开放句柄。
 - 明确限制：`logicanalyzer/` 是未跟踪原版参考项目，不能误提交；`.worktree/` 已在 `.gitignore` 中。
 
 ## 拆分原则

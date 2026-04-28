@@ -9,18 +9,20 @@
 最近一次质量基线验证结果（2026-04-28）：
 
 - `npm run typecheck` 通过，是当前基础类型门禁。
-- `npm run typecheck:strict` 通过，是分阶段 strict gate；当前 strict gate 仍只覆盖少量入口，不代表全仓库 strict 完成。
-- `npm run lint` 通过，但有 22 条 Vue 模板格式 warning。
-- `npm run test:webview:unit -- --runInBand` 通过，2 个测试套件、49 个测试。
-- `npm run test:ci:quick -- --skip-install` 通过，10 个 quick 核心测试文件、305 个测试。
-- `npm run build:production` 通过，但 Webview 两个入口 JS 各约 2.19 MiB，source map 各约 7.47 MiB，仍有 webpack 体积警告。
-- `npm run package:dry` 通过。
-- `npm run test:unit -- --silent` 仍需拆分定位长耗时或开放句柄。
+- `npm run typecheck:strict` 通过，是分阶段 strict gate；当前覆盖 `src/models/*.ts` 和 `src/decoders/*.ts`，不代表全仓库 strict 完成。
+- `npm run lint` 通过，本次未输出 warning。
+- `npm run test:webview:unit -- --runInBand` 通过，2 个测试套件、51 个测试。
+- `npm run test:ci:quick -- --skip-install` 通过，14 个 quick 核心测试文件、373 个测试，暂不阻断测试 0 个。
+- `npm run test:ci:standard -- --skip-install` 通过，18 个测试文件、383 个测试。
+- `npm run test:ci:full -- --skip-install` 通过，22 个测试文件、393 个测试，用时约 7.5 分钟。
+- `npm run package:dry` 通过，并触发 `npm run build:production`；Webview 运行时入口约 2.19 MiB，已拆出 `element-plus`、`vue-vendor`、`i18n` 等 chunk，仍需继续关注 bundle 预算。
+- `npm run test:unit -- --silent` 不作为当前发布证据；发布检查优先使用 quick/standard/full 分层命令。
 - `npm run validate:local` 用于本地快速门禁；`node scripts/ci-test-runner.js --layer=quick --dry-run` 可查看 CI 执行计划，不会安装依赖或运行长测试。
-- Quick 层暂不阻断 4 个旧 core smoke 测试，修复责任按功能 worktree 拆分，详见 [发布门槛](docs/release-gate.md)。
+- Quick 层暂不阻断测试数量为 0，详见 [发布门槛](docs/release-gate.md)。
 - 功能声明以 [功能状态矩阵](docs/功能状态矩阵.md) 和 [真实硬件认证矩阵](docs/真实硬件认证矩阵.md) 为准。
 - 发布检查以 [发布门槛](docs/release-gate.md) 和 [文档状态索引](docs/文档状态索引.md) 为准。
 - 当前深度 review 和后续任务总览见 [当前代码深度 Review 与后续任务总览（2026-04-28）](docs/code-review-and-next-tasks-2026-04-28.md)。
+- 当前优先实施目标是先跑通一个 I2C 硬件协议分析 UI 闭环，详见 [首个硬件协议分析 UI 闭环拆分计划（2026-04-28）](docs/first-hardware-protocol-ui-plan-2026-04-28.md)；并行执行拆分见 [I2C 协议分析 UI 闭环三 Worktree 并行计划（2026-04-28）](docs/first-i2c-ui-three-worktrees-2026-04-28.md)。
 - 详细差距见 [logicanalyzer 差距深度分析](docs/logicanalyzer-差距深度分析-2026-04-27.md)，下一阶段并行拆分见 [2026-04-28 并行 Worktree 对齐计划](docs/parallel-worktrees-2026-04-28.md)。
 
 ## 🎯 项目愿景
@@ -45,7 +47,7 @@
 
 ### 📊 数据分析
 - **采集模型**: 提供采集会话、通道和 `.lac` 相关模型
-- **协议解码**: 内置 I2C、SPI、UART 解码器，后续需要 sigrok golden 对齐
+- **协议解码**: 内置 I2C、SPI、UART、CAN、LIN、I2S 解码器，后续继续扩充真实 sigrok golden 样本
 - **波形显示**: Vue3 Webview 和渲染框架已存在，真实大样本交互仍在迁移中
 
 ### 🌍 跨平台
@@ -104,10 +106,11 @@
 
 ### 支持的协议
 
-- **I2C**: 完整的地址、数据解码，错误检测
+- **I2C**: 地址、数据解码和错误检测
 - **SPI**: 支持多种模式，可配置位序
 - **UART**: 波特率自动检测，奇偶校验支持
-- **更多协议**: CAN、LIN、I2S、USB、JTAG/SWD 等仍为规划中
+- **CAN / LIN / I2S**: 已有 TypeScript 解码器和 golden 测试入口，仍需更多真实采样样本扩充
+- **更多协议**: USB、JTAG/SWD 等仍为规划中或外部工具过渡能力
 
 ### 自定义解码器
 
@@ -199,8 +202,8 @@ node scripts/ci-test-runner.js --layer=quick --dry-run
 ## 🧪 测试覆盖
 
 - **测试目录**: 当前包含单元、集成、性能、压力和端到端测试目录。
-- **迁移状态**: 测试从旧 `utest` 目录向 `tests` 目录迁移尚未完全收口，仍有测试文件引用 `../../../utest/mocks/simple-mocks`。
-- **当前风险**: 全量 `npm run test:unit` 曾长时间无输出，发布证据应优先使用 `npm run test:ci:quick|standard|full` 分层命令。
+- **迁移状态**: CI 覆盖的旧 `utest/mocks` 引用已迁移到 `tests/fixtures/mocks`；旧 `docs/utest/*` 仅作为历史资料。
+- **当前风险**: 全量 `npm run test:unit` 曾长时间无输出，发布证据应优先使用 `npm run test:ci:quick|standard|full` 分层命令；Full 层仍依赖 `--forceExit` 收口部分长耗时测试。
 - **发布门槛**: `npm run validate:local`、分层测试、`npm run build:production`、`npm run package:dry` 和 VSIX smoke test 均通过后，才可重新声明覆盖率和发布状态。
 
 ## 📈 版本历史
