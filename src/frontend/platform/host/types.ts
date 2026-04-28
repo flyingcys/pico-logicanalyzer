@@ -6,6 +6,37 @@ export interface HostCommandResult<T = unknown> {
   error?: string;
 }
 
+export type HostCommandName =
+  | 'connectDevice'
+  | 'disconnectDevice'
+  | 'detectDevices'
+  | 'exportData'
+  | 'getCachedDevices'
+  | 'getStatus'
+  | 'repeatCapture'
+  | 'runNetworkDiagnostics'
+  | 'saveFile'
+  | 'scanForDevices'
+  | 'scanNetworkDevices'
+  | 'sendNetworkConfig'
+  | 'startCapture'
+  | 'stopCapture'
+  | 'stopScan';
+
+export interface HostDeviceCommandPayload {
+  type?: 'serial' | 'network' | string;
+  address?: string;
+  deviceId?: string;
+  host?: string;
+  port?: number;
+  [key: string]: unknown;
+}
+
+export interface HostCapturedDocumentResult {
+  capturedDocument?: FrontendDocumentData;
+  refreshedDocument?: FrontendDocumentData;
+}
+
 export interface FrontendDocumentData {
   uri: string;
   fileName: string;
@@ -64,7 +95,7 @@ export interface HostAdapter {
   exportData(payload: unknown): void | Promise<void>;
   connectDevice(): void | Promise<void>;
   startCapture(): void | Promise<void>;
-  sendCommand<T = unknown>(command: string, payload?: unknown): Promise<HostCommandResult<T>>;
+  sendCommand<T = unknown>(command: HostCommandName | string, payload?: unknown): Promise<HostCommandResult<T>>;
   onMessage(handler: HostMessageHandler): () => void;
 }
 
