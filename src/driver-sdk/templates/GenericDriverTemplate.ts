@@ -13,8 +13,12 @@ import {
 
 /**
  * 通用驱动模板
- * 提供基本的驱动结构和实现示例
- * 开发者可以基于此模板快速创建自定义驱动
+ * 提供驱动结构和参考实现。
+ *
+ * SDK_TEMPLATE_STATUS: implementation-required
+ * 该类用于脚手架和协议接入参考，不代表可直接用于真实硬件发布。
+ * 派生驱动必须完成设备协议、采集解析、停止/断线处理和真实硬件验证后，
+ * 才能把质量等级提升到 beta/stable/certified。
  */
 export class GenericDriverTemplate extends AnalyzerDriverBase {
   // 必需的属性实现

@@ -14,7 +14,10 @@ import { ProtocolHelper } from '../tools/ProtocolHelper';
 /**
  * 串口驱动模板
  * 专门用于串口连接的逻辑分析器设备
- * 包含完整的串口通信处理逻辑
+ *
+ * SDK_TEMPLATE_STATUS: implementation-required
+ * 该类提供串口连接、命令队列和错误处理外壳，设备协议解析与采集数据格式
+ * 仍需由派生驱动实现并通过真实硬件或 fixture 验证。
  */
 export class SerialDriverTemplate extends AnalyzerDriverBase {
   // 设备属性
