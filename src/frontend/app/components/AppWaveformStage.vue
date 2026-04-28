@@ -34,6 +34,25 @@
 
     return Math.max(2, (waveformStore.viewRange.visibleSamples / waveformStore.totalSamples) * 100);
   });
+  const documentStateText = computed(() => {
+    if (sessionStore.documentState === 'invalid') {
+      return '文件内容无效';
+    }
+
+    if (sessionStore.documentState === 'settings-only') {
+      return '当前文件只有采集设置';
+    }
+
+    if (sessionStore.documentState === 'empty') {
+      return '未加载捕获文件';
+    }
+
+    if (!hasSamples.value) {
+      return '当前文件没有可渲染样本';
+    }
+
+    return '';
+  });
   const measurementText = computed(() => {
     const measurement = waveformStore.lastMeasurement;
     if (!measurement) {
@@ -53,6 +72,7 @@
   });
 
   const draggingSelection = ref(false);
+  const draggingPreview = ref(false);
   const selectionAnchor = ref(0);
 
   let stopBinding: (() => void) | null = null;
@@ -237,6 +257,49 @@
     waveformStore.setViewRange(value, waveformStore.viewRange.visibleSamples);
   };
 
+  const updatePreviewFromPointer = (event: PointerEvent) => {
+    if (!hasSamples.value) {
+      return;
+    }
+
+    const target = event.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
+    const centerSample = Math.round(
+      Math.max(0, Math.min(1, ratio)) * waveformStore.totalSamples
+    );
+    const firstSample = centerSample - Math.floor(waveformStore.viewRange.visibleSamples / 2);
+
+    waveformStore.setViewRange(firstSample, waveformStore.viewRange.visibleSamples);
+  };
+
+  const handlePreviewPointerDown = (event: PointerEvent) => {
+    if (!hasSamples.value || event.button !== 0) {
+      return;
+    }
+
+    draggingPreview.value = true;
+    updatePreviewFromPointer(event);
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+  };
+
+  const handlePreviewPointerMove = (event: PointerEvent) => {
+    if (!draggingPreview.value) {
+      return;
+    }
+
+    updatePreviewFromPointer(event);
+  };
+
+  const handlePreviewPointerUp = (event: PointerEvent) => {
+    if (!draggingPreview.value) {
+      return;
+    }
+
+    draggingPreview.value = false;
+    (event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId);
+  };
+
   watch(
     () => ({
       sampleRate: sessionStore.sampleRate,
@@ -291,12 +354,14 @@
 
   onMounted(() => {
     window.addEventListener('waveform-action', handleWaveformAction);
+    window.addEventListener('pointerup', handlePreviewPointerUp);
   });
 
   onUnmounted(() => {
     stopBinding?.();
     stopBinding = null;
     window.removeEventListener('waveform-action', handleWaveformAction);
+    window.removeEventListener('pointerup', handlePreviewPointerUp);
   });
 </script>
 
@@ -310,6 +375,14 @@
       @pointerup="handlePointerUp"
       @pointercancel="handlePointerUp"
     />
+
+    <div
+      v-if="documentStateText"
+      class="waveform-stage__state"
+      data-testid="waveform-state"
+    >
+      {{ documentStateText }}
+    </div>
 
     <div class="waveform-stage__toolbar">
       <div class="waveform-stage__titlebar">
@@ -372,7 +445,14 @@
     </div>
 
     <div class="waveform-stage__preview">
-      <div class="waveform-stage__preview-track">
+      <div
+        class="waveform-stage__preview-track"
+        data-testid="waveform-preview-track"
+        @pointerdown="handlePreviewPointerDown"
+        @pointermove="handlePreviewPointerMove"
+        @pointerup="handlePreviewPointerUp"
+        @pointercancel="handlePreviewPointerUp"
+      >
         <div
           class="waveform-stage__preview-window"
           :style="{
@@ -410,6 +490,18 @@
     display: block;
     width: 100%;
     height: 100%;
+  }
+
+  .waveform-stage__state {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 48px;
+    color: #cbd5e1;
+    font-size: 14px;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(17, 24, 39, 0.9));
+    pointer-events: none;
   }
 
   .waveform-stage__toolbar {
@@ -490,6 +582,7 @@
     border: 1px solid rgba(148, 163, 184, 0.28);
     border-radius: 4px;
     background: rgba(15, 23, 42, 0.82);
+    touch-action: none;
   }
 
   .waveform-stage__preview-window {

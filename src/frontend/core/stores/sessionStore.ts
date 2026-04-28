@@ -117,6 +117,19 @@ function deriveTotalSamples(sessionPayload: JsonRecord): number {
   return 0;
 }
 
+function inferTotalSamplesFromSamples(
+  rootPayload: JsonRecord,
+  channels: FrontendAnalyzerChannel[]
+): number {
+  const rootSamples = readArray(rootPayload.Samples, rootPayload.samples);
+  const channelSampleCount = channels.reduce(
+    (maxSamples, channel) => Math.max(maxSamples, channel.samples?.length ?? 0),
+    0
+  );
+
+  return Math.max(rootSamples.length, channelSampleCount);
+}
+
 function hasRootSamples(rootPayload: JsonRecord): boolean {
   const samples = readArray(rootPayload.Samples, rootPayload.samples);
   return samples.length > 0;
@@ -339,7 +352,8 @@ export const useSessionStore = defineStore('frontend-session', {
       const loopCount = readNumber(sessionPayload.loopCount, sessionPayload.LoopCount);
       const channels = readChannels(sessionPayload, rootPayload);
       const totalSamples = readNumber(sessionPayload.totalSamples, sessionPayload.TotalSamples, metadata?.totalSamples)
-        || deriveTotalSamples(sessionPayload);
+        || deriveTotalSamples(sessionPayload)
+        || inferTotalSamplesFromSamples(rootPayload, channels);
       const hasData = detectHasData(rootPayload, sessionPayload);
 
       Object.assign(this, {

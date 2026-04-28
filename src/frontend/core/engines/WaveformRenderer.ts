@@ -458,16 +458,13 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
   public render(): RenderStats {
     const startTime = performance.now();
 
-    if (
-      !this.channels ||
-      this.channels.length === 0 ||
-      !this.channels[0].samples ||
-      this.channels[0].samples.length === 0
-    ) {
+    if (!this.channels || this.channels.length === 0) {
       return this.renderStats;
     }
 
-    const visibleChannels = this.channels.filter(c => !c.hidden);
+    const visibleChannels = this.channels.filter(
+      channel => !channel.hidden && channel.samples && channel.samples.length > 0
+    );
     const channelCount = visibleChannels.length;
 
     if (channelCount === 0) {
@@ -493,7 +490,10 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     const sampleWidth = canvasWidth / this.visibleSamples;
     const margin = channelHeight / 5;
 
-    const totalSamples = visibleChannels[0].samples!.length;
+    const totalSamples = visibleChannels.reduce(
+      (maxSamples, channel) => Math.max(maxSamples, channel.samples?.length ?? 0),
+      0
+    );
     const lastSample = Math.min(this.visibleSamples + this.firstSample, totalSamples);
 
     // 性能优化: 根据可见样本数量调整渲染策略
@@ -567,7 +567,10 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
   ): void {
     const lastSample = Math.min(
       this.visibleSamples + this.firstSample,
-      visibleChannels[0].samples!.length
+      visibleChannels.reduce(
+        (maxSamples, channel) => Math.max(maxSamples, channel.samples?.length ?? 0),
+        0
+      )
     );
     const channelCount = visibleChannels.length;
     const renders: ChannelRenderStatus[] = new Array(channelCount);
@@ -635,13 +638,13 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
           renders[chan] = {
             firstSample: curSample,
             sampleCount: 1,
-            value: visibleChannels[chan].samples![curSample]
+            value: visibleChannels[chan].samples![curSample] ?? 0
           };
         }
       } else {
         // 检查状态变化
         for (let chan = 0; chan < channelCount; chan++) {
-          const currentValue = visibleChannels[chan].samples![curSample];
+          const currentValue = visibleChannels[chan].samples![curSample] ?? 0;
 
           if (renders[chan].value !== currentValue) {
             // 渲染之前的状态
@@ -706,7 +709,10 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
   ): void {
     const lastSample = Math.min(
       this.visibleSamples + this.firstSample,
-      visibleChannels[0].samples!.length
+      visibleChannels.reduce(
+        (maxSamples, channel) => Math.max(maxSamples, channel.samples?.length ?? 0),
+        0
+      )
     );
     const channelCount = visibleChannels.length;
 
