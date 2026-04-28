@@ -1,37 +1,24 @@
 import { writeFile } from 'fs/promises';
 import { CaptureSession } from '../models/CaptureModels';
+import { LACFileFormat } from '../models/LACFileFormat';
+import type { CliOutputFormat } from './CliCaptureConfig';
 
-export async function writeCaptureOutput(session: CaptureSession, filename: string, format: 'lac' | 'csv'): Promise<void> {
-  const data = format === 'lac' ? serializeLac(session) : serializeCsv(session);
+export async function writeCaptureOutput(session: CaptureSession, filename: string, format: CliOutputFormat): Promise<void> {
+  const data = format === 'lac'
+    ? serializeLac(session)
+    : format === 'csv'
+      ? serializeCsv(session)
+      : serializeJson(session);
   await writeFile(filename, data, 'utf8');
 }
 
 export function serializeLac(session: CaptureSession): string {
-  const exported = {
-    Settings: {
-      Frequency: session.frequency,
-      PreTriggerSamples: session.preTriggerSamples,
-      PostTriggerSamples: session.postTriggerSamples,
-      LoopCount: session.loopCount,
-      MeasureBursts: session.measureBursts,
-      TriggerType: session.triggerType,
-      TriggerChannel: session.triggerChannel,
-      TriggerInverted: session.triggerInverted,
-      TriggerBitCount: session.triggerBitCount,
-      TriggerPattern: session.triggerPattern,
-      CaptureChannels: session.captureChannels.map(channel => ({
-        ChannelNumber: channel.channelNumber,
-        ChannelName: channel.channelName,
-        ChannelColor: channel.channelColor,
-        Hidden: channel.hidden,
-        Samples: channel.samples ? Array.from(channel.samples) : undefined
-      }))
-    },
-    Samples: null,
-    SelectedRegions: []
-  };
-
-  return `${JSON.stringify(exported, null, 2)}\n`;
+  const exported = LACFileFormat.createFromCaptureSession(
+    session,
+    [],
+    session.captureChannels.some(channel => channel.samples && channel.samples.length > 0)
+  );
+  return `${LACFileFormat.serialize(exported)}\n`;
 }
 
 export function serializeCsv(session: CaptureSession): string {
@@ -46,6 +33,57 @@ export function serializeCsv(session: CaptureSession): string {
   }
 
   return lines.join('\n');
+}
+
+export function serializeJson(session: CaptureSession): string {
+  const totalSamples = inferTotalSamples(session);
+  const samples = [];
+
+  for (let sampleIndex = 0; sampleIndex < totalSamples; sampleIndex++) {
+    const values: Record<string, number> = {};
+    for (const channel of session.captureChannels) {
+      values[String(channel.channelNumber)] = channel.samples?.[sampleIndex] ? 1 : 0;
+    }
+    samples.push({
+      index: sampleIndex,
+      timeMs: Number(((sampleIndex / session.frequency) * 1000).toFixed(6)),
+      values
+    });
+  }
+
+  const exported = {
+    metadata: {
+      format: 'logic-analyzer-capture-json',
+      version: 1,
+      totalSamples,
+      channelCount: session.captureChannels.length
+    },
+    settings: {
+      frequency: session.frequency,
+      preTriggerSamples: session.preTriggerSamples,
+      postTriggerSamples: session.postTriggerSamples,
+      loopCount: session.loopCount,
+      measureBursts: session.measureBursts,
+      triggerType: session.triggerType,
+      triggerChannel: session.triggerChannel,
+      triggerInverted: session.triggerInverted,
+      triggerBitCount: session.triggerBitCount,
+      triggerPattern: session.triggerPattern
+    },
+    channels: session.captureChannels.map(channel => ({
+      number: channel.channelNumber,
+      name: channel.channelName || `Channel ${channel.channelNumber + 1}`,
+      hidden: channel.hidden
+    })),
+    timebase: {
+      sampleRate: session.frequency,
+      totalSamples,
+      durationSeconds: totalSamples / session.frequency
+    },
+    samples
+  };
+
+  return `${JSON.stringify(exported, null, 2)}\n`;
 }
 
 function inferTotalSamples(session: CaptureSession): number {

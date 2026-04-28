@@ -2710,13 +2710,15 @@ pico-logic-analyzer/
 
 - `CliCaptureConfig.ts`：解析通道列表、触发类型、`.tcs` 配置文件，并生成 `CaptureSession`。
 - `CliCaptureRunner.ts`：提供真实 `LogicAnalyzerDriver` runner 和测试用 mock runner。
-- `CliCaptureExporter.ts`：输出 CLI 专用 `.lac` / `.csv` 文件。
+- `CliCaptureExporter.ts`：输出 CLI 专用 `.lac` / `.csv` / `.json` 文件。
 
 构建后入口为：
 
 ```bash
 node out/cli/index.js --help
 node out/cli/index.js capture --mock --device mock --frequency 1000000 --pre 0 --post 16 --channels 0,1 --output sample.csv --format csv
+node out/cli/index.js capture --mock --device mock --frequency 1000000 --pre 0 --post 16 --channels 0,1 --output sample-{index}.json --format json --repeat 2
+node out/cli/index.js batch --mock --file batch.json
 ```
 
 包入口通过 `package.json` 的 `bin.logic-analyzer-capture` 暴露。新增或修改 CLI 行为时应先补 `tests/unit/cli/` 下的测试，然后运行：
@@ -2724,6 +2726,8 @@ node out/cli/index.js capture --mock --device mock --frequency 1000000 --pre 0 -
 ```bash
 npm run test:cli
 ```
+
+CLI 错误码保持脚本稳定性：`2` 为参数或批处理文件错误，`3` 为单次采集或写文件失败，`4` 为批处理失败或部分失败。批处理文件支持数组或 `{ "captures": [...] }`，每个任务使用与 `capture` 命令一致的字段。
 
 ### TUI 边界
 

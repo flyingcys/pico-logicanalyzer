@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { AnalyzerChannel, CaptureSession } from '../models/CaptureModels';
 import { TriggerType } from '../models/AnalyzerTypes';
 
-export type CliOutputFormat = 'lac' | 'csv';
+export type CliOutputFormat = 'lac' | 'csv' | 'json';
 
 export interface CliCaptureConfig {
   device: string;
@@ -124,8 +124,8 @@ export function validateCaptureConfig(config: CliCaptureConfig): string[] {
   if (!Number.isInteger(config.loopCount) || config.loopCount < 0 || config.loopCount > 255) {
     errors.push('loop-count 必须在 0-255 之间');
   }
-  if (config.format !== 'lac' && config.format !== 'csv') {
-    errors.push('输出格式只支持 lac 或 csv');
+  if (config.format !== 'lac' && config.format !== 'csv' && config.format !== 'json') {
+    errors.push('输出格式只支持 lac、csv 或 json');
   }
   if (!config.output) {
     errors.push('必须指定输出文件');
@@ -209,8 +209,8 @@ export function normalizeFormat(value: string | undefined): CliOutputFormat | un
     return undefined;
   }
   const normalized = value.toLowerCase();
-  if (normalized !== 'lac' && normalized !== 'csv') {
-    throw new Error(`输出格式只支持 lac 或 csv: ${value}`);
+  if (normalized !== 'lac' && normalized !== 'csv' && normalized !== 'json') {
+    throw new Error(`输出格式只支持 lac、csv 或 json: ${value}`);
   }
   return normalized;
 }
