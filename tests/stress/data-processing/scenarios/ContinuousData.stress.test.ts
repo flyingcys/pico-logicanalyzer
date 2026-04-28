@@ -27,7 +27,7 @@ import * as path from 'path';
 import * as tmp from 'tmp';
 
 // Mock VSCode环境
-jest.mock('vscode', () => require('../../../utest/mocks/simple-mocks').mockVSCode);
+jest.mock('vscode', () => require('../../../../tests/fixtures/mocks/simple-mocks').mockVSCode);
 
 /**
  * GB级连续数据处理压力测试

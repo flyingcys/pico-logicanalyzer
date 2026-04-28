@@ -1,4 +1,5 @@
 import path from 'path';
+import fs from 'fs';
 
 describe('CI 测试运行器配置', () => {
   const runnerPath = path.resolve(__dirname, '../../../scripts/ci-test-runner.js');
@@ -34,9 +35,7 @@ describe('CI 测试运行器配置', () => {
 
     expect(quickPlan.includedTestGroups).toEqual(['coreTests']);
     expect(quickPlan.maxDurationMs).toBe(120000);
-    expect(quickPlan.quarantinedTests).toContain(
-      'tests/unit/drivers/LogicAnalyzerDriver.core.test.ts'
-    );
+    expect(quickPlan.quarantinedTests).toEqual([]);
     expect(fullPlan.includedTestGroups).toEqual([
       'coreTests',
       'integrationTests',
@@ -48,6 +47,26 @@ describe('CI 测试运行器配置', () => {
     const report = runner.formatDryRunReport(fullPlan);
     expect(report).toContain('测试分组: coreTests, integrationTests, performanceTests, e2eTests, stressTests');
     expect(report).toContain('时间上限: 30.0 分钟');
-    expect(report).toContain('暂不阻断测试: 4 个');
+    expect(report).toContain('暂不阻断测试: 0 个');
+  });
+
+  it('应该完成 CI 覆盖测试的旧 utest mock 引用迁移', () => {
+    const repoRoot = path.resolve(__dirname, '../../..');
+    const ciCoveredFiles = [
+      'tests/integration/core-flows/hardware-capture.integration.test.ts',
+      'tests/performance/benchmarks/LogicAnalyzerDriver.perf.test.ts',
+      'tests/performance/benchmarks/LACFileFormat.perf.test.ts',
+      'tests/e2e/scenarios/DataCaptureWorkflow.e2e.test.ts',
+      'tests/stress/load/LargeDataProcessing.stress.test.ts',
+      'tests/stress/load/IntelligentLoadGeneration.stress.test.ts',
+      'tests/stress/data-processing/scenarios/MemoryLeakDetection.stress.test.ts',
+      'tests/stress/data-processing/scenarios/ContinuousData.stress.test.ts'
+    ];
+
+    for (const file of ciCoveredFiles) {
+      const content = fs.readFileSync(path.join(repoRoot, file), 'utf8');
+      expect(content).not.toContain('utest/mocks/simple-mocks');
+      expect(content).toContain('tests/fixtures/mocks/simple-mocks');
+    }
   });
 });

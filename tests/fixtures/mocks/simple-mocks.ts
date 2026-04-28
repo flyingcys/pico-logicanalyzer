@@ -17,6 +17,12 @@ export const mockVSCode = {
     registerCommand: jest.fn(),
     executeCommand: jest.fn()
   },
+  extensions: {
+    getExtension: jest.fn(() => ({
+      isActive: true,
+      activate: jest.fn().mockResolvedValue({})
+    }))
+  },
   window: {
     showInformationMessage: jest.fn(),
     showErrorMessage: jest.fn()

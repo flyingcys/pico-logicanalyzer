@@ -92,7 +92,7 @@ class ScenarioRunner {
     
     // 分析场景依赖关系
     const dependencyGraph = this.buildDependencyGraph(scenarios, configs);
-    const executionGroups = this.groupScenariosByDependency(dependencyGraph);
+    const executionGroups = this.groupScenariosByDependency(scenarios, dependencyGraph);
     
     console.log(`🔗 分析得到 ${executionGroups.length} 个并行执行组`);
     
@@ -323,14 +323,30 @@ class ScenarioRunner {
    * 按依赖关系分组场景
    */
   private groupScenariosByDependency(
+    scenarios: WorkflowScenario[],
     dependencyGraph: Map<string, string[]>
   ): WorkflowScenario[][] {
-    // 简化实现：按依赖层级分组
-    // 实际实现中应该使用拓扑排序算法
     const groups: WorkflowScenario[][] = [];
     const processed = new Set<string>();
-    
-    // 这里返回一个简化的分组，实际应该实现完整的拓扑排序
+    const remaining = new Map(scenarios.map(scenario => [scenario.name, scenario]));
+
+    while (remaining.size > 0) {
+      const ready = Array.from(remaining.values()).filter(scenario => {
+        const dependencies = dependencyGraph.get(scenario.name) || [];
+        return dependencies.every(dependency => processed.has(dependency));
+      });
+
+      if (ready.length === 0) {
+        throw new Error('场景依赖存在循环或未知依赖');
+      }
+
+      groups.push(ready);
+      for (const scenario of ready) {
+        processed.add(scenario.name);
+        remaining.delete(scenario.name);
+      }
+    }
+
     return groups;
   }
   

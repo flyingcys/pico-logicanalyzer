@@ -207,6 +207,7 @@ abstract class PerformanceTestBase {
     try {
       console.log(`🔥 开始性能测试: ${testName}`);
       console.log(`   配置: ${this.config.iterations}次测量, ${this.config.warmupIterations}次预热`);
+      await this.beforeEach();
       
       // 1. 执行预热
       await this.performWarmup();
@@ -266,6 +267,8 @@ abstract class PerformanceTestBase {
         success: false,
         error: (err as Error).message
       };
+    } finally {
+      await this.afterEach();
     }
   }
 }

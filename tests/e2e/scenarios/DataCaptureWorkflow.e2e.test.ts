@@ -16,10 +16,11 @@
 import 'jest-extended';
 import { E2ETestBase, WorkflowScenario, UserAction } from '../framework/E2ETestBase';
 import { ScenarioRunner, ScenarioConfig } from '../framework/ScenarioRunner';
+import * as fs from 'fs-extra';
 import * as path from 'path';
 
 // Mock VSCode环境 - 最小化Mock使用
-jest.mock('vscode', () => require('../../../utest/mocks/simple-mocks').mockVSCode);
+jest.mock('vscode', () => require('../../../tests/fixtures/mocks/simple-mocks').mockVSCode);
 
 /**
  * 数据采集工作流E2E测试类
@@ -35,13 +36,15 @@ class DataCaptureWorkflowE2E extends E2ETestBase {
   async beforeEach(): Promise<void> {
     await super.beforeEach();
     
-    this.testDataDir = path.join(this.testEnv.tempDir, 'test-data');
-    this.outputDir = path.join(this.testEnv.tempDir, 'output');
+    this.testDataDir = path.join(this.testEnv.dataPath, 'test-data');
+    this.outputDir = path.join(this.testEnv.dataPath, 'output');
     
     // 创建测试目录
+    await fs.ensureDir(this.testDataDir);
+    await fs.ensureDir(this.outputDir);
     await Promise.all([
-      this.createTestFilePublic(path.join(this.testDataDir, 'test.txt'), 'test data'),
-      this.createTestFilePublic(path.join(this.outputDir, '.gitkeep'), '')
+      fs.writeFile(path.join(this.testDataDir, 'test.txt'), 'test data'),
+      fs.writeFile(path.join(this.outputDir, '.gitkeep'), '')
     ]);
   }
   

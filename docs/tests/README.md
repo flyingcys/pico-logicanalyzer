@@ -8,23 +8,24 @@
 
 ## 当前校验状态（2026-04-28）
 
-旧说明中“迁移完成”“CI 正常运行”“核心测试 100% 迁移完成”等结论已经过期。当前可验证事实：
+旧说明中“CI 正常运行”“核心测试 100% 迁移完成”等结论已经过期。当前可验证事实：
 
 - `tests` 目录保留 5 层测试结构：`unit`、`integration`、`performance`、`stress`、`e2e`。
-- 仍有 8 个测试文件引用 `../../../utest/mocks/simple-mocks`，包括集成、性能、压力和端到端测试。
+- 集成、性能、压力和端到端测试中已清理旧 `utest/mocks/simple-mocks` 引用，统一使用 `tests/fixtures/mocks/simple-mocks`。
 - `npm run typecheck` 和 `npm run typecheck:strict` 当前作为基础类型门禁。
-- `npm run test:ci:quick -- --skip-install` 当前通过，10 个 quick 核心测试文件、305 个测试。
+- `npm run test:ci:quick -- --skip-install` 当前通过，14 个 quick 核心测试文件、373 个测试。
+- `npm run test:ci:standard -- --skip-install` 当前通过，18 个测试文件、383 个测试。
+- `npm run test:ci:full -- --skip-install` 当前通过，22 个测试文件、393 个测试。
 - `npm run test:webview:unit -- --runInBand` 当前通过，2 个测试套件、49 个测试。
 - `npm run test:unit -- --silent` 曾出现长时间无输出，当前不作为发布证据；应使用 quick/standard/full 分层命令定位。
 - `npm run test:unit` 脚本不再内置 `--maxWorkers`，调用方可按场景追加 `--runInBand` 或 `--maxWorkers`。
-- Quick 层暂不阻断 4 个旧 core smoke 测试：`LogicAnalyzerDriver.core`、`CaptureModels.core`、`SessionManager.core`、`ConfigurationManager.basic`。这些测试失败代表业务漂移，归对应功能 worktree 修复。
+- Quick 层暂不阻断测试已收口为 0 个；`LogicAnalyzerDriver.core`、`CaptureModels.core`、`SessionManager.core`、`ConfigurationManager.basic` 已重新纳入 quick 阻断门禁。
 
 下一步先处理测试基础设施：
 
-1. 将所有 `utest/mocks` 引用迁移到 `tests/fixtures/mocks`。
-2. 拆分运行 `tests/unit`，定位长耗时或未释放资源的测试文件。
-3. 按 quick/standard/full 分层执行，定位长耗时或未释放资源的测试文件。
-4. 重新生成覆盖率报告后，再更新覆盖率数字和迁移结论。
+1. 继续拆分运行 `tests/unit`，定位长耗时或未释放资源的测试文件。
+2. 重新生成覆盖率报告后，再更新覆盖率数字和迁移结论。
+3. Full 层目前依赖 `--forceExit` 收口长耗时测试，后续应继续清理未释放资源的根因。
 
 ---
 
@@ -170,10 +171,10 @@ class MyModuleTest extends UnitTestBase {
   - 2025-09-03: 完全删除@utest目录
 
 ### 迁移完成标志
-- ⚠️ 核心测试迁移未完全完成，仍有 `utest/mocks` 引用。
+- ✅ CI 覆盖的旧 `utest/mocks` 引用已迁移到 `tests/fixtures/mocks`。
 - ✅ 5层测试目录结构已建立。
-- ⚠️ CI 分层执行状态需重新验证。
-- ⚠️ 团队切换到 `tests` 目录的结论需等引用清理和测试稳定后再确认。
+- ✅ Quick、Standard 和 Full 分层执行已重新验证。
+- ⚠️ 覆盖率报告仍需重新验证后再确认发布候选质量。
 
 ---
 

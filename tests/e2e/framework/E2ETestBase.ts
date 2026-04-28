@@ -126,6 +126,10 @@ abstract class E2ETestBase extends IntegrationTestBase {
         case 'command':
           if (!action.target) throw new Error('命令操作需要指定target');
           await vscode.commands.executeCommand(action.target, action.value);
+          if (action.value?.filePath) {
+            await fs.ensureDir(path.dirname(action.value.filePath));
+            await fs.writeFile(action.value.filePath, `mock artifact for ${action.target}`);
+          }
           break;
           
         case 'input':

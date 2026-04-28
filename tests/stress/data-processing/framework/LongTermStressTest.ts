@@ -135,6 +135,8 @@ abstract class LongTermStressTest extends StressTestBase {
     this.leakDetector.startMonitoring();
     
     try {
+      await this.beforeEach();
+
       // 根据运行模式调整配置
       await this.adjustConfigurationForMode();
       
@@ -158,6 +160,8 @@ abstract class LongTermStressTest extends StressTestBase {
       const leakAnalysis = this.leakDetector.stopMonitoring();
       
       throw error;
+    } finally {
+      await this.afterEach();
     }
   }
   
@@ -168,10 +172,7 @@ abstract class LongTermStressTest extends StressTestBase {
     switch (this.longTermConfig.runMode) {
       case 'accelerated':
         // 加速模式：高频操作，短时间模拟长期运行
-        this.longTermConfig.maxDuration = Math.min(
-          this.longTermConfig.targetDurationHours * 60000 / this.longTermConfig.accelerationFactor,
-          600000 // 最多10分钟
-        );
+        this.longTermConfig.maxDuration = Math.min(this.longTermConfig.maxDuration, 600000);
         this.longTermConfig.operationFrequency *= this.longTermConfig.accelerationFactor;
         console.log(`🚀 加速模式: ${this.longTermConfig.accelerationFactor}倍速度, 实际运行${this.longTermConfig.maxDuration/60000}分钟`);
         break;
