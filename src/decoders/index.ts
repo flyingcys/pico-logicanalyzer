@@ -29,11 +29,17 @@ export type {
 export { I2CDecoder } from './protocols/I2CDecoder';
 export { SPIDecoder } from './protocols/SPIDecoder';
 export { UARTDecoder } from './protocols/UARTDecoder';
+export { CANDecoder } from './protocols/CANDecoder';
+export { LINDecoder } from './protocols/LINDecoder';
+export { I2SDecoder } from './protocols/I2SDecoder';
 
 // 导入解码器类用于注册
 import { I2CDecoder } from './protocols/I2CDecoder';
 import { SPIDecoder } from './protocols/SPIDecoder';
 import { UARTDecoder } from './protocols/UARTDecoder';
+import { CANDecoder } from './protocols/CANDecoder';
+import { LINDecoder } from './protocols/LINDecoder';
+import { I2SDecoder } from './protocols/I2SDecoder';
 import { decoderManager } from './DecoderManager';
 
 /**
@@ -46,8 +52,11 @@ export function initializeDecoders(): void {
   manager.registerDecoder('i2c', I2CDecoder);
   manager.registerDecoder('spi', SPIDecoder);
   manager.registerDecoder('uart', UARTDecoder);
+  manager.registerDecoder('can', CANDecoder);
+  manager.registerDecoder('lin', LINDecoder);
+  manager.registerDecoder('i2s', I2SDecoder);
 
-  console.log('Decoder system initialized with I2C, SPI, and UART decoders');
+  console.log('Decoder system initialized with I2C, SPI, UART, CAN, LIN, and I2S decoders');
 }
 
 /**
@@ -57,9 +66,9 @@ export function getDecoderSystemStats() {
   const manager = decoderManager;
   return {
     ...manager.getStatistics(),
-    availableProtocols: ['I2C', 'SPI', 'UART'],
+    availableProtocols: ['I2C', 'SPI', 'UART', 'CAN', 'LIN', 'I2S'],
     supportedInputs: ['logic'],
-    supportedOutputs: ['i2c', 'spi', 'uart']
+    supportedOutputs: ['i2c', 'spi', 'uart', 'can', 'lin', 'i2s']
   };
 }
 
