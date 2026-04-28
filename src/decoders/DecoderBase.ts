@@ -151,7 +151,8 @@ export abstract class DecoderBase {
         };
       }
 
-      // 移动到下一个样本
+      // sigrok wait 语义按相邻样本检测边沿，搜索过程中需要持续推进上一状态。
+      this.saveCurrentState();
       this.sampleIndex++;
     }
 

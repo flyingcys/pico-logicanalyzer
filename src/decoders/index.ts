@@ -10,6 +10,20 @@ export * from './types';
 export { DecoderBase } from './DecoderBase';
 export { DecoderManager, decoderManager } from './DecoderManager';
 export type { DecoderExecutionResult, DecodingBranch, DecodingTree } from './DecoderManager';
+export {
+  getDecoderExtensionPlan,
+  getDecoderExtensionRoadmap,
+  getExternalSigrokProtocolIds
+} from './DecoderSigrokParity';
+export type {
+  DecoderExtensionPlan,
+  DecoderGoldenCase,
+  DecoderGoldenCategory,
+  DecoderGoldenExpectedSegment,
+  DecoderGoldenInputKind,
+  DecoderGoldenProtocol,
+  DecoderImplementationStrategy
+} from './DecoderSigrokParity';
 
 // 协议解码器
 export { I2CDecoder } from './protocols/I2CDecoder';
