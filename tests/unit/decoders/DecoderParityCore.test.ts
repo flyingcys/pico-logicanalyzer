@@ -348,7 +348,7 @@ describe('解码器 parity 核心', () => {
   it('DecoderRegistry 暴露常规与流式解码器清单', () => {
     expect(getDecoderRegistryInfo()).toEqual(
       expect.objectContaining({
-        regularDecoders: ['i2c', 'spi', 'uart'],
+        regularDecoders: ['i2c', 'spi', 'uart', 'can', 'lin', 'i2s'],
         streamingDecoders: ['streaming_i2c']
       })
     );

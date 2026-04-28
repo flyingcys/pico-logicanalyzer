@@ -7,10 +7,13 @@ import {
 import { I2CDecoder } from '../../../src/decoders/protocols/I2CDecoder';
 import { SPIDecoder } from '../../../src/decoders/protocols/SPIDecoder';
 import { UARTDecoder } from '../../../src/decoders/protocols/UARTDecoder';
+import { CANDecoder } from '../../../src/decoders/protocols/CANDecoder';
+import { LINDecoder } from '../../../src/decoders/protocols/LINDecoder';
+import { I2SDecoder } from '../../../src/decoders/protocols/I2SDecoder';
 import { ChannelData, DecoderOptionValue, DecoderResult } from '../../../src/decoders/types';
 
 type GoldenCategory = 'normal' | 'error' | 'boundary';
-type GoldenProtocol = 'i2c' | 'spi' | 'uart';
+type GoldenProtocol = 'i2c' | 'spi' | 'uart' | 'can' | 'lin' | 'i2s';
 
 interface ExpectedSegment {
   annotationType: number;
@@ -104,6 +107,98 @@ function spiTransferToChannels(input: {
   ];
 }
 
+function bitsToSamples(bits: number[], samplesPerBit = 1): number[] {
+  return bits.flatMap(bit => Array.from({ length: samplesPerBit }, () => bit));
+}
+
+function canFrameToChannels(input: {
+  identifier: number;
+  extended?: boolean;
+  data: number[];
+  ack?: boolean;
+  crcDelimiter?: number;
+}): ChannelData[] {
+  const bits: number[] = [0];
+  if (input.extended) {
+    const baseId = (input.identifier >> 18) & 0x7ff;
+    const extId = input.identifier & 0x3ffff;
+    for (let bit = 10; bit >= 0; bit--) bits.push((baseId >> bit) & 1);
+    bits.push(1, 1);
+    for (let bit = 17; bit >= 0; bit--) bits.push((extId >> bit) & 1);
+    bits.push(0, 0, 0);
+  } else {
+    for (let bit = 10; bit >= 0; bit--) bits.push((input.identifier >> bit) & 1);
+    bits.push(0, 0, 0);
+  }
+  for (let bit = 3; bit >= 0; bit--) bits.push((input.data.length >> bit) & 1);
+  for (const byte of input.data) {
+    for (let bit = 7; bit >= 0; bit--) bits.push((byte >> bit) & 1);
+  }
+  bits.push(...Array.from({ length: 15 }, () => 0));
+  bits.push(input.crcDelimiter ?? 1, input.ack === false ? 1 : 0, 1, 1, 1, 1, 1, 1, 1);
+
+  return [
+    {
+      channelNumber: 0,
+      channelName: 'CAN_RX',
+      samples: new Uint8Array([1, 1, ...bitsToSamples(bits), 1, 1])
+    }
+  ];
+}
+
+function linFrameToChannels(input: {
+  pid: number;
+  data: number[];
+  checksum: number;
+  breakBits?: number;
+}): ChannelData[] {
+  const bits: number[] = [1, 1, ...Array.from({ length: input.breakBits ?? 13 }, () => 0), 1];
+  const pushByte = (byte: number) => {
+    bits.push(0);
+    for (let bit = 0; bit < 8; bit++) bits.push((byte >> bit) & 1);
+    bits.push(1);
+  };
+
+  pushByte(0x55);
+  pushByte(input.pid);
+  for (const byte of input.data) pushByte(byte);
+  pushByte(input.checksum);
+
+  return [
+    {
+      channelNumber: 0,
+      channelName: 'LIN_RX',
+      samples: new Uint8Array(bits)
+    }
+  ];
+}
+
+function i2sWordsToChannels(input: {
+  wordLength: number;
+  left: number;
+  right: number;
+}): ChannelData[] {
+  const sck: number[] = [];
+  const ws: number[] = [];
+  const sd: number[] = [];
+  const pushBit = (wordSelect: number, bitValue: number) => {
+    sck.push(0, 1);
+    ws.push(wordSelect, wordSelect);
+    sd.push(bitValue, bitValue);
+  };
+
+  pushBit(0, 0);
+  for (let bit = input.wordLength - 1; bit >= 0; bit--) pushBit(0, (input.left >> bit) & 1);
+  pushBit(1, 0);
+  for (let bit = input.wordLength - 1; bit >= 0; bit--) pushBit(1, (input.right >> bit) & 1);
+
+  return [
+    { channelNumber: 0, channelName: 'SCK', samples: new Uint8Array(sck) },
+    { channelNumber: 1, channelName: 'WS', samples: new Uint8Array(ws) },
+    { channelNumber: 2, channelName: 'SD', samples: new Uint8Array(sd) }
+  ];
+}
+
 function inputToChannels(input: any): ChannelData[] {
   switch (input.kind) {
     case 'logic-channels':
@@ -112,6 +207,12 @@ function inputToChannels(input: any): ChannelData[] {
       return i2cOperationsToChannels(input.operations);
     case 'spi-transfer':
       return spiTransferToChannels(input);
+    case 'can-frame':
+      return canFrameToChannels(input);
+    case 'lin-frame':
+      return linFrameToChannels(input);
+    case 'i2s-words':
+      return i2sWordsToChannels(input);
     default:
       throw new Error(`未知 golden 输入类型: ${input.kind}`);
   }
@@ -127,6 +228,12 @@ function decodeGoldenCase(testCase: GoldenCase): DecoderResult[] {
       return new SPIDecoder().decode(testCase.sampleRate, channels, testCase.options);
     case 'uart':
       return new UARTDecoder().decode(testCase.sampleRate, channels, testCase.options);
+    case 'can':
+      return new CANDecoder().decode(testCase.sampleRate, channels, testCase.options);
+    case 'lin':
+      return new LINDecoder().decode(testCase.sampleRate, channels, testCase.options);
+    case 'i2s':
+      return new I2SDecoder().decode(testCase.sampleRate, channels, testCase.options);
   }
 }
 
@@ -150,7 +257,7 @@ function expectGoldenSegments(results: DecoderResult[], expected: ExpectedSegmen
 }
 
 describe('sigrok golden 解码器对齐', () => {
-  it.each(['i2c', 'spi', 'uart'] as GoldenProtocol[])(
+  it.each(['i2c', 'spi', 'uart', 'can', 'lin', 'i2s'] as GoldenProtocol[])(
     '%s 同时具备正常、错误、边界三类 golden',
     protocol => {
       const categories = new Set(

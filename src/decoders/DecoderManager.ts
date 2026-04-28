@@ -117,14 +117,20 @@ export class DecoderManager {
       const { I2CDecoder } = require('./protocols/I2CDecoder');
       const { SPIDecoder } = require('./protocols/SPIDecoder');
       const { UARTDecoder } = require('./protocols/UARTDecoder');
+      const { CANDecoder } = require('./protocols/CANDecoder');
+      const { LINDecoder } = require('./protocols/LINDecoder');
+      const { I2SDecoder } = require('./protocols/I2SDecoder');
       const { StreamingI2CDecoder } = require('./protocols/StreamingI2CDecoder');
 
       this.registerDecoder('i2c', I2CDecoder);
       this.registerDecoder('spi', SPIDecoder);
       this.registerDecoder('uart', UARTDecoder);
+      this.registerDecoder('can', CANDecoder);
+      this.registerDecoder('lin', LINDecoder);
+      this.registerDecoder('i2s', I2SDecoder);
       this.registerStreamingDecoder('streaming_i2c', StreamingI2CDecoder);
 
-      console.log('内置解码器注册完成: i2c, spi, uart, streaming_i2c');
+      console.log('内置解码器注册完成: i2c, spi, uart, can, lin, i2s, streaming_i2c');
     } catch (error) {
       console.warn('内置解码器注册失败:', error);
     }

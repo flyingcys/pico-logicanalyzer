@@ -221,6 +221,190 @@
         { "annotationType": 1, "rawData": 170, "values": ["AA"] },
         { "annotationType": 9, "values": ["Stop bit", "Stop", "T"] }
       ]
+    },
+    {
+      "id": "can.standard-frame.normal",
+      "protocol": "can",
+      "category": "normal",
+      "sampleRate": 500000,
+      "input": {
+        "kind": "can-frame",
+        "identifier": 291,
+        "data": [17, 34],
+        "ack": true
+      },
+      "options": [{ "optionIndex": 0, "value": 500000 }],
+      "expected": [
+        { "annotationType": 0, "values": ["SOF"] },
+        { "annotationType": 1, "rawData": 291, "values": ["ID: 123", "123"] },
+        { "annotationType": 3, "rawData": 2, "values": ["DLC: 2", "2"] },
+        { "annotationType": 4, "rawData": 17, "values": ["Data[0]: 11", "11"] },
+        { "annotationType": 4, "rawData": 34, "values": ["Data[1]: 22", "22"] },
+        { "annotationType": 6, "values": ["ACK"] },
+        { "annotationType": 7, "values": ["EOF"] }
+      ]
+    },
+    {
+      "id": "can.crc-delimiter.error",
+      "protocol": "can",
+      "category": "error",
+      "sampleRate": 500000,
+      "input": {
+        "kind": "can-frame",
+        "identifier": 291,
+        "data": [17],
+        "ack": true,
+        "crcDelimiter": 0
+      },
+      "options": [{ "optionIndex": 0, "value": 500000 }],
+      "expected": [
+        { "annotationType": 8, "values": ["CRC delimiter error", "CRC delim"] }
+      ]
+    },
+    {
+      "id": "can.extended-frame.boundary",
+      "protocol": "can",
+      "category": "boundary",
+      "sampleRate": 500000,
+      "input": {
+        "kind": "can-frame",
+        "identifier": 1752286,
+        "extended": true,
+        "data": [170],
+        "ack": false
+      },
+      "options": [{ "optionIndex": 0, "value": 500000 }],
+      "expected": [
+        { "annotationType": 1, "rawData": 1752286, "values": ["Ext ID: 1ABCDE", "1ABCDE"] },
+        { "annotationType": 3, "rawData": 1, "values": ["DLC: 1", "1"] },
+        { "annotationType": 4, "rawData": 170, "values": ["Data[0]: AA", "AA"] },
+        { "annotationType": 8, "values": ["ACK missing", "No ACK"] }
+      ]
+    },
+    {
+      "id": "lin.classic-checksum.normal",
+      "protocol": "lin",
+      "category": "normal",
+      "sampleRate": 19200,
+      "input": {
+        "kind": "lin-frame",
+        "pid": 80,
+        "data": [18, 52],
+        "checksum": 185
+      },
+      "options": [
+        { "optionIndex": 0, "value": 19200 },
+        { "optionIndex": 1, "value": 2 },
+        { "optionIndex": 2, "value": "classic" }
+      ],
+      "expected": [
+        { "annotationType": 0, "values": ["Break"] },
+        { "annotationType": 1, "rawData": 85, "values": ["Sync: 55", "55"] },
+        { "annotationType": 2, "rawData": 80, "values": ["PID: 50", "50"] },
+        { "annotationType": 4, "rawData": 18, "values": ["Data[0]: 12", "12"] },
+        { "annotationType": 4, "rawData": 52, "values": ["Data[1]: 34", "34"] },
+        { "annotationType": 5, "rawData": 185, "values": ["Checksum: B9", "B9"] }
+      ]
+    },
+    {
+      "id": "lin.checksum.error",
+      "protocol": "lin",
+      "category": "error",
+      "sampleRate": 19200,
+      "input": {
+        "kind": "lin-frame",
+        "pid": 80,
+        "data": [18, 52],
+        "checksum": 0
+      },
+      "options": [
+        { "optionIndex": 0, "value": 19200 },
+        { "optionIndex": 1, "value": 2 },
+        { "optionIndex": 2, "value": "classic" }
+      ],
+      "expected": [
+        { "annotationType": 6, "values": ["Checksum error: expected B9", "Checksum error"] }
+      ]
+    },
+    {
+      "id": "lin.short-break.boundary",
+      "protocol": "lin",
+      "category": "boundary",
+      "sampleRate": 19200,
+      "input": {
+        "kind": "lin-frame",
+        "pid": 80,
+        "data": [18],
+        "checksum": 237,
+        "breakBits": 10
+      },
+      "options": [
+        { "optionIndex": 0, "value": 19200 },
+        { "optionIndex": 1, "value": 1 },
+        { "optionIndex": 2, "value": "classic" }
+      ],
+      "expected": [
+        { "annotationType": 6, "values": ["Break too short", "Break"] }
+      ]
+    },
+    {
+      "id": "i2s.stereo16.normal",
+      "protocol": "i2s",
+      "category": "normal",
+      "sampleRate": 32000,
+      "input": {
+        "kind": "i2s-words",
+        "wordLength": 16,
+        "left": 4660,
+        "right": 43981
+      },
+      "options": [
+        { "optionIndex": 0, "value": 16 },
+        { "optionIndex": 1, "value": "i2s" }
+      ],
+      "expected": [
+        { "annotationType": 0, "rawData": 4660, "values": ["Left: 1234", "L: 1234", "1234"] },
+        { "annotationType": 1, "rawData": 43981, "values": ["Right: ABCD", "R: ABCD", "ABCD"] }
+      ]
+    },
+    {
+      "id": "i2s.missing-word.error",
+      "protocol": "i2s",
+      "category": "error",
+      "sampleRate": 32000,
+      "input": {
+        "kind": "i2s-words",
+        "wordLength": 16,
+        "left": 4660,
+        "right": 0
+      },
+      "options": [
+        { "optionIndex": 0, "value": 24 },
+        { "optionIndex": 1, "value": "i2s" }
+      ],
+      "expected": [
+        { "annotationType": 3, "values": ["Incomplete word", "Incomplete"] }
+      ]
+    },
+    {
+      "id": "i2s.stereo24.boundary",
+      "protocol": "i2s",
+      "category": "boundary",
+      "sampleRate": 48000,
+      "input": {
+        "kind": "i2s-words",
+        "wordLength": 24,
+        "left": 1193046,
+        "right": 11259375
+      },
+      "options": [
+        { "optionIndex": 0, "value": 24 },
+        { "optionIndex": 1, "value": "i2s" }
+      ],
+      "expected": [
+        { "annotationType": 0, "rawData": 1193046, "values": ["Left: 123456", "L: 123456", "123456"] },
+        { "annotationType": 1, "rawData": 11259375, "values": ["Right: ABCDEF", "R: ABCDEF", "ABCDEF"] }
+      ]
     }
   ]
 }

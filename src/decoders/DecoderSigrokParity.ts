@@ -3,11 +3,17 @@
  * 用于集中描述 golden fixture 格式和后续协议扩展策略。
  */
 
-export type DecoderGoldenProtocol = 'i2c' | 'spi' | 'uart';
+export type DecoderGoldenProtocol = 'i2c' | 'spi' | 'uart' | 'can' | 'lin' | 'i2s';
 
 export type DecoderGoldenCategory = 'normal' | 'error' | 'boundary';
 
-export type DecoderGoldenInputKind = 'logic-channels' | 'i2c-operations' | 'spi-transfer';
+export type DecoderGoldenInputKind =
+  | 'logic-channels'
+  | 'i2c-operations'
+  | 'spi-transfer'
+  | 'can-frame'
+  | 'lin-frame'
+  | 'i2s-words';
 
 export interface DecoderGoldenExpectedSegment {
   annotationType: number;
