@@ -1,0 +1,42 @@
+{
+  "name": "pico-serial-non-contiguous-channel-frames",
+  "source": "手工构造 Pico 串口二进制帧，覆盖非连续真实 channelNumber 取位",
+  "cases": [
+    {
+      "name": "8ch-physical-0-2-5",
+      "mode": "Channels_8",
+      "channels": [0, 2, 5],
+      "sampleCount": 4,
+      "frameHex": "04 00 00 00 01 04 21 24 00",
+      "expectedChannelSamples": {
+        "0": [1, 0, 1, 0],
+        "2": [0, 1, 0, 1],
+        "5": [0, 0, 1, 1]
+      }
+    },
+    {
+      "name": "16ch-physical-8-9-15",
+      "mode": "Channels_16",
+      "channels": [8, 9, 15],
+      "sampleCount": 4,
+      "frameHex": "04 00 00 00 00 01 00 02 00 81 00 82 00",
+      "expectedChannelSamples": {
+        "8": [1, 0, 1, 0],
+        "9": [0, 1, 0, 1],
+        "15": [0, 0, 1, 1]
+      }
+    },
+    {
+      "name": "24ch-physical-8-16-23",
+      "mode": "Channels_24",
+      "channels": [8, 16, 23],
+      "sampleCount": 4,
+      "frameHex": "04 00 00 00 00 01 00 00 00 00 01 00 00 01 80 00 00 00 81 00 00",
+      "expectedChannelSamples": {
+        "8": [1, 0, 1, 0],
+        "16": [0, 1, 0, 1],
+        "23": [0, 0, 1, 1]
+      }
+    }
+  ]
+}
