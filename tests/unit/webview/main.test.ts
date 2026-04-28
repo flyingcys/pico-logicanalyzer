@@ -909,6 +909,264 @@ describe('browserHost 实现', () => {
       ]);
     });
   });
+
+  it('HTML host 应支持设备连接、网络扫描、采集、重复采集和停止采集命令', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actual = await import('../../../src/frontend/platform/host/browserHost');
+      const host = actual.createBrowserHost();
+      const messages: Array<{ type: string; payload?: unknown }> = [];
+      const captureConfig = {
+        frequency: 1000000,
+        preTriggerSamples: 2,
+        postTriggerSamples: 6,
+        triggerType: 'Edge',
+        triggerChannel: 0,
+        triggerInverted: false,
+        loopCount: 0,
+        measureBursts: false,
+        channels: [
+          { number: 0, name: 'D0', enabled: true },
+          { number: 1, name: 'D1', enabled: false }
+        ]
+      };
+
+      host.onMessage((message: { type: string; payload?: unknown }) => {
+        messages.push(message);
+      });
+
+      await expect(host.sendCommand('scanNetworkDevices', { timeoutMs: 100 })).resolves.toEqual({
+        success: true,
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'HTML 模拟 Pico',
+            type: 'network'
+          })
+        ])
+      });
+
+      await expect(host.sendCommand('connectDevice', {
+        type: 'serial',
+        address: '/dev/ttyUSB0'
+      })).resolves.toEqual({
+        success: true,
+        data: expect.objectContaining({
+          isConnected: true,
+          currentDevice: expect.objectContaining({
+            connectionPath: '/dev/ttyUSB0'
+          })
+        })
+      });
+
+      await expect(host.sendCommand('startCapture', { config: captureConfig })).resolves.toEqual({
+        success: true,
+        data: expect.objectContaining({
+          isConnected: true,
+          isCapturing: false,
+          lastCaptureConfig: expect.objectContaining({
+            frequency: 1000000
+          }),
+          capturedDocument: expect.objectContaining({
+            fileName: 'demo.lac',
+            content: expect.stringContaining('Settings')
+          })
+        })
+      });
+
+      await expect(host.sendCommand('repeatCapture')).resolves.toEqual({
+        success: true,
+        data: expect.objectContaining({
+          capturedDocument: expect.objectContaining({
+            content: expect.stringContaining('Samples')
+          })
+        })
+      });
+
+      await expect(host.sendCommand('stopCapture')).resolves.toEqual({
+        success: true,
+        data: expect.objectContaining({
+          isConnected: true,
+          isCapturing: false
+        })
+      });
+
+      expect(messages).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: 'documentUpdate',
+          payload: expect.objectContaining({
+            Settings: expect.any(Object),
+            Samples: expect.any(Array)
+          })
+        })
+      ]));
+    });
+  });
+
+  it('HTML host 在未连接或采集配置非法时应返回错误结果', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actual = await import('../../../src/frontend/platform/host/browserHost');
+      const host = actual.createBrowserHost();
+
+      await expect(host.sendCommand('startCapture', {
+        config: {
+          frequency: 0,
+          preTriggerSamples: 0,
+          postTriggerSamples: 0,
+          triggerType: 'Edge',
+          triggerChannel: 0,
+          channels: [
+            { number: 0, name: 'D0', enabled: false }
+          ]
+        }
+      })).resolves.toEqual({
+        success: false,
+        error: '请先连接逻辑分析器设备'
+      });
+
+      await host.sendCommand('connectDevice', {
+        type: 'serial',
+        address: '/dev/ttyUSB0'
+      });
+
+      await expect(host.sendCommand('startCapture', {
+        config: {
+          frequency: 0,
+          preTriggerSamples: 0,
+          postTriggerSamples: 0,
+          triggerType: 'Edge',
+          triggerChannel: 0,
+          channels: [
+            { number: 0, name: 'D0', enabled: false }
+          ]
+        }
+      })).resolves.toEqual({
+        success: false,
+        error: '采集配置无效'
+      });
+    });
+  });
+});
+
+describe('deviceCaptureCommands', () => {
+  it('startCapture 成功后应应用设备状态并重新装载捕获文档', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const { createDeviceCaptureCommands } = await import(
+        '../../../src/frontend/app/composables/deviceCaptureCommands'
+      );
+      const deviceStore = {
+        isConnected: true,
+        isCapturing: false,
+        captureConfig: {
+          frequency: 1000000,
+          preTriggerSamples: 1,
+          postTriggerSamples: 3,
+          triggerType: 'Edge',
+          triggerChannel: 0,
+          channels: [
+            { number: 0, name: 'D0', enabled: true }
+          ]
+        },
+        setCapturing: jest.fn((value: boolean) => {
+          deviceStore.isCapturing = value;
+        }),
+        applyStatus: jest.fn()
+      };
+      const sessionStore = {
+        applyDocument: jest.fn()
+      };
+      const notify = {
+        error: jest.fn(),
+        success: jest.fn()
+      };
+      const host = {
+        sendCommand: jest.fn().mockResolvedValue({
+          success: true,
+          data: {
+            isConnected: true,
+            isCapturing: false,
+            capturedDocument: {
+              uri: 'file:///tmp/capture.lac',
+              fileName: 'capture.lac',
+              content: '{"Settings":{},"Samples":[]}'
+            }
+          }
+        })
+      };
+
+      const actions = createDeviceCaptureCommands({
+        host: host as any,
+        deviceStore: deviceStore as any,
+        sessionStore: sessionStore as any,
+        notify
+      });
+
+      await actions.startCapture();
+
+      expect(host.sendCommand).toHaveBeenCalledWith('startCapture', {
+        config: deviceStore.captureConfig
+      });
+      expect(deviceStore.setCapturing).toHaveBeenNthCalledWith(1, true);
+      expect(deviceStore.setCapturing).toHaveBeenLastCalledWith(false);
+      expect(deviceStore.applyStatus).toHaveBeenCalledWith(expect.objectContaining({
+        isConnected: true,
+        isCapturing: false
+      }));
+      expect(sessionStore.applyDocument).toHaveBeenCalledWith({
+        uri: 'file:///tmp/capture.lac',
+        fileName: 'capture.lac',
+        content: '{"Settings":{},"Samples":[]}'
+      });
+      expect(notify.error).not.toHaveBeenCalled();
+    });
+  });
+
+  it('startCapture 失败时应恢复状态并保留错误反馈', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const { createDeviceCaptureCommands } = await import(
+        '../../../src/frontend/app/composables/deviceCaptureCommands'
+      );
+      const deviceStore = {
+        isConnected: true,
+        isCapturing: false,
+        captureConfig: {
+          frequency: 1000000,
+          preTriggerSamples: 1,
+          postTriggerSamples: 3,
+          triggerType: 'Edge',
+          triggerChannel: 0,
+          channels: [
+            { number: 0, name: 'D0', enabled: true }
+          ]
+        },
+        setCapturing: jest.fn(),
+        setError: jest.fn(),
+        applyStatus: jest.fn()
+      };
+      const host = {
+        sendCommand: jest.fn().mockResolvedValue({
+          success: false,
+          error: '采集配置无效'
+        })
+      };
+      const notify = {
+        error: jest.fn(),
+        success: jest.fn()
+      };
+
+      const actions = createDeviceCaptureCommands({
+        host: host as any,
+        deviceStore: deviceStore as any,
+        sessionStore: { applyDocument: jest.fn() } as any,
+        notify
+      });
+
+      await actions.startCapture();
+
+      expect(deviceStore.setCapturing).toHaveBeenNthCalledWith(1, true);
+      expect(deviceStore.setCapturing).toHaveBeenLastCalledWith(false);
+      expect(deviceStore.setError).toHaveBeenCalledWith('采集配置无效');
+      expect(notify.error).toHaveBeenCalledWith('采集配置无效');
+    });
+  });
 });
 
 describe('useHost', () => {
@@ -1296,6 +1554,165 @@ describe('LACEditorProvider 契约', () => {
         lastSeen: expect.any(Date),
         isOnline: true
       });
+    });
+  });
+
+  it('executeHostCommand 应把 scanNetworkDevices 映射到 WiFi 扫描服务', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const scanForDevices = jest.fn().mockResolvedValue([
+        { ipAddress: '192.168.1.20', port: 4045, deviceName: 'Pico W' }
+      ]);
+
+      jest.doMock('../../../src/drivers/HardwareDriverManager', () => ({
+        hardwareDriverManager: {
+          getCurrentDevice: jest.fn(() => null),
+          getCurrentDeviceInfo: jest.fn(() => null),
+          disconnectCurrentDevice: jest.fn(),
+          connectToDevice: jest.fn(),
+          detectHardware: jest.fn()
+        }
+      }));
+      jest.doMock('../../../src/services/NetworkStabilityService', () => ({
+        NetworkStabilityService: jest.fn().mockImplementation(() => ({
+          disconnect: jest.fn(),
+          connect: jest.fn(),
+          runDiagnostics: jest.fn()
+        }))
+      }));
+      jest.doMock('../../../src/services/WiFiDeviceDiscovery', () => ({
+        WiFiDeviceDiscovery: jest.fn().mockImplementation(() => ({
+          scanForDevices,
+          stopScan: jest.fn(),
+          getCachedDevices: jest.fn()
+        }))
+      }));
+      jest.doMock('vscode', () => ({
+        commands: { executeCommand: jest.fn() },
+        window: {
+          registerCustomEditorProvider: jest.fn(),
+          showInformationMessage: jest.fn(),
+          showErrorMessage: jest.fn(),
+          showSaveDialog: jest.fn()
+        },
+        workspace: {
+          applyEdit: jest.fn(),
+          onDidChangeTextDocument: jest.fn(() => ({ dispose: jest.fn() }))
+        },
+        Uri: {
+          joinPath: jest.fn(),
+          file: jest.fn()
+        },
+        Range: jest.fn(),
+        WorkspaceEdit: jest.fn()
+      }), { virtual: true });
+
+      const { LACEditorProvider } = await import('../../../src/providers/LACEditorProvider');
+      const provider = new LACEditorProvider({ extensionUri: { fsPath: '/tmp/extension' } } as any);
+      const result = await (provider as any).executeHostCommand(
+        { getText: () => '{}', uri: { toString: () => 'file:///tmp/test.lac', fsPath: '/tmp/test.lac' } },
+        'scanNetworkDevices',
+        { timeoutMs: 250 }
+      );
+
+      expect(scanForDevices).toHaveBeenCalledWith({ timeoutMs: 250 });
+      expect(result).toEqual({
+        success: true,
+        data: [
+          { ipAddress: '192.168.1.20', port: 4045, deviceName: 'Pico W' }
+        ]
+      });
+    });
+  });
+
+  it('startCapture host command 在无设备或非法配置时应返回稳定错误', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const startCapture = jest.fn();
+      let currentDevice: any = null;
+
+      jest.doMock('../../../src/drivers/HardwareDriverManager', () => ({
+        hardwareDriverManager: {
+          getCurrentDevice: jest.fn(() => currentDevice),
+          getCurrentDeviceInfo: jest.fn(() => currentDevice ? { name: 'Pico' } : null),
+          disconnectCurrentDevice: jest.fn(),
+          connectToDevice: jest.fn(),
+          detectHardware: jest.fn()
+        }
+      }));
+      jest.doMock('../../../src/services/NetworkStabilityService', () => ({
+        NetworkStabilityService: jest.fn().mockImplementation(() => ({
+          disconnect: jest.fn(),
+          connect: jest.fn(),
+          runDiagnostics: jest.fn()
+        }))
+      }));
+      jest.doMock('../../../src/services/WiFiDeviceDiscovery', () => ({
+        WiFiDeviceDiscovery: jest.fn().mockImplementation(() => ({
+          scanForDevices: jest.fn(),
+          stopScan: jest.fn(),
+          getCachedDevices: jest.fn()
+        }))
+      }));
+      jest.doMock('vscode', () => ({
+        commands: { executeCommand: jest.fn() },
+        window: {
+          registerCustomEditorProvider: jest.fn(),
+          showInformationMessage: jest.fn(),
+          showErrorMessage: jest.fn(),
+          showSaveDialog: jest.fn()
+        },
+        workspace: {
+          applyEdit: jest.fn(),
+          onDidChangeTextDocument: jest.fn(() => ({ dispose: jest.fn() }))
+        },
+        Uri: {
+          joinPath: jest.fn(),
+          file: jest.fn()
+        },
+        Range: jest.fn(),
+        WorkspaceEdit: jest.fn()
+      }), { virtual: true });
+
+      const { LACEditorProvider } = await import('../../../src/providers/LACEditorProvider');
+      const provider = new LACEditorProvider({ extensionUri: { fsPath: '/tmp/extension' } } as any);
+      const document = {
+        getText: () => '{}',
+        uri: { toString: () => 'file:///tmp/test.lac', fsPath: '/tmp/test.lac' }
+      };
+
+      await expect((provider as any).executeHostCommand(
+        document,
+        'startCapture',
+        { config: {} }
+      )).resolves.toEqual({
+        success: false,
+        error: '请先连接逻辑分析器设备'
+      });
+
+      currentDevice = {
+        startCapture,
+        isCapturing: false
+      };
+
+      await expect((provider as any).executeHostCommand(
+        document,
+        'startCapture',
+        {
+          config: {
+            frequency: 0,
+            preTriggerSamples: 0,
+            postTriggerSamples: 0,
+            triggerType: 'Edge',
+            triggerChannel: 0,
+            channels: [
+              { number: 0, enabled: false }
+            ]
+          }
+        }
+      )).resolves.toEqual({
+        success: false,
+        error: '采集配置无效'
+      });
+      expect(startCapture).not.toHaveBeenCalled();
     });
   });
 

@@ -527,6 +527,7 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
     try {
       switch (command) {
         case 'scanForDevices':
+        case 'scanNetworkDevices':
           return {
             success: true,
             data: await this.getWiFiDiscoveryService().scanForDevices(
@@ -592,8 +593,11 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
             return { success: false, error: '当前没有已连接设备' };
           }
 
+          const success = await currentDevice.stopCapture();
           return {
-            success: await currentDevice.stopCapture()
+            success,
+            data: await this.createDeviceStatus(),
+            error: success ? undefined : '停止采集失败'
           };
         }
 
@@ -655,6 +659,7 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
     return {
       success: true,
       data: {
+        ...(await this.createDeviceStatus()),
         deviceInfo: createConnectedDeviceInfo({
           host,
           port,
@@ -747,11 +752,17 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
     const session = await this.captureWithDevice(config);
     const lacData = LACFileFormat.createFromCaptureSession(session);
     await this.saveLACFile(document, lacData);
+    const capturedDocument = {
+      uri: document.uri.toString(),
+      fileName: path.basename(document.uri.fsPath),
+      content: JSON.stringify(lacData, null, 2)
+    };
 
     return {
       success: true,
       data: {
         ...(await this.createDeviceStatus()),
+        capturedDocument,
         capturedSession: {
           totalSamples: session.totalSamples,
           frequency: session.frequency,
@@ -852,9 +863,16 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
 
     if (
       frequency === undefined ||
+      !Number.isFinite(frequency) ||
+      frequency <= 0 ||
       preTriggerSamples === undefined ||
+      !Number.isFinite(preTriggerSamples) ||
+      preTriggerSamples < 0 ||
       postTriggerSamples === undefined ||
-      triggerChannel === undefined
+      !Number.isFinite(postTriggerSamples) ||
+      postTriggerSamples <= 0 ||
+      triggerChannel === undefined ||
+      !Number.isInteger(triggerChannel)
     ) {
       return null;
     }
@@ -872,7 +890,7 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
           : true
       }));
 
-    if (channels.length === 0) {
+    if (channels.length === 0 || !channels.some(channel => channel.enabled !== false)) {
       return null;
     }
 

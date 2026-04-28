@@ -1,13 +1,30 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useDeviceStore, type FrontendTriggerType } from '../../core/stores/deviceStore';
 import { useSessionStore } from '../../core/stores/sessionStore';
 import { useHost } from '../composables/useHost';
+import { createDeviceCaptureCommands } from '../composables/deviceCaptureCommands';
 
 const deviceStore = useDeviceStore();
 const sessionStore = useSessionStore();
 const host = useHost({ fallback: 'auto' });
+const captureCommands = createDeviceCaptureCommands({
+  host,
+  deviceStore,
+  sessionStore,
+  notify: ElMessage
+});
+const manualSerialPath = ref('');
+const manualNetworkAddress = ref('');
+const scannedDevices = ref<Array<{
+  id?: string;
+  name?: string;
+  ipAddress?: string;
+  port?: number;
+  connectionString?: string;
+  connectionPath?: string;
+}>>([]);
 
 const triggerTypes: Array<{ label: string; value: FrontendTriggerType }> = [
   { label: 'Edge', value: 'Edge' },
@@ -74,15 +91,7 @@ const summaryItems = computed(() => [
 ]);
 
 async function refreshStatus() {
-  const result = await host.sendCommand('getStatus');
-  if (result.success && result.data) {
-    deviceStore.applyStatus(result.data as any);
-    return;
-  }
-
-  if (result.error) {
-    deviceStore.setError(result.error);
-  }
+  await captureCommands.refreshStatus();
 }
 
 async function detectDevices() {
@@ -95,39 +104,47 @@ async function detectDevices() {
   ElMessage.success(`检测到 ${(result.data as any[])?.length ?? 0} 个设备`);
 }
 
-async function connectManual(kind: 'serial' | 'network') {
-  const placeholder = kind === 'serial' ? '/dev/ttyUSB0 或 COM3' : '192.168.1.100:4045';
-  const value = window.prompt(kind === 'serial' ? '输入串口路径' : '输入网络地址', placeholder);
-  if (!value || value === placeholder) {
+async function scanNetworkDevices() {
+  const result = await captureCommands.scanNetworkDevices({ timeoutMs: 5000 });
+  if (!result.success) {
     return;
   }
 
-  deviceStore.setConnecting(true);
-  const result = await host.sendCommand('connectDevice', {
+  scannedDevices.value = Array.isArray(result.data) ? result.data as typeof scannedDevices.value : [];
+  ElMessage.success(`扫描到 ${scannedDevices.value.length} 个网络设备`);
+}
+
+async function connectManual(kind: 'serial' | 'network') {
+  const value = (kind === 'serial' ? manualSerialPath.value : manualNetworkAddress.value).trim();
+  if (!value) {
+    ElMessage.error(kind === 'serial' ? '请输入串口路径' : '请输入网络地址');
+    return;
+  }
+
+  await captureCommands.connectDevice({
     type: kind,
     address: value
   });
-  deviceStore.setConnecting(false);
+}
 
-  if (!result.success) {
-    ElMessage.error(result.error || '连接失败');
+async function connectScannedNetworkDevice(device: typeof scannedDevices.value[number]) {
+  const address = device.connectionString ||
+    (device.ipAddress && device.port ? `${device.ipAddress}:${device.port}` : '');
+  if (!address) {
+    ElMessage.error('扫描结果缺少网络地址');
     return;
   }
 
-  await refreshStatus();
+  manualNetworkAddress.value = address;
+  await captureCommands.connectDevice({
+    type: 'network',
+    address,
+    deviceId: device.id
+  });
 }
 
 async function disconnectDevice() {
-  const result = await host.sendCommand('disconnectDevice');
-  if (!result.success) {
-    ElMessage.error(result.error || '断开失败');
-    return;
-  }
-
-  deviceStore.applyStatus({
-    isConnected: false,
-    isCapturing: false
-  });
+  await captureCommands.disconnectDevice();
 }
 
 function selectAllChannels() {
@@ -187,24 +204,65 @@ onMounted(() => {
       </el-button>
       <el-button
         size="small"
-        @click="connectManual('serial')"
+        @click="scanNetworkDevices"
       >
-        串口
+        扫描网络
       </el-button>
+    </div>
+
+    <div class="connection-fields">
+      <el-input
+        v-model="manualSerialPath"
+        size="small"
+        placeholder="/dev/ttyUSB0 或 COM3"
+        clearable
+      >
+        <template #append>
+          <el-button @click="connectManual('serial')">
+            串口
+          </el-button>
+        </template>
+      </el-input>
+      <el-input
+        v-model="manualNetworkAddress"
+        size="small"
+        placeholder="192.168.1.100:4045"
+        clearable
+      >
+        <template #append>
+          <el-button @click="connectManual('network')">
+            网络
+          </el-button>
+        </template>
+      </el-input>
       <el-button
         size="small"
-        @click="connectManual('network')"
-      >
-        网络
-      </el-button>
-      <el-button
-        size="small"
+        class="connection-fields__disconnect"
         :disabled="!deviceStore.isConnected"
         @click="disconnectDevice"
       >
         断开
       </el-button>
     </div>
+
+    <ul
+      v-if="scannedDevices.length > 0"
+      class="scanned-devices"
+    >
+      <li
+        v-for="device in scannedDevices"
+        :key="device.id || device.connectionString || device.connectionPath || device.name"
+      >
+        <span>{{ device.name || device.connectionString || '网络设备' }}</span>
+        <el-button
+          size="small"
+          link
+          @click="connectScannedNetworkDevice(device)"
+        >
+          连接
+        </el-button>
+      </li>
+    </ul>
 
     <el-form
       label-position="top"
@@ -423,6 +481,36 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.connection-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.connection-fields__disconnect {
+  justify-self: start;
+}
+
+.scanned-devices {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scanned-devices li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.scanned-devices span {
+  overflow-wrap: anywhere;
 }
 
 .capture-form {
