@@ -3,14 +3,21 @@ import { computed } from 'vue';
 import { ElMessage } from 'element-plus';
 import {
   Connection,
+  DocumentChecked,
+  Download,
   QuestionFilled,
   RefreshRight,
   VideoPause,
   VideoPlay
 } from '@element-plus/icons-vue';
 import { useDeviceStore } from '../../core/stores/deviceStore';
+import {
+  buildWebviewExportRequest,
+  mergeWaveformRegionsIntoLacDocument
+} from '../../core/services/exportRequestService';
 import { useSessionStore } from '../../core/stores/sessionStore';
 import { useUiStore } from '../../core/stores/uiStore';
+import { useWaveformStore } from '../../core/stores/waveformStore';
 import { useHost } from '../composables/useHost';
 import { createDeviceCaptureCommands } from '../composables/deviceCaptureCommands';
 import LanguageSwitcher from './LanguageSwitcher.vue';
@@ -24,6 +31,7 @@ const props = defineProps<{
 const uiStore = useUiStore();
 const deviceStore = useDeviceStore();
 const sessionStore = useSessionStore();
+const waveformStore = useWaveformStore();
 const host = useHost({ fallback: 'auto' });
 const captureCommands = createDeviceCaptureCommands({
   host,
@@ -39,6 +47,15 @@ const canRepeatCapture = computed(() =>
   deviceStore.isConnected &&
   !deviceStore.isCapturing &&
   Boolean(deviceStore.lastCaptureConfig)
+);
+const canExportData = computed(() =>
+  sessionStore.documentState === 'samples' &&
+  waveformStore.totalSamples > 0 &&
+  waveformStore.channels.length > 0
+);
+const canSaveRegions = computed(() =>
+  Boolean(sessionStore.documentContent) &&
+  sessionStore.documentState !== 'invalid'
 );
 
 function openShortcutHelp() {
@@ -71,6 +88,35 @@ async function repeatCapture() {
   }
 
   await captureCommands.repeatCapture();
+}
+
+async function exportData() {
+  if (!canExportData.value) {
+    return;
+  }
+
+  const result = await host.sendCommand(
+    'exportData',
+    buildWebviewExportRequest(sessionStore, waveformStore, 'csv')
+  );
+  if (!result.success) {
+    ElMessage.error(result.error || '导出失败');
+  }
+}
+
+async function saveRegions() {
+  if (!canSaveRegions.value) {
+    return;
+  }
+
+  try {
+    await host.saveDocument(
+      mergeWaveformRegionsIntoLacDocument(sessionStore.documentContent, waveformStore)
+    );
+    ElMessage.success('区域已保存');
+  } catch (error) {
+    ElMessage.error(`区域保存失败: ${error}`);
+  }
 }
 </script>
 
@@ -137,6 +183,32 @@ async function repeatCapture() {
           :disabled="!canRepeatCapture"
           :icon="RefreshRight"
           @click="repeatCapture"
+        />
+      </el-tooltip>
+
+      <el-tooltip
+        content="导出数据"
+        placement="bottom"
+      >
+        <el-button
+          circle
+          data-testid="webview-export-button"
+          :disabled="!canExportData"
+          :icon="Download"
+          @click="exportData"
+        />
+      </el-tooltip>
+
+      <el-tooltip
+        content="保存区域"
+        placement="bottom"
+      >
+        <el-button
+          circle
+          data-testid="webview-save-regions-button"
+          :disabled="!canSaveRegions"
+          :icon="DocumentChecked"
+          @click="saveRegions"
         />
       </el-tooltip>
 

@@ -22,6 +22,18 @@
 - 确认标题、左右侧栏、波形区、状态栏均可见
 - 确认页面样式由 `main-html.js` 注入，不依赖独立 `style.css`
 
+## 任务 04 浏览器 Smoke 记录
+
+- 日期：2026-04-28
+- 构建命令：`npm run build:frontend:html`
+- 浏览器命令：`NODE_PATH=/tmp/pico-logicanalyzer-pw/node_modules node tests/unit/webview/webview-browser-smoke.js`
+- empty：显示“未加载捕获文件”
+- settings-only：显示“当前文件只有采集设置”
+- invalid：显示“文件内容无效”
+- samples：画布加载，导出按钮可点击
+- 设备错误路径：未连接设备直接采集返回“请先连接逻辑分析器设备”
+- 区域保存边界：Webview 当前只把区域写回 `.lac` 的 `SelectedRegions`；marker 和测量结果只随导出请求发送，不写入 `.lac`
+
 ## 资源契约
 
 - `out/webview/webview-manifest.json` 存在
