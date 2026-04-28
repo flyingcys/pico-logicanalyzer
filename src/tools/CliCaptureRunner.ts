@@ -11,7 +11,7 @@ export interface CliCaptureRunner {
 export class MockCliCaptureRunner implements CliCaptureRunner {
   async capture(config: CliCaptureConfig): Promise<CaptureSession> {
     const session = buildCaptureSession(config);
-    const totalSamples = session.totalSamples;
+    const { totalSamples } = session;
 
     for (const channel of session.captureChannels) {
       const samples = new Uint8Array(totalSamples);

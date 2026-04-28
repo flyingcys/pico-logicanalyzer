@@ -97,6 +97,7 @@ async function detectDevices() {
 
 async function connectManual(kind: 'serial' | 'network') {
   const placeholder = kind === 'serial' ? '/dev/ttyUSB0 或 COM3' : '192.168.1.100:4045';
+  // eslint-disable-next-line no-alert
   const value = window.prompt(kind === 'serial' ? '输入串口路径' : '输入网络地址', placeholder);
   if (!value || value === placeholder) {
     return;
