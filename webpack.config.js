@@ -2,6 +2,12 @@ const path = require('path');
 const webpack = require('webpack');
 const { VueLoaderPlugin } = require('vue-loader');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
+
+const WEBVIEW_BUNDLE_BUDGET = {
+  maxRuntimeAssetSize: 2600000,
+  maxEntrypointSize: 3000000
+};
 
 class WebviewAssetManifestPlugin {
   apply(compiler) {
@@ -282,23 +288,73 @@ const webviewConfig = {
       '__VUE_OPTIONS_API__': JSON.stringify(true),
       '__VUE_PROD_DEVTOOLS__': JSON.stringify(isDevelopment)
     }),
+    ...(process.env.ANALYZE === 'true' ? [
+      new BundleAnalyzerPlugin({
+        analyzerMode: 'static',
+        openAnalyzer: false,
+        reportFilename: 'bundle-report.html',
+        generateStatsFile: true,
+        statsFilename: 'bundle-stats.json'
+      })
+    ] : []),
     // 热重载支持
     ...(isDevelopment ? [new webpack.HotModuleReplacementPlugin()] : [])
   ],
   optimization: {
     minimize: isProduction,
     sideEffects: false,
-    usedExports: true
+    usedExports: true,
+    splitChunks: {
+      chunks: 'all',
+      minSize: 30000,
+      cacheGroups: {
+        elementPlus: {
+          test: /[\\/]node_modules[\\/]element-plus[\\/]/,
+          name: 'element-plus',
+          chunks: 'all',
+          priority: 30,
+          enforce: true
+        },
+        vueVendor: {
+          test: /[\\/]node_modules[\\/](vue|@vue|pinia)[\\/]/,
+          name: 'vue-vendor',
+          chunks: 'all',
+          priority: 20,
+          enforce: true
+        },
+        i18n: {
+          test: /[\\/]node_modules[\\/]vue-i18n[\\/]|[\\/]src[\\/]frontend[\\/]shared[\\/]i18n[\\/]/,
+          name: 'i18n',
+          chunks: 'all',
+          priority: 15,
+          enforce: true
+        },
+        appShared: {
+          test: /[\\/]src[\\/]frontend[\\/](core|platform|shared)[\\/]/,
+          name: 'app-shared',
+          chunks: 'all',
+          priority: 5,
+          minChunks: 2,
+          reuseExistingChunk: true
+        }
+      }
+    }
   },
   // 性能预算 - 为VSCode扩展调整
   performance: {
-    maxAssetSize: 1500000,       // 1.5MB - 考虑到element-plus的大小
-    maxEntrypointSize: 2500000,  // 2.5MB - 为整个entrypoint提供更大空间
-    hints: isProduction ? 'warning' : false,
-    // 排除已知的大文件
+    maxAssetSize: WEBVIEW_BUNDLE_BUDGET.maxRuntimeAssetSize,
+    maxEntrypointSize: WEBVIEW_BUNDLE_BUDGET.maxEntrypointSize,
+    hints: isProduction ? 'error' : false,
     assetFilter: function(assetFilename) {
-      // 不对这些已知会很大的文件进行警告
-      return !/(element-plus|vendors|vue-vendor)\.[a-z0-9]+\.js$/.test(assetFilename);
+      if (/\.(map|LICENSE\.txt)$/.test(assetFilename)) {
+        return false;
+      }
+
+      if (/bundle-(report\.html|stats\.json)$/.test(assetFilename)) {
+        return false;
+      }
+
+      return /\.(js|css)$/.test(assetFilename);
     }
   },
   devtool: isDevelopment ? 'eval-cheap-module-source-map' : 'source-map'

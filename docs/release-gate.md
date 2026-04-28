@@ -40,6 +40,28 @@ npm run release:check
 npm run test:ci:full -- --skip-install
 ```
 
+## Webview bundle 预算
+
+生产 Webview 构建必须执行 webpack performance budget。`webpack.config.js` 当前把生产 `hints` 设为 `error`，只统计运行时 `.js` / `.css` 产物，source map 和分析报告不计入运行时预算。
+
+source map 不进入 VSIX，仅保留在本地构建目录用于定位发布候选问题。
+
+| 项目 | 阈值 | 处理方式 |
+| --- | --- | --- |
+| 单个运行时 asset | 2.6 MB | 超限时 `build:production` / `build:budget` 失败 |
+| 单个入口总量 | 3.0 MB | 超限时 `build:production` / `build:budget` 失败 |
+| source map | 不进入 VSIX | `.vscodeignore` 排除 `*.map` 和 `out/**/*.map` |
+| 分析报告 | 不进入 VSIX | `ANALYZE=true` 生成的报告仅用于本地分析 |
+
+`npm run build:budget` 可单独验证 Webview budget；`npm run build:analyze` 会生成 bundle report 和 stats，用于定位 Element Plus、i18n、工具面板和波形引擎的体积来源。
+
+当前策略：
+
+- Element Plus 仍作为全局 UI 基座保留，但拆为独立 `element-plus` chunk，便于观察后续按组件引入收益。
+- Vue、Pinia 拆为 `vue-vendor` chunk，避免两个入口重复沉淀。
+- i18n 本地消息拆为 `i18n` chunk；后续如果继续增长，再改为按语言动态加载。
+- 工具面板和波形引擎暂不做首屏 lazy load，因为当前主界面打开 `.lac` 后需要立即渲染波形和侧栏状态；后续由任务 04 的 UI 流程改动统一评估。
+
 ## VSIX smoke test
 
 1. 运行 `npm run package` 生成 VSIX。

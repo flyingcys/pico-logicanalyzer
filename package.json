@@ -200,6 +200,7 @@
     "build:frontend:html": "webpack --mode development --config webpack.config.js --config-name webview",
     "build:production": "npm run clean && cross-env NODE_ENV=production webpack --mode production && npm run build:cli",
     "build:analyze": "npm run clean && cross-env NODE_ENV=production ANALYZE=true webpack --mode production",
+    "build:budget": "npm run clean && cross-env NODE_ENV=production webpack --mode production --config webpack.config.js --config-name webview",
     "compile": "npm run build",
     "watch": "npm run clean && webpack --mode development --watch",
     "watch:production": "npm run clean && cross-env NODE_ENV=production webpack --mode production --watch",
