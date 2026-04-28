@@ -1,0 +1,12 @@
+{
+  "name": "pico-serial-8ch-single-frame",
+  "source": "根据原版 SharedDriver.ReadCapture 串口读取布局手工构造的最小回放帧",
+  "mode": "Channels_8",
+  "layout": "UInt32LE sampleCount + sample bytes + UInt8 timestampLength",
+  "sampleCount": 4,
+  "frameHex": "04 00 00 00 01 02 03 00 00",
+  "expectedChannelSamples": {
+    "0": [1, 0, 1, 0],
+    "1": [0, 1, 1, 0]
+  }
+}

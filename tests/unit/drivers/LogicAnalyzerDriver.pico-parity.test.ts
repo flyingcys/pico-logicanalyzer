@@ -1,8 +1,11 @@
 import { EventEmitter } from 'events';
+import * as fs from 'fs';
+import * as path from 'path';
 import { LogicAnalyzerDriver } from '../../../src/drivers/LogicAnalyzerDriver';
 import { CaptureRequest, OutputPacket } from '../../../src/drivers/AnalyzerDriverBase';
 import {
   AnalyzerChannel,
+  CaptureEventArgs,
   CaptureError,
   CaptureSession,
   TriggerType
@@ -82,6 +85,12 @@ const connectedDriver = () => {
 
 const bytes = (value: Uint8Array | Buffer) => Array.from(value);
 const nextTick = () => new Promise(resolve => setTimeout(resolve, 0));
+const fixture = <T>(name: string): T => {
+  const file = path.join(__dirname, '../../fixtures/drivers', name);
+  return JSON.parse(fs.readFileSync(file, 'utf8')) as T;
+};
+
+const hexToBuffer = (hex: string): Buffer => Buffer.from(hex.replace(/\s+/g, ''), 'hex');
 
 const expectedRequest = (values: {
   triggerType: TriggerType;
@@ -146,6 +155,36 @@ describe('Pico 原版协议与采集语义对齐', () => {
     await start;
 
     expect(stream.unpipe).toHaveBeenCalledWith(parser);
+  });
+
+  it('串口二进制帧在同一个 data chunk 中到达时必须完成采集并提取通道样本', async () => {
+    const frame = fixture<{
+      frameHex: string;
+      expectedChannelSamples: Record<string, number[]>;
+    }>('pico-serial-8ch-single-frame.json');
+    const { driver, stream, parser } = connectedDriver();
+    const captureSession = session({
+      preTriggerSamples: 2,
+      postTriggerSamples: 2,
+      captureChannels: [channel(0), channel(1)]
+    });
+    let completedEvent: CaptureEventArgs | undefined;
+    driver.once('captureCompleted', event => {
+      completedEvent = event;
+    });
+
+    const start = driver.startCapture(captureSession);
+    await nextTick();
+    parser.emit('data', 'CAPTURE_STARTED');
+    await expect(start).resolves.toBe(CaptureError.None);
+
+    stream.emit('data', hexToBuffer(frame.frameHex));
+    await nextTick();
+
+    expect(completedEvent?.success).toBe(true);
+    expect(bytes(captureSession.captureChannels[0].samples)).toEqual(frame.expectedChannelSamples['0']);
+    expect(bytes(captureSession.captureChannels[1].samples)).toEqual(frame.expectedChannelSamples['1']);
+    expect(driver.isCapturing).toBe(false);
   });
 
   it('StopCapture 在空闲时必须返回 false', async () => {

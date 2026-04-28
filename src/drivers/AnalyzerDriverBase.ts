@@ -367,22 +367,13 @@ export class NetConfig {
     let offset = 0;
 
     // AccessPointName - 33字节固定长度
-    const apNameBytes = new TextEncoder().encode(this.accessPointName);
-    for (let i = 0; i < 33; i++) {
-      view.setUint8(offset++, i < apNameBytes.length ? apNameBytes[i] : 0);
-    }
+    offset = NetConfig.writeFixedAscii(view, offset, this.accessPointName, 33);
 
     // Password - 64字节固定长度
-    const passwordBytes = new TextEncoder().encode(this.password);
-    for (let i = 0; i < 64; i++) {
-      view.setUint8(offset++, i < passwordBytes.length ? passwordBytes[i] : 0);
-    }
+    offset = NetConfig.writeFixedAscii(view, offset, this.password, 64);
 
     // IPAddress - 16字节固定长度
-    const ipBytes = new TextEncoder().encode(this.ipAddress);
-    for (let i = 0; i < 16; i++) {
-      view.setUint8(offset++, i < ipBytes.length ? ipBytes[i] : 0);
-    }
+    offset = NetConfig.writeFixedAscii(view, offset, this.ipAddress, 16);
 
     // Port - 2字节
     view.setUint16(offset, this.port, true); // little-endian
@@ -396,5 +387,13 @@ export class NetConfig {
   private getSize(): number {
     // 33 + 64 + 16 + 2 = 115 bytes
     return 115;
+  }
+
+  private static writeFixedAscii(view: DataView, offset: number, value: string, length: number): number {
+    for (let i = 0; i < length; i++) {
+      const code = i < value.length ? value.charCodeAt(i) : 0;
+      view.setUint8(offset++, code <= 0x7f ? code : 0x3f);
+    }
+    return offset;
   }
 }

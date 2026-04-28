@@ -27,6 +27,8 @@ import {
   CaptureCompletedHandler
 } from '../../../src/models/AnalyzerTypes';
 
+const asciiTrim = (bytes: Uint8Array): string => Buffer.from(bytes).toString('ascii').replace(/\0+$/, '');
+
 // 创建具体实现用于测试抽象类
 class ConcreteAnalyzerDriver extends AnalyzerDriverBase {
   private _deviceVersion: string | null = 'TestDriver-v1.2.3';
@@ -776,16 +778,9 @@ describe('CaptureRequest 采集请求结构核心算法', () => {
 
       const request = CaptureRequest.fromConfiguration(config);
       
-      // 验证通道数组中指定位置被设置为1
-      expect(request.channels[1]).toBe(1);
-      expect(request.channels[5]).toBe(1);
-      expect(request.channels[10]).toBe(1);
-      expect(request.channels[20]).toBe(1);
-      
-      // 验证其他位置为0
-      expect(request.channels[0]).toBe(0);
-      expect(request.channels[2]).toBe(0);
-      expect(request.channels[23]).toBe(0);
+      // C# 固件协议要求通道数组写入捕获通道号列表，不是 bit mask。
+      expect(Array.from(request.channels.slice(0, 4))).toEqual([1, 5, 10, 20]);
+      expect(Array.from(request.channels.slice(4))).toEqual(new Array(20).fill(0));
     });
 
     it('应该处理边界情况的通道索引', () => {
@@ -803,11 +798,8 @@ describe('CaptureRequest 采集请求结构核心算法', () => {
 
       const request = CaptureRequest.fromConfiguration(config);
       
-      // 只有有效范围内的通道应该被设置
-      expect(request.channels[0]).toBe(1);  // 有效
-      expect(request.channels[23]).toBe(1); // 有效
-      
-      // 无效索引不应该影响数组
+      // 有效通道保留在原始位置，无效索引保持为0，不再作为 bit mask 写入。
+      expect(Array.from(request.channels.slice(0, 5))).toEqual([0, 0, 23, 0, 0]);
       expect(request.channelCount).toBe(5); // 所有提供的通道都被计数，包括无效的
     });
 
@@ -997,17 +989,17 @@ describe('NetConfig 网络配置结构核心算法', () => {
       
       // 验证AccessPointName字段 (33字节)
       const apNameBytes = serialized.slice(0, 33);
-      const apName = new TextDecoder().decode(apNameBytes).replace(/\0+$/, '');
+      const apName = asciiTrim(apNameBytes);
       expect(apName).toBe('MyWiFi');
-      
+
       // 验证Password字段 (64字节)
       const passwordBytes = serialized.slice(33, 97);
-      const password = new TextDecoder().decode(passwordBytes).replace(/\0+$/, '');
+      const password = asciiTrim(passwordBytes);
       expect(password).toBe('secret');
-      
+
       // 验证IPAddress字段 (16字节)
       const ipBytes = serialized.slice(97, 113);
-      const ipAddress = new TextDecoder().decode(ipBytes).replace(/\0+$/, '');
+      const ipAddress = asciiTrim(ipBytes);
       expect(ipAddress).toBe('10.0.0.1');
       
       // 验证Port字段 (2字节, little-endian)
@@ -1026,17 +1018,17 @@ describe('NetConfig 网络配置结构核心算法', () => {
       
       // 验证字段被正确截断到固定长度
       const apNameBytes = serialized.slice(0, 33);
-      const actualAP = new TextDecoder().decode(apNameBytes).replace(/\0+$/, '');
+      const actualAP = asciiTrim(apNameBytes);
       expect(actualAP.length).toBeLessThanOrEqual(33);
       expect(actualAP).toBe('A'.repeat(33));
-      
+
       const passwordBytes = serialized.slice(33, 97);
-      const actualPassword = new TextDecoder().decode(passwordBytes).replace(/\0+$/, '');
+      const actualPassword = asciiTrim(passwordBytes);
       expect(actualPassword.length).toBeLessThanOrEqual(64);
       expect(actualPassword).toBe('P'.repeat(64));
-      
+
       const ipBytes = serialized.slice(97, 113);
-      const actualIP = new TextDecoder().decode(ipBytes).replace(/\0+$/, '');
+      const actualIP = asciiTrim(ipBytes);
       expect(actualIP.length).toBeLessThanOrEqual(16);
       expect(actualIP).toBe('192.168.1.100.ex'); // 截断到16字节
     });

@@ -755,28 +755,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     const headerBuffer = Buffer.alloc(4);
     let headerReceived = 0;
 
-    const dataHandler = (chunk: Buffer) => {
-      // 首先读取4字节的数据长度
-      if (headerReceived < 4) {
-        const needed = 4 - headerReceived;
-        const available = Math.min(needed, chunk.length);
-        chunk.copy(headerBuffer, headerReceived, 0, available);
-        headerReceived += available;
-
-        if (headerReceived === 4) {
-          dataLength = headerBuffer.readUInt32LE(0);
-          // 如果chunk还有剩余数据，添加到接收缓冲区
-          if (available < chunk.length) {
-            receivedBuffer = Buffer.concat([receivedBuffer, chunk.slice(available)]);
-          }
-        }
-        return;
-      }
-
-      // 收集实际数据
-      receivedBuffer = Buffer.concat([receivedBuffer, chunk]);
-
-      // 检查是否收集完所有数据
+    const completeIfReady = () => {
       if (dataLength !== null && receivedBuffer.length >= bufferLength) {
         this._currentStream!.off('data', dataHandler);
         clearTimeout(timeout);
@@ -790,6 +769,31 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
           reject(error);
         }
       }
+    };
+
+    const dataHandler = (chunk: Buffer) => {
+      let payloadOffset = 0;
+
+      // 首先读取4字节的数据长度；同一 chunk 中紧随其后的负载不能丢给下一次 data 事件。
+      if (headerReceived < 4) {
+        const needed = 4 - headerReceived;
+        const available = Math.min(needed, chunk.length);
+        chunk.copy(headerBuffer, headerReceived, 0, available);
+        headerReceived += available;
+        payloadOffset = available;
+
+        if (headerReceived < 4) {
+          return;
+        }
+
+        dataLength = headerBuffer.readUInt32LE(0);
+      }
+
+      if (payloadOffset < chunk.length) {
+        receivedBuffer = Buffer.concat([receivedBuffer, chunk.slice(payloadOffset)]);
+      }
+
+      completeIfReady();
     };
 
     // 设置超时
