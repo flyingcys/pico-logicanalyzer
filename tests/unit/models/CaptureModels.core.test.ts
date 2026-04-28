@@ -249,10 +249,8 @@ describe('CaptureModels 核心功能测试', () => {
       // 通道数组从偏移5开始，长度24字节
       const channelArray = new Uint8Array(requestData.buffer, 5, 24);
       
-      expect(channelArray[0]).toBe(1); // 通道0启用
-      expect(channelArray[1]).toBe(1); // 通道1启用
-      expect(channelArray[7]).toBe(1); // 通道7启用
-      expect(channelArray[2]).toBe(0); // 通道2未启用
+      expect(Array.from(channelArray.slice(0, 3))).toEqual([0, 1, 7]); // C#协议按顺序写入通道号列表
+      expect(channelArray[3]).toBe(0); // 未使用槽位补0
     });
 
     it('应该正确计算采集模式', () => {

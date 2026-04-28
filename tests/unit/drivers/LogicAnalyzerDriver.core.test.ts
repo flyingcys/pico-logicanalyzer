@@ -143,6 +143,7 @@ describe('LogicAnalyzerDriver 核心功能测试', () => {
       // 模拟采集相关方法
       mockSerialPort.write.mockImplementation((data, callback) => callback && callback());
       jest.spyOn(driver as any, 'writeData').mockResolvedValue(undefined);
+      jest.spyOn(driver as any, 'waitForResponse').mockResolvedValue('CAPTURE_STARTED');
       jest.spyOn(driver as any, 'startDataReading').mockImplementation(() => {});
       
       const result = await driver.startCapture(testSession);

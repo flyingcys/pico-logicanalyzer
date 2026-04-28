@@ -17,7 +17,8 @@ module.exports = {
     '^@frontend-platform/(.*)$': '<rootDir>/src/frontend/platform/$1',
     '^@frontend-shared/(.*)$': '<rootDir>/src/frontend/shared/$1',
     '^@components/(.*)$': '<rootDir>/src/frontend/app/components/$1',
-    '^@stores/(.*)$': '<rootDir>/src/frontend/core/stores/$1'
+    '^@stores/(.*)$': '<rootDir>/src/frontend/core/stores/$1',
+    '^vscode$': '<rootDir>/tests/fixtures/mocks/vscode.ts'
   },
   transform: {
     '^.+\\.vue$': '@vue/vue3-jest',
