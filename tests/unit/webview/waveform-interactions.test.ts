@@ -3,14 +3,36 @@
  */
 
 import { createPinia, setActivePinia } from 'pinia';
+import { createApp, nextTick } from 'vue';
+import AppWaveformStage from '../../../src/frontend/app/components/AppWaveformStage.vue';
 import { AnalyzerChannel } from '../../../src/models/CaptureModels';
 import { WaveformRenderer } from '../../../src/frontend/core/engines/WaveformRenderer';
+import { useSessionStore } from '../../../src/frontend/core/stores/sessionStore';
 import { useWaveformStore } from '../../../src/frontend/core/stores/waveformStore';
 
 function createChannel(channelNumber: number, samples: number[]): AnalyzerChannel {
   const channel = new AnalyzerChannel(channelNumber, `CH${channelNumber}`);
   channel.samples = Uint8Array.from(samples);
   return channel;
+}
+
+function mountWaveformStage() {
+  const mountPoint = document.createElement('div');
+  document.body.appendChild(mountPoint);
+  const app = createApp(AppWaveformStage);
+  app.mount(mountPoint);
+
+  return {
+    element: mountPoint,
+    async next() {
+      await nextTick();
+      await Promise.resolve();
+    },
+    unmount() {
+      app.unmount();
+      mountPoint.remove();
+    }
+  };
 }
 
 describe('waveformStore 交互状态', () => {
@@ -118,6 +140,154 @@ describe('waveformStore 交互状态', () => {
   });
 });
 
+describe('sessionStore 真实 .lac 样本装载', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it('应从 lowercase root samples 推导 totalSamples 并解包到通道样本', () => {
+    const sessionStore = useSessionStore();
+
+    sessionStore.applyDocument({
+      uri: 'file:///tmp/lowercase-root-samples.lac',
+      fileName: 'lowercase-root-samples.lac',
+      content: JSON.stringify({
+        captureSession: {
+          sampleRate: 2000000,
+          captureChannels: [
+            { channelNumber: 0, channelName: 'D0' },
+            { channelNumber: 1, channelName: 'D1' }
+          ]
+        },
+        samples: ['1', '2', '3', '0']
+      })
+    });
+
+    expect(sessionStore.documentState).toBe('samples');
+    expect(sessionStore.totalSamples).toBe(4);
+    expect(Array.from(sessionStore.channels[0].samples!)).toEqual([1, 0, 1, 0]);
+    expect(Array.from(sessionStore.channels[1].samples!)).toEqual([0, 1, 1, 0]);
+  });
+});
+
+describe('AppWaveformStage 文档状态', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it('应为空文件、settings-only 和 invalid 文件显示对应状态，并在 samples 状态移除状态层', async () => {
+    const sessionStore = useSessionStore();
+
+    const wrapper = mountWaveformStage();
+
+    sessionStore.applyDocument({
+      uri: 'file:///tmp/empty.lac',
+      fileName: 'empty.lac',
+      content: ''
+    });
+    await wrapper.next();
+    expect(wrapper.element.querySelector('[data-testid="waveform-state"]')?.textContent).toContain('未加载捕获文件');
+
+    sessionStore.applyDocument({
+      uri: 'file:///tmp/settings-only.lac',
+      fileName: 'settings-only.lac',
+      content: JSON.stringify({
+        Settings: {
+          Frequency: 1000000,
+          CaptureChannels: [{ ChannelNumber: 0, ChannelName: 'D0' }]
+        }
+      })
+    });
+    await wrapper.next();
+    expect(wrapper.element.querySelector('[data-testid="waveform-state"]')?.textContent).toContain('当前文件只有采集设置');
+
+    sessionStore.applyDocument({
+      uri: 'file:///tmp/invalid.lac',
+      fileName: 'invalid.lac',
+      content: '{bad json'
+    });
+    await wrapper.next();
+    expect(wrapper.element.querySelector('[data-testid="waveform-state"]')?.textContent).toContain('文件内容无效');
+
+    sessionStore.applyDocument({
+      uri: 'file:///tmp/samples.lac',
+      fileName: 'samples.lac',
+      content: JSON.stringify({
+        captureSession: {
+          sampleRate: 1000000,
+          totalSamples: 4,
+          captureChannels: [{ channelNumber: 0, channelName: 'D0', samples: [0, 1, 0, 1] }]
+        }
+      })
+    });
+    await wrapper.next();
+    expect(wrapper.element.querySelector('[data-testid="waveform-state"]')).toBeNull();
+
+    wrapper.unmount();
+  });
+
+  it('应支持拖动预览条改变基础视口位置', async () => {
+    const sessionStore = useSessionStore();
+    sessionStore.applyDocument({
+      uri: 'file:///tmp/preview.lac',
+      fileName: 'preview.lac',
+      content: JSON.stringify({
+        captureSession: {
+          sampleRate: 1000000,
+          totalSamples: 100,
+          captureChannels: [
+            {
+              channelNumber: 0,
+              channelName: 'D0',
+              samples: Array.from({ length: 100 }, (_, index) => index % 2)
+            }
+          ]
+        }
+      })
+    });
+
+    const wrapper = mountWaveformStage();
+    const waveformStore = useWaveformStore();
+    waveformStore.setViewRange(0, 20);
+    await wrapper.next();
+
+    const pointerEvent = new MouseEvent('pointerdown', {
+      button: 0,
+      clientX: 640,
+      bubbles: true
+    }) as PointerEvent;
+    Object.defineProperty(pointerEvent, 'pointerId', {
+      value: 1
+    });
+
+    const previewTrack = wrapper.element.querySelector('[data-testid="waveform-preview-track"]');
+    Object.defineProperty(previewTrack, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({
+        x: 0,
+        y: 0,
+        width: 1280,
+        height: 16,
+        top: 0,
+        left: 0,
+        right: 1280,
+        bottom: 16,
+        toJSON: () => ({})
+      })
+    });
+
+    previewTrack?.dispatchEvent(pointerEvent);
+    await wrapper.next();
+
+    expect(waveformStore.viewRange).toEqual({
+      firstSample: 40,
+      visibleSamples: 20
+    });
+
+    wrapper.unmount();
+  });
+});
+
 describe('WaveformRenderer 交互覆盖层', () => {
   it('应接收选区、多个 marker、区域并参与渲染', () => {
     const canvas = document.createElement('canvas');
@@ -163,5 +333,22 @@ describe('WaveformRenderer 交互覆盖层', () => {
     });
     expect(renderer.markers.map(marker => marker.type)).toEqual(['trigger', 'user']);
     expect(renderer.regions).toHaveLength(1);
+  });
+
+  it('首个通道无样本时仍应渲染后续可见真实样本通道', () => {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d') as CanvasRenderingContext2D & {
+      stroke: jest.Mock;
+    };
+    jest.spyOn(canvas, 'getContext').mockReturnValue(context);
+    const renderer = new WaveformRenderer(canvas);
+    const emptyChannel = createChannel(0, []);
+    const dataChannel = createChannel(1, [0, 1, 0, 1]);
+
+    renderer.setChannels([emptyChannel, dataChannel], 1000000);
+    renderer.updateVisibleSamples(0, 4);
+    renderer.render();
+
+    expect(context.stroke).toHaveBeenCalled();
   });
 });
