@@ -1174,13 +1174,7 @@ export class DataExportService extends ServiceLifecycleBase {
 
         for (const channelIndex of selectedChannels) {
           const channel = session.captureChannels.find(ch => ch.channelNumber === channelIndex);
-          if (channel && channel.samples) {
-            const byteIndex = Math.floor(sampleIndex / 8);
-            const bitIndex = sampleIndex % 8;
-            sample.channels[channelIndex] = (channel.samples[byteIndex] & (1 << bitIndex)) ? 1 : 0;
-          } else {
-            sample.channels[channelIndex] = 0;
-          }
+          sample.channels[channelIndex] = this.getSampleValue(channel, sampleIndex);
         }
 
         chunkSamples.push(sample);
@@ -1284,9 +1278,7 @@ export class DataExportService extends ServiceLifecycleBase {
       let initialValue = 0;
 
       if (channel && channel.samples && startSample >= 0) {
-        const byteIndex = Math.floor(startSample / 8);
-        const bitIndex = startSample % 8;
-        initialValue = (channel.samples[byteIndex] & (1 << bitIndex)) ? 1 : 0;
+        initialValue = this.getSampleValue(channel, startSample);
       }
 
       lines.push(`${initialValue}${varMap.get(channelIndex)}`);
@@ -1324,9 +1316,7 @@ export class DataExportService extends ServiceLifecycleBase {
           let currentValue = 0;
 
           if (channel && channel.samples) {
-            const byteIndex = Math.floor(sampleIndex / 8);
-            const bitIndex = sampleIndex % 8;
-            currentValue = (channel.samples[byteIndex] & (1 << bitIndex)) ? 1 : 0;
+            currentValue = this.getSampleValue(channel, sampleIndex);
           }
 
           const prevValue = prevValues.get(channelIndex) || 0;
@@ -2061,6 +2051,14 @@ Generated with VSCode Logic Analyzer Extension
    */
   private getAllChannelIndices(session: CaptureSession): number[] {
     return session.captureChannels.map(ch => ch.channelNumber).filter(n => n !== undefined);
+  }
+
+  private getSampleValue(channel: AnalyzerChannel | undefined, sampleIndex: number): number {
+    if (!channel?.samples || sampleIndex < 0 || sampleIndex >= channel.samples.length) {
+      return 0;
+    }
+
+    return channel.samples[sampleIndex] ? 1 : 0;
   }
 
   /**

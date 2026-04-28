@@ -33,6 +33,8 @@ jest.mock('fs', () => ({
 }));
 
 const mockedFs = jest.mocked(fs);
+const realFs = jest.requireActual('fs') as typeof import('fs');
+const realPath = jest.requireActual('path') as typeof import('path');
 
 describe('LACFileFormat 模块单元测试套件', () => {
   
@@ -322,6 +324,55 @@ describe('LACFileFormat 模块单元测试套件', () => {
   });
 
   describe('parse() 方法测试', () => {
+    it('应该按 ChannelNumber 位号读取原版 PascalCase fixture 的 packed UInt128 样本', () => {
+      const fixturePath = realPath.join(
+        __dirname,
+        '../../fixtures/lac/original-pascal-region.lac'
+      );
+      const exportedCapture = LACFileFormat.parse(realFs.readFileSync(fixturePath, 'utf-8'));
+
+      const session = LACFileFormat.convertToCaptureSession(exportedCapture);
+
+      expect(session.captureChannels.map(channel => channel.channelNumber)).toEqual([2, 5]);
+      expect(session.captureChannels[0].samples).toEqual(new Uint8Array([1, 0, 1]));
+      expect(session.captureChannels[1].samples).toEqual(new Uint8Array([0, 1, 1]));
+      expect(exportedCapture.SelectedRegions).toEqual([
+        {
+          FirstSample: 0,
+          LastSample: 2,
+          RegionName: 'I2C Address',
+          R: 32,
+          G: 128,
+          B: 220,
+          A: 200
+        }
+      ]);
+    });
+
+    it('应该兼容早期 lowercase fixture，并序列化回 PascalCase 主格式', () => {
+      const fixturePath = realPath.join(
+        __dirname,
+        '../../fixtures/lac/current-lowercase-samples.lac'
+      );
+      const exportedCapture = LACFileFormat.parse(realFs.readFileSync(fixturePath, 'utf-8'));
+      const serialized = JSON.parse(LACFileFormat.serialize(exportedCapture));
+
+      expect(exportedCapture.Settings.frequency).toBe(2000000);
+      expect(exportedCapture.Settings.captureChannels[0].samples).toEqual(new Uint8Array([1, 0, 1, 1]));
+      expect(exportedCapture.SelectedRegions?.[0]).toMatchObject({
+        FirstSample: 1,
+        LastSample: 3,
+        RegionName: 'lowercase-region',
+        R: 10,
+        G: 20,
+        B: 30,
+        A: 180
+      });
+      expect(serialized.Settings).toBeDefined();
+      expect(serialized.settings).toBeUndefined();
+      expect(serialized.Settings.CaptureChannels[0].Samples).toBeUndefined();
+    });
+
     it('应该解析原版 PascalCase .lac 并恢复 CaptureSession 实例和通道样本', () => {
       const originalLac = {
         Settings: {
@@ -595,6 +646,25 @@ describe('LACFileFormat 模块单元测试套件', () => {
       expect(result.Samples![1]).toBe('00000000000000000000000000000006');
       // 第3个样本: CH0=1, CH1=0, CH2=1 -> 二进制101 -> 5
       expect(result.Samples![2]).toBe('00000000000000000000000000000005');
+    });
+
+    it('应该按 ChannelNumber 位号编码非连续通道样本', () => {
+      const captureSession = new CaptureSession();
+
+      const channel2 = new AnalyzerChannel(2, 'D2');
+      channel2.samples = new Uint8Array([1, 0, 1]);
+      const channel5 = new AnalyzerChannel(5, 'D5');
+      channel5.samples = new Uint8Array([0, 1, 1]);
+
+      captureSession.captureChannels = [channel2, channel5];
+
+      const result = LACFileFormat.createFromCaptureSession(captureSession, undefined, true);
+
+      expect(result.Samples).toEqual([
+        '00000000000000000000000000000004',
+        '00000000000000000000000000000020',
+        '00000000000000000000000000000024'
+      ]);
     });
 
     it('应该正确解码样本数据', () => {
