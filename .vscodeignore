@@ -12,10 +12,14 @@ archive/
 *.backup
 src/
 src/**/*.ts
-!out/**
 .vscode-test/
 vscode-test.log
 *.map
+**/*.map
+out/**/*.map
+out/**/*.js.map
+out/**/bundle-report.html
+out/**/bundle-stats.json
 tsconfig*.json
 webpack.config.js
 jest*.js

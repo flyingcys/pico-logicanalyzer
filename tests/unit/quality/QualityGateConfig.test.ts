@@ -65,6 +65,49 @@ describe('质量门禁配置', () => {
     expect(vscodeIgnore).toContain('ci-test-report.json');
   });
 
+  it('Webview 生产构建应该有可执行的 bundle budget 和分析入口', () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousAnalyze = process.env.ANALYZE;
+    process.env.NODE_ENV = 'production';
+    delete process.env.ANALYZE;
+    jest.resetModules();
+
+    const configs = require('../../../webpack.config.js');
+    const webviewConfig = configs.find((config: any) => config.name === 'webview');
+    const packageJson = readJson('package.json');
+    const vscodeIgnore = readText('.vscodeignore');
+    const releaseGate = readText('docs/release-gate.md');
+
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+    if (previousAnalyze === undefined) {
+      delete process.env.ANALYZE;
+    } else {
+      process.env.ANALYZE = previousAnalyze;
+    }
+    jest.resetModules();
+
+    expect(webviewConfig.performance.hints).toBe('error');
+    expect(webviewConfig.performance.assetFilter('main-vscode.12345678.js')).toBe(true);
+    expect(webviewConfig.performance.assetFilter('main-vscode.12345678.js.map')).toBe(false);
+    expect(webviewConfig.optimization.splitChunks.cacheGroups).toEqual(
+      expect.objectContaining({
+        vueVendor: expect.objectContaining({ name: 'vue-vendor' }),
+        elementPlus: expect.objectContaining({ name: 'element-plus' }),
+        i18n: expect.objectContaining({ name: 'i18n' })
+      })
+    );
+    expect(packageJson.scripts['build:budget']).toContain('webpack --mode production');
+    expect(packageJson.scripts['build:analyze']).toContain('ANALYZE=true');
+    expect(vscodeIgnore).toContain('out/**/*.map');
+    expect(vscodeIgnore).toContain('out/**/bundle-report.html');
+    expect(releaseGate).toContain('Webview bundle 预算');
+    expect(releaseGate).toContain('source map 不进入 VSIX');
+  });
+
   it('发布检查应该使用当前 tests 目录和分层 CI 命令', () => {
     const releaseCheck = readText('scripts/release-check.ts');
 
