@@ -78,7 +78,14 @@ interface DeviceCompatibilityEntry {
   manufacturer: string;
   model: string;
   version: string;
-  category: 'usb-la' | 'network-la' | 'benchtop' | 'mixed-signal' | 'protocol-analyzer';
+  category:
+    | 'usb-la'
+    | 'serial-la'
+    | 'serial-candidate'
+    | 'network-la'
+    | 'benchtop'
+    | 'mixed-signal'
+    | 'protocol-analyzer';
   
   // 识别信息
   identifiers: {
@@ -115,10 +122,42 @@ interface DeviceCompatibilityEntry {
     testResults: {
       driverValidation: number;
       functionalTests: number;
-      performanceGrade: 'A' | 'B' | 'C' | 'D' | 'F';
-      reliability: 'excellent' | 'good' | 'fair' | 'poor';
+      performanceGrade: 'A' | 'B' | 'C' | 'D' | 'F' | 'N/A';
+      reliability: 'excellent' | 'good' | 'fair' | 'poor' | 'pending-hardware' | 'candidate';
     };
-    certificationLevel: 'certified' | 'verified' | 'community' | 'experimental';
+    certificationLevel: 'certified' | 'verified' | 'fixture' | 'candidate' | 'community' | 'experimental';
+    certificationEvidence?: {
+      evidenceLevel: 'mock' | 'fixture' | 'hardware';
+      requiredHardwareEvidence?: boolean;
+      downgradeReason?: string;
+      records: Array<{
+        evidenceId: string;
+        evidenceLevel: 'mock' | 'fixture' | 'hardware';
+        date: string;
+        operatingSystem: string;
+        deviceModel: string;
+        firmwareVersion?: string;
+        serialNumber?: string;
+        extensionVersion?: string;
+        commit?: string;
+        commandOrPath: string;
+        captureConfig?: {
+          sampleRateHz: number;
+          preTriggerSamples: number;
+          postTriggerSamples: number;
+          channels: number[];
+          trigger?: string;
+          mode?: string;
+        };
+        resultFiles: Array<{
+          path: string;
+          kind: 'lac' | 'csv' | 'json' | 'vcd' | 'log' | 'screenshot' | 'other';
+          sha256?: string;
+        }>;
+        result: 'pass' | 'fail' | 'blocked' | 'pending';
+        notes?: string;
+      }>;
+    };
   };
   
   // 用户反馈
@@ -136,10 +175,14 @@ interface DeviceCompatibilityEntry {
     maintainer: string;
     documentationUrl?: string;
     vendorUrl?: string;
-    supportStatus: 'active' | 'legacy' | 'deprecated' | 'unsupported';
+    supportStatus: 'active' | 'candidate' | 'legacy' | 'deprecated' | 'unsupported';
   };
 }
 ```
+
+### 认证证据口径
+
+`certified` 和 `verified` 只允许用于带真实硬件通过证据的设备。真实硬件证据必须至少包含操作系统、设备型号、固件版本、commit、采集配置和一个带 `sha256` 的结果文件。只有 mock 或 fixture 时，`npm run db:validate` 会把状态降级到 `experimental`、`community` 或 `fixture`。
 
 ## 命令行工具
 

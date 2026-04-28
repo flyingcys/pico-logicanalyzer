@@ -2,6 +2,50 @@ import { promises as fs } from 'fs';
 // import { join } from 'path'; // 暂时注释掉未使用的导入
 import { HardwareCapabilities, DeviceInfo, TriggerType, TriggerCondition } from '../models/AnalyzerTypes';
 
+export type DeviceCategory = 'usb-la' | 'serial-la' | 'serial-candidate' | 'network-la' | 'benchtop' | 'mixed-signal' | 'protocol-analyzer';
+export type CertificationLevel = 'certified' | 'verified' | 'fixture' | 'candidate' | 'community' | 'experimental';
+export type EvidenceLevel = 'mock' | 'fixture' | 'hardware';
+export type CertificationResult = 'pass' | 'fail' | 'blocked' | 'pending';
+
+export interface CertificationEvidenceFile {
+  path: string;
+  kind: 'lac' | 'csv' | 'json' | 'vcd' | 'log' | 'screenshot' | 'other';
+  sha256?: string;
+}
+
+export interface CertificationCaptureConfig {
+  sampleRateHz: number;
+  preTriggerSamples: number;
+  postTriggerSamples: number;
+  channels: number[];
+  trigger?: string;
+  mode?: string;
+}
+
+export interface CertificationEvidenceRecord {
+  evidenceId: string;
+  evidenceLevel: EvidenceLevel;
+  date: string;
+  operatingSystem: string;
+  deviceModel: string;
+  firmwareVersion?: string;
+  serialNumber?: string;
+  extensionVersion?: string;
+  commit?: string;
+  commandOrPath: string;
+  captureConfig?: CertificationCaptureConfig;
+  resultFiles: CertificationEvidenceFile[];
+  result: CertificationResult;
+  notes?: string;
+}
+
+export interface CertificationEvidenceSummary {
+  evidenceLevel: EvidenceLevel;
+  records: CertificationEvidenceRecord[];
+  requiredHardwareEvidence?: boolean;
+  downgradeReason?: string;
+}
+
 /**
  * 设备兼容性条目
  */
@@ -11,7 +55,7 @@ export interface DeviceCompatibilityEntry {
   manufacturer: string;
   model: string;
   version: string;
-  category: 'usb-la' | 'network-la' | 'benchtop' | 'mixed-signal' | 'protocol-analyzer';
+  category: DeviceCategory;
 
   // 识别信息
   identifiers: {
@@ -48,10 +92,11 @@ export interface DeviceCompatibilityEntry {
     testResults: {
       driverValidation: number; // 0-100
       functionalTests: number;  // 0-100
-      performanceGrade: 'A' | 'B' | 'C' | 'D' | 'F';
-      reliability: 'excellent' | 'good' | 'fair' | 'poor';
+      performanceGrade: 'A' | 'B' | 'C' | 'D' | 'F' | 'N/A';
+      reliability: 'excellent' | 'good' | 'fair' | 'poor' | 'pending-hardware' | 'candidate';
     };
-    certificationLevel: 'certified' | 'verified' | 'community' | 'experimental';
+    certificationLevel: CertificationLevel;
+    certificationEvidence?: CertificationEvidenceSummary;
   };
 
   // 用户反馈
@@ -69,7 +114,7 @@ export interface DeviceCompatibilityEntry {
     maintainer: string;
     documentationUrl?: string;
     vendorUrl?: string;
-    supportStatus: 'active' | 'legacy' | 'deprecated' | 'unsupported';
+    supportStatus: 'active' | 'candidate' | 'legacy' | 'deprecated' | 'unsupported';
   };
 }
 
@@ -251,7 +296,37 @@ export class HardwareCompatibilityDatabase {
             performanceGrade: 'A',
             reliability: 'excellent'
           },
-          certificationLevel: 'certified'
+          certificationLevel: 'fixture',
+          certificationEvidence: {
+            evidenceLevel: 'fixture',
+            requiredHardwareEvidence: true,
+            downgradeReason: '默认数据只有协议 fixture，未包含真实硬件通过证据',
+            records: [
+              {
+                evidenceId: 'default-pico-fixture',
+                evidenceLevel: 'fixture',
+                date: '2026-04-28',
+                operatingSystem: 'CI fixture',
+                deviceModel: 'Pico Logic Analyzer',
+                firmwareVersion: 'fixture',
+                extensionVersion: '1.0.0-beta.0',
+                commit: 'default-seed',
+                commandOrPath: 'npm run test:drivers -- --runInBand',
+                captureConfig: {
+                  sampleRateHz: 1000000,
+                  preTriggerSamples: 100,
+                  postTriggerSamples: 100,
+                  channels: [0, 1, 2, 3],
+                  trigger: 'fixture'
+                },
+                resultFiles: [
+                  { path: 'tests/fixtures/drivers', kind: 'other', sha256: 'fixture-directory' }
+                ],
+                result: 'pass',
+                notes: '默认数据库种子只证明 fixture 层可回放，不提升真实硬件认证。'
+              }
+            ]
+          }
         },
         communityFeedback: {
           userRating: 4.5,
@@ -351,7 +426,13 @@ export class HardwareCompatibilityDatabase {
             performanceGrade: 'B',
             reliability: 'good'
           },
-          certificationLevel: 'verified'
+          certificationLevel: 'experimental',
+          certificationEvidence: {
+            evidenceLevel: 'mock',
+            requiredHardwareEvidence: true,
+            downgradeReason: '仅有适配框架记录，未包含 Saleae 真实设备采集证据',
+            records: []
+          }
         },
         communityFeedback: {
           userRating: 4.2,
@@ -450,7 +531,13 @@ export class HardwareCompatibilityDatabase {
             performanceGrade: 'B',
             reliability: 'good'
           },
-          certificationLevel: 'community'
+          certificationLevel: 'community',
+          certificationEvidence: {
+            evidenceLevel: 'mock',
+            requiredHardwareEvidence: true,
+            downgradeReason: '仅有社区适配信息，未包含指定型号真实硬件通过证据',
+            records: []
+          }
         },
         communityFeedback: {
           userRating: 3.8,

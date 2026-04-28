@@ -300,6 +300,18 @@ async startCapture(session: CaptureSession): Promise<CaptureError> {
 
 ## 测试和验证
 
+### 认证证据等级
+
+驱动发布材料必须区分三类证据：
+
+| 等级 | 可证明内容 | 不得声明 |
+| --- | --- | --- |
+| `mock` | API 形状、错误路径、静态 profile 或单元测试路径可运行 | 不得声明真实设备可用 |
+| `fixture` | 协议帧、golden 数据或离线回放与预期一致 | 不得声明真实硬件已验证 |
+| `hardware` | 真实设备完成连接、采集和结果文件 hash 留存 | 可按结果声明 `verified` 或 `certified` |
+
+提交真实硬件认证时，需要在 `docs/真实硬件认证矩阵.md` 和硬件数据库条目的 `testStatus.certificationEvidence.records` 中记录操作系统、设备型号、固件版本、扩展版本或 commit、采集配置、结果文件路径和 hash。缺少 `hardware + pass` 记录时，数据库校验会把 `certified/verified` 降级。
+
 ### 单元测试
 
 为每个公共方法编写测试：
