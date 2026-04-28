@@ -116,6 +116,67 @@ describe('waveformStore 交互状态', () => {
     expect(Array.from(store.channels[0].samples!)).toEqual([0, 0, 0, 1]);
     expect(store.totalSamples).toBe(4);
   });
+
+  it('应支持覆盖粘贴、编辑撤销重做和历史边界', () => {
+    const store = useWaveformStore();
+    store.loadCaptureContext({
+      sampleRate: 1000000,
+      channels: [createChannel(0, [0, 1, 0, 1, 0]), createChannel(1, [1, 0, 1, 0, 1])]
+    });
+
+    expect(store.undoLastEdit()).toBe(false);
+    expect(store.redoLastEdit()).toBe(false);
+
+    store.selectRange(1, 2);
+    store.copySelection();
+    expect(store.pasteClipboard(3, 'overwrite')).toBe(true);
+    expect(Array.from(store.channels[0].samples!)).toEqual([0, 1, 0, 1, 0]);
+    expect(Array.from(store.channels[1].samples!)).toEqual([1, 0, 1, 0, 1]);
+
+    store.insertSamples(2, 2, 1);
+    expect(Array.from(store.channels[0].samples!)).toEqual([0, 1, 1, 1, 0, 1, 0]);
+    expect(store.totalSamples).toBe(7);
+
+    expect(store.undoLastEdit()).toBe(true);
+    expect(Array.from(store.channels[0].samples!)).toEqual([0, 1, 0, 1, 0]);
+    expect(store.totalSamples).toBe(5);
+
+    expect(store.redoLastEdit()).toBe(true);
+    expect(Array.from(store.channels[0].samples!)).toEqual([0, 1, 1, 1, 0, 1, 0]);
+    expect(store.totalSamples).toBe(7);
+  });
+
+  it('应导出可回写到 lac SelectedRegions 的区域并限制大样本编辑耗时', () => {
+    const store = useWaveformStore();
+    const samples = new Array(20000).fill(0).map((_, index) => index % 2);
+    store.loadCaptureContext({
+      sampleRate: 1000000,
+      channels: [createChannel(0, samples)]
+    });
+
+    store.selectRange(19980, 21000);
+    const region = store.createRegionFromSelection('尾部窗口', 'rgba(34, 197, 94, 0.220)');
+    expect(region).toMatchObject({
+      startSample: 19980,
+      endSample: 19999,
+      sampleCount: 20
+    });
+
+    const startedAt = performance.now();
+    store.deleteSelection();
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(store.totalSamples).toBe(19980);
+    expect(elapsedMs).toBeLessThan(50);
+    expect(store.exportSelectedRegionsForLac()).toEqual([
+      {
+        firstSample: 19980,
+        lastSample: 19999,
+        regionName: '尾部窗口',
+        color: 'rgba(34, 197, 94, 0.220)'
+      }
+    ]);
+  });
 });
 
 describe('WaveformRenderer 交互覆盖层', () => {

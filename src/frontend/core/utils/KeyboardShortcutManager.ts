@@ -154,11 +154,35 @@ export class KeyboardShortcutManager {
         enabled: true
       },
       {
+        id: 'overwrite-paste-samples',
+        keys: ['Ctrl', 'Shift', 'V'],
+        description: '覆盖粘贴样本',
+        category: '编辑操作',
+        handler: () => this.triggerWaveformAction('pasteClipboardOverwrite'),
+        enabled: true
+      },
+      {
         id: 'delete-selection',
         keys: ['Delete'],
         description: '删除选区样本',
         category: '编辑操作',
         handler: () => this.triggerWaveformAction('deleteSelection'),
+        enabled: true
+      },
+      {
+        id: 'undo-waveform-edit',
+        keys: ['Ctrl', 'Z'],
+        description: '撤销样本编辑',
+        category: '编辑操作',
+        handler: () => this.triggerWaveformAction('undoLastEdit'),
+        enabled: true
+      },
+      {
+        id: 'redo-waveform-edit',
+        keys: ['Ctrl', 'Y'],
+        description: '重做样本编辑',
+        category: '编辑操作',
+        handler: () => this.triggerWaveformAction('redoLastEdit'),
         enabled: true
       },
       {

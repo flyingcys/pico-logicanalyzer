@@ -169,8 +169,20 @@
     waveformStore.pasteClipboard(centerSample.value, 'insert');
   };
 
+  const pasteClipboardOverwrite = () => {
+    waveformStore.pasteClipboard(centerSample.value, 'overwrite');
+  };
+
   const deleteSelection = () => {
     waveformStore.deleteSelection();
+  };
+
+  const undoLastEdit = () => {
+    waveformStore.undoLastEdit();
+  };
+
+  const redoLastEdit = () => {
+    waveformStore.redoLastEdit();
   };
 
   const zoomIn = () => waveformStore.zoom(2);
@@ -196,7 +208,10 @@
       copySelection,
       cutSelection,
       pasteClipboard,
-      deleteSelection
+      pasteClipboardOverwrite,
+      deleteSelection,
+      undoLastEdit,
+      redoLastEdit
     };
 
     actions[action]?.();
@@ -362,11 +377,35 @@
         </button>
         <button
           class="tool-button"
+          title="覆盖粘贴"
+          :disabled="!waveformStore.clipboard"
+          @click="pasteClipboardOverwrite"
+        >
+          Ovr
+        </button>
+        <button
+          class="tool-button"
           title="删除"
           :disabled="!waveformStore.selection"
           @click="deleteSelection"
         >
           Del
+        </button>
+        <button
+          class="tool-button"
+          title="撤销编辑"
+          :disabled="waveformStore.undoStack.length === 0"
+          @click="undoLastEdit"
+        >
+          Undo
+        </button>
+        <button
+          class="tool-button"
+          title="重做编辑"
+          :disabled="waveformStore.redoStack.length === 0"
+          @click="redoLastEdit"
+        >
+          Redo
         </button>
       </div>
     </div>
