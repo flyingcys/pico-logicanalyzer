@@ -568,7 +568,7 @@ await exporter.saveToFile(results, 'output.csv');
 
 ## 命令行采集
 
-扩展包同时提供 `logic-analyzer-capture` 命令，用于在没有 VSCode 图形界面的环境中执行一次采集并保存文件。它覆盖原版 `CLCapture` 的核心流程：指定设备、采样率、pre/post 样本数、通道、触发和输出文件。
+扩展包同时提供 `logic-analyzer-capture` 命令，用于在没有 VSCode 图形界面的环境中执行采集并保存文件。它覆盖原版 `CLCapture` 的核心流程：指定设备、采样率、pre/post 样本数、通道、触发、重复采集、批处理和输出文件。
 
 ### 基本采集
 
@@ -598,6 +598,22 @@ logic-analyzer-capture capture \
   --format csv
 ```
 
+需要程序化处理时可以输出 JSON：
+
+```bash
+logic-analyzer-capture capture \
+  --mock \
+  --device mock \
+  --frequency 1000000 \
+  --pre 0 \
+  --post 16 \
+  --channels 0,1 \
+  --output capture.json \
+  --format json
+```
+
+`--mock` 仅用于本地验证、CI 和文档示例，不代表真实硬件采集。
+
 ### 配置文件
 
 可以把采集参数保存为 `.tcs` JSON 文件，便于脚本和 CI 复用：
@@ -616,6 +632,64 @@ logic-analyzer-capture write-config \
 logic-analyzer-capture capture --config lab-capture.tcs
 ```
 
+### 重复采集
+
+`--repeat` 会顺序执行多次采集。输出路径包含 `{index}` 时会替换为 1-based 序号；否则会在扩展名前追加 `-N`，避免覆盖已有结果。
+
+```bash
+logic-analyzer-capture capture \
+  --mock \
+  --device mock \
+  --frequency 1000000 \
+  --pre 0 \
+  --post 1024 \
+  --channels 0-3 \
+  --output run-{index}.lac \
+  --format lac \
+  --repeat 3
+```
+
+### 批处理
+
+批处理文件可以是数组，也可以是包含 `captures` 数组的对象。每个任务字段与 `capture` 参数一致：
+
+```json
+{
+  "captures": [
+    {
+      "device": "COM3",
+      "frequency": 24000000,
+      "pre": 100,
+      "post": 1000,
+      "channels": "0,1,2,3",
+      "output": "lab-a.lac",
+      "format": "lac"
+    },
+    {
+      "device": "192.168.1.20:4045",
+      "frequency": 1000000,
+      "pre": 0,
+      "post": 5000,
+      "channels": "0-7",
+      "output": "lab-b.json",
+      "format": "json"
+    }
+  ]
+}
+```
+
+执行：
+
+```bash
+logic-analyzer-capture batch --file batch.json
+```
+
+如需本地演练，可添加 `--mock` 让未显式声明 runner 的任务使用 mock 设备：
+
+```bash
+logic-analyzer-capture batch --mock --file batch.json
+```
+
 ### 网络配置
 
 Pico W 网络参数可以通过串口设备写入：
@@ -629,7 +703,18 @@ logic-analyzer-capture network-config \
   --port 4045
 ```
 
-当前命令行工具支持 `.lac` 和 `.csv` 输出。`--mock` 仅用于本地验证和文档示例，不代表真实硬件采集。
+### 错误码
+
+命令行错误码便于脚本判断失败类型：
+
+| 错误码 | 含义 |
+| --- | --- |
+| `0` | 成功 |
+| `2` | 参数、配置文件或批处理文件错误 |
+| `3` | 单次采集、真实设备连接或输出写入失败 |
+| `4` | 批处理执行失败或部分失败 |
+
+当前命令行工具支持 `.lac`、`.csv` 和 `.json` 输出。
 
 ## 常见问题
 

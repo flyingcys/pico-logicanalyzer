@@ -1,7 +1,10 @@
 import { Command } from 'commander';
+import { readFile } from 'fs/promises';
+import * as path from 'path';
 import {
   CliCaptureConfig,
   CliNetworkConfig,
+  CliOutputFormat,
   loadCaptureConfigFile,
   normalizeFormat,
   parseChannelList,
@@ -22,6 +25,10 @@ export interface CliDeps {
   capture?: (config: CliCaptureConfig) => Promise<any>;
   sendNetworkConfig?: (config: CliNetworkConfig) => Promise<void>;
 }
+
+const EXIT_USAGE = 2;
+const EXIT_CAPTURE_FAILED = 3;
+const EXIT_BATCH_FAILED = 4;
 
 const defaultIo: CliIo = {
   stdout: line => process.stdout.write(`${line}\n`),
@@ -58,7 +65,7 @@ export function createProgram(io: CliIo = defaultIo, deps: CliDeps = {}): Comman
 
   program
     .command('capture')
-    .description('连接设备、执行一次采集并输出 .lac 或 .csv')
+    .description('连接设备、执行一次或多次采集并输出 .lac、.csv 或 .json')
     .option('--device <address>', '串口设备路径或 host:port 网络地址')
     .option('--frequency <hz>', '采样率 Hz', parseNumber)
     .option('--pre <samples>', '触发前样本数', parseNumber)
@@ -72,26 +79,62 @@ export function createProgram(io: CliIo = defaultIo, deps: CliDeps = {}): Comman
     .option('--loop-count <count>', '突发循环次数', parseNumber, 0)
     .option('--measure-bursts', '记录突发间隔')
     .option('--output <file>', '输出文件')
-    .option('--format <format>', '输出格式: lac 或 csv')
+    .option('--format <format>', '输出格式: lac、csv 或 json')
     .option('--config <file>', '读取 .tcs/JSON 采集配置')
     .option('--write-config <file>', '采集前写出当前配置')
+    .option('--repeat <count>', '重复采集次数', parseNumber, 1)
     .option('--mock', '使用内置 mock 设备生成确定性样本')
     .action(async options => {
       const config = await resolveCaptureConfig(options);
-      const errors = validateCaptureConfig(config);
-      if (errors.length > 0) {
-        throw commanderError(errors.join('\n'), 2);
-      }
+      validateCaptureCommand(config, options);
 
       if (options.writeConfig) {
         await saveCaptureConfigFile(options.writeConfig, config);
         io.stdout(`已写出采集配置: ${options.writeConfig}`);
       }
 
-      const runner = options.mock ? new MockCliCaptureRunner() : new LogicAnalyzerCliCaptureRunner();
-      const session = deps.capture ? await deps.capture(config) : await runner.capture(config);
-      await writeCaptureOutput(session, config.output, config.format);
-      io.stdout(`采集完成: ${config.output}`);
+      await executeCaptureSequence(config, options, io, deps);
+    });
+
+  program
+    .command('batch')
+    .description('按 JSON 批处理文件顺序执行多个采集任务')
+    .requiredOption('--file <file>', '批处理 JSON 文件，包含 captures 数组')
+    .option('--mock', '批处理中默认使用内置 mock 设备')
+    .option('--continue-on-error', '单个任务失败后继续执行后续任务')
+    .action(async options => {
+      const jobs = await loadBatchJobs(options.file);
+      let completed = 0;
+      const failures: string[] = [];
+
+      for (let index = 0; index < jobs.length; index++) {
+        const jobOptions = {
+          ...jobs[index],
+          mock: jobs[index].mock ?? options.mock
+        };
+
+        try {
+          const config = await resolveCaptureConfig(jobOptions);
+          validateCaptureCommand(config, jobOptions);
+          await executeCaptureSequence(config, jobOptions, io, deps);
+          completed += 1;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          failures.push(`第 ${index + 1} 项: ${message}`);
+          io.stderr(failures[failures.length - 1]);
+
+          const exitCode = typeof (error as any).exitCode === 'number' ? (error as any).exitCode : EXIT_BATCH_FAILED;
+          if (!options.continueOnError) {
+            throw commanderError(`批处理失败: ${message}`, exitCode === EXIT_USAGE ? EXIT_USAGE : EXIT_BATCH_FAILED);
+          }
+        }
+      }
+
+      if (failures.length > 0) {
+        throw commanderError(`批处理完成但存在 ${failures.length} 个失败任务`, EXIT_BATCH_FAILED);
+      }
+
+      io.stdout(`批处理完成: ${completed}/${jobs.length}`);
     });
 
   program
@@ -113,7 +156,7 @@ export function createProgram(io: CliIo = defaultIo, deps: CliDeps = {}): Comman
       };
 
       if (!Number.isInteger(config.port) || config.port <= 0 || config.port > 65535) {
-        throw commanderError('端口必须在 1-65535 之间', 2);
+        throw commanderError('端口必须在 1-65535 之间', EXIT_USAGE);
       }
 
       const runner = options.mock ? new MockCliCaptureRunner() : new LogicAnalyzerCliCaptureRunner();
@@ -136,12 +179,12 @@ export function createProgram(io: CliIo = defaultIo, deps: CliDeps = {}): Comman
     .option('--channels <list>', '通道列表，例如 0,1,4-7', '0')
     .option('--trigger <type>', '触发类型: edge, complex, fast, blast', 'edge')
     .option('--output <file>', '输出文件', 'capture.lac')
-    .option('--format <format>', '输出格式: lac 或 csv', 'lac')
+    .option('--format <format>', '输出格式: lac、csv 或 json', 'lac')
     .action(async options => {
       const config = await resolveCaptureConfig(options);
       const errors = validateCaptureConfig(config);
       if (errors.length > 0) {
-        throw commanderError(errors.join('\n'), 2);
+        throw commanderError(errors.join('\n'), EXIT_USAGE);
       }
       await saveCaptureConfigFile(options.file, config);
       io.stdout(`已写出采集配置: ${options.file}`);
@@ -185,12 +228,94 @@ function compactOptions(options: any): Record<string, any> {
   return compacted;
 }
 
-function inferFormatFromOutput(output: string): 'lac' | 'csv' {
-  return output.toLowerCase().endsWith('.csv') ? 'csv' : 'lac';
+async function loadBatchJobs(filename: string): Promise<any[]> {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(await readFile(filename, 'utf8'));
+  } catch (error) {
+    throw commanderError(`批处理文件无效: ${error instanceof Error ? error.message : String(error)}`, EXIT_USAGE);
+  }
+
+  const jobs = Array.isArray(parsed) ? parsed : parsed.captures;
+  if (!Array.isArray(jobs) || jobs.length === 0) {
+    throw commanderError('批处理文件必须包含非空 captures 数组', EXIT_USAGE);
+  }
+
+  return jobs;
+}
+
+function validateCaptureCommand(config: CliCaptureConfig, options: any): void {
+  const errors = validateCaptureConfig(config);
+  const repeat = Number(options.repeat ?? 1);
+  if (!Number.isInteger(repeat) || repeat < 1) {
+    errors.push('repeat 必须是大于 0 的整数');
+  }
+
+  if (errors.length > 0) {
+    throw commanderError(errors.join('\n'), EXIT_USAGE);
+  }
+}
+
+async function executeCaptureSequence(
+  config: CliCaptureConfig,
+  options: any,
+  io: CliIo,
+  deps: CliDeps
+): Promise<void> {
+  const repeat = Number(options.repeat ?? 1);
+
+  for (let index = 1; index <= repeat; index++) {
+    const iterationConfig = {
+      ...config,
+      output: outputForRepeat(config.output, index, repeat)
+    };
+
+    try {
+      const runner = options.mock ? new MockCliCaptureRunner() : new LogicAnalyzerCliCaptureRunner();
+      const session = deps.capture ? await deps.capture(iterationConfig) : await runner.capture(iterationConfig);
+      await writeCaptureOutput(session, iterationConfig.output, iterationConfig.format);
+      const suffix = repeat > 1 ? ` (${index}/${repeat})` : '';
+      io.stdout(`采集完成: ${iterationConfig.output}${suffix}`);
+    } catch (error) {
+      throw commanderError(error instanceof Error ? error.message : String(error), EXIT_CAPTURE_FAILED);
+    }
+  }
+}
+
+function outputForRepeat(output: string, index: number, repeat: number): string {
+  if (repeat <= 1) {
+    return output;
+  }
+
+  if (output.includes('{index}')) {
+    return output.replace(/\{index\}/g, String(index));
+  }
+
+  const extension = path.extname(output);
+  const basename = extension ? output.slice(0, -extension.length) : output;
+  return `${basename}-${index}${extension}`;
+}
+
+function inferFormatFromOutput(output: string): CliOutputFormat {
+  const normalized = output.toLowerCase();
+  if (normalized.endsWith('.csv')) {
+    return 'csv';
+  }
+  if (normalized.endsWith('.json')) {
+    return 'json';
+  }
+  return 'lac';
 }
 
 function defaultOutputForFormat(format?: string): string {
-  return normalizeFormat(format) === 'csv' ? 'capture.csv' : 'capture.lac';
+  const normalized = normalizeFormat(format);
+  if (normalized === 'csv') {
+    return 'capture.csv';
+  }
+  if (normalized === 'json') {
+    return 'capture.json';
+  }
+  return 'capture.lac';
 }
 
 function parseNumber(value: string): number {
