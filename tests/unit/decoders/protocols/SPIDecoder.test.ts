@@ -15,6 +15,12 @@ describe('SPIDecoder', () => {
     spiDecoder = new SPIDecoder();
   });
 
+  const createClockSamples = (bitCount: number): Uint8Array =>
+    new Uint8Array(Array.from({ length: bitCount * 2 }, (_, index) => index % 2));
+
+  const createDataSamples = (bits: number[]): Uint8Array =>
+    new Uint8Array(bits.flatMap(bit => [bit, bit]));
+
   describe('解码器元数据验证', () => {
     it('应该具有正确的基本信息', () => {
       expect(spiDecoder.id).toBe('spi');
@@ -230,6 +236,56 @@ describe('SPIDecoder', () => {
       expect(() => {
         spiDecoder.decode(1000000, channels, options);
       }).not.toThrow();
+    });
+
+    it('同一个实例第二次未传 wordsize 时应该回到默认 8 位', () => {
+      const firstChannels: ChannelData[] = [
+        { channelNumber: 0, channelName: 'CLK', samples: createClockSamples(16) },
+        { channelNumber: 1, channelName: 'MISO', samples: createDataSamples([1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1]) },
+        { channelNumber: 2, channelName: 'MOSI', samples: createDataSamples([0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0]) },
+      ];
+      const secondChannels: ChannelData[] = [
+        { channelNumber: 0, channelName: 'CLK', samples: createClockSamples(8) },
+        { channelNumber: 1, channelName: 'MISO', samples: createDataSamples([1, 0, 1, 0, 0, 1, 0, 1]) },
+        { channelNumber: 2, channelName: 'MOSI', samples: createDataSamples([0, 1, 0, 1, 1, 0, 1, 0]) },
+      ];
+
+      const firstResults = spiDecoder.decode(1000000, firstChannels, [
+        { optionIndex: 4, value: 16 }
+      ]);
+      expect(firstResults.filter(result => result.annotationType === 0)).toHaveLength(1);
+
+      const secondResults = spiDecoder.decode(1000000, secondChannels, []);
+      const secondMisoDataAnnotations = secondResults.filter(result => result.annotationType === 0);
+      const secondMosiDataAnnotations = secondResults.filter(result => result.annotationType === 1);
+
+      expect(secondMisoDataAnnotations).toHaveLength(1);
+      expect(secondMosiDataAnnotations).toHaveLength(1);
+      expect(secondMisoDataAnnotations[0].rawData).toBe(0xA5);
+      expect(secondMosiDataAnnotations[0].rawData).toBe(0x5A);
+    });
+
+    it('同一个实例第二次未传 bitorder 时应该回到默认 msb-first', () => {
+      const channels: ChannelData[] = [
+        { channelNumber: 0, channelName: 'CLK', samples: createClockSamples(8) },
+        { channelNumber: 1, channelName: 'MISO', samples: createDataSamples([1, 0, 0, 1, 0, 1, 1, 0]) },
+        { channelNumber: 2, channelName: 'MOSI', samples: createDataSamples([0, 1, 1, 0, 1, 0, 0, 1]) },
+      ];
+
+      const lsbFirstResults = spiDecoder.decode(1000000, channels, [
+        { optionIndex: 3, value: 'lsb-first' }
+      ]);
+      const lsbFirstMisoData = lsbFirstResults.filter(result => result.annotationType === 0);
+      expect(lsbFirstMisoData[0].rawData).toBe(0x69);
+
+      const defaultResults = spiDecoder.decode(1000000, channels, []);
+      const defaultMisoData = defaultResults.filter(result => result.annotationType === 0);
+      const defaultMosiData = defaultResults.filter(result => result.annotationType === 1);
+
+      expect(defaultMisoData).toHaveLength(1);
+      expect(defaultMosiData).toHaveLength(1);
+      expect(defaultMisoData[0].rawData).toBe(0x96);
+      expect(defaultMosiData[0].rawData).toBe(0x69);
     });
   });
 

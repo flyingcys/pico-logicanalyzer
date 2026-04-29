@@ -264,6 +264,8 @@ export class SPIDecoder extends DecoderBase {
    * 处理配置选项
    */
   private processOptions(options: DecoderOptionValue[]): void {
+    this.resetOptionState();
+
     for (const option of options) {
       switch (option.optionIndex) {
         case 0: // cs_polarity
@@ -284,6 +286,18 @@ export class SPIDecoder extends DecoderBase {
           break;
       }
     }
+  }
+
+  /**
+   * 重置配置选项到默认值，避免实例复用时泄漏上一次解码状态
+   */
+  private resetOptionState(): void {
+    this.csPolarity = 'active-low';
+    this.cpol = 0;
+    this.cpha = 0;
+    this.bitOrder = 'msb-first';
+    this.wordSize = 8;
+    this.byteWidth = 1;
   }
 
   /**

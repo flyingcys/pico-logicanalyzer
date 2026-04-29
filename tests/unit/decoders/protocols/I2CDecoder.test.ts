@@ -174,6 +174,29 @@ describe('I2CDecoder 修复版测试', () => {
             expect(results.length).toBeGreaterThanOrEqual(0);
         });
 
+        it('应该为地址和数据位输出 bit annotation', () => {
+            const transaction = generateI2CSequence([
+                { type: 'start' },
+                { type: 'byte', value: 0xA0 },
+                { type: 'ack' },
+                { type: 'byte', value: 0x12 },
+                { type: 'ack' }
+            ]);
+
+            sclChannel.samples = transaction.scl;
+            sdaChannel.samples = transaction.sda;
+
+            const channels = [sclChannel, sdaChannel];
+            const results = decoder.decode(1000000, channels, options);
+            const bitAnnotations = results.filter(result => result.annotationType === 5);
+
+            expect(bitAnnotations).toHaveLength(16);
+            expect(bitAnnotations.map(result => result.values[0])).toEqual([
+                '1', '0', '1', '0', '0', '0', '0', '0',
+                '0', '0', '0', '1', '0', '0', '1', '0'
+            ]);
+        });
+
         it('应该处理地址格式选项', () => {
             // 测试不同的地址格式选项
             const shiftedOptions = [{ optionIndex: 0, value: 'shifted' }];
@@ -200,6 +223,28 @@ describe('I2CDecoder 修复版测试', () => {
             
             // 两种格式应该产生不同的结果
             expect(JSON.stringify(shiftedResults)).not.toBe(JSON.stringify(unshiftedResults));
+        });
+
+        it('同一个实例在未传 option 时应该回到默认 shifted 地址格式', () => {
+            const unshiftedOptions = [{ optionIndex: 0, value: 'unshifted' }];
+            const i2cData = generateI2CSequence([
+                { type: 'start' },
+                { type: 'byte', value: 0xA0 },
+                { type: 'ack' }
+            ]);
+
+            sclChannel.samples = i2cData.scl;
+            sdaChannel.samples = i2cData.sda;
+
+            const channels = [sclChannel, sdaChannel];
+            const firstResults = decoder.decode(1000000, channels, unshiftedOptions);
+            const secondResults = decoder.decode(1000000, channels, []);
+
+            const firstAddress = firstResults.find(result => result.annotationType === 7);
+            const secondAddress = secondResults.find(result => result.annotationType === 7);
+
+            expect(firstAddress?.values[2]).toBe('A0');
+            expect(secondAddress?.values[2]).toBe('50');
         });
     });
 

@@ -9,6 +9,29 @@ import { DecoderOptionValue, ChannelData, DecoderOutputType } from '../../../../
 describe('UARTDecoder', () => {
   let uartDecoder: UARTDecoder;
 
+  const createRxFrames = (count: number): ChannelData[] => {
+    const frames: number[] = [];
+
+    for (let i = 0; i < count; i++) {
+      frames.push(
+        1, 1, 1,
+        0,
+        i & 1, (i >> 1) & 1, (i >> 2) & 1, (i >> 3) & 1, 0, 0, 0, 0,
+        1
+      );
+    }
+
+    frames.push(1, 1, 1);
+
+    return [
+      {
+        channelNumber: 0,
+        channelName: 'RX',
+        samples: new Uint8Array(frames)
+      }
+    ];
+  };
+
   beforeEach(() => {
     uartDecoder = new UARTDecoder();
   });
@@ -37,7 +60,7 @@ describe('UARTDecoder', () => {
     });
 
     it('应该定义正确的配置选项', () => {
-      expect(uartDecoder.options).toHaveLength(9);
+      expect(uartDecoder.options).toHaveLength(13);
       
       // 波特率选项
       expect(uartDecoder.options[0]).toEqual({
@@ -72,6 +95,34 @@ describe('UARTDecoder', () => {
         default: 1.0,
         values: ['0.0', '0.5', '1.0', '1.5', '2.0'],
         type: 'list'
+      });
+
+      expect(uartDecoder.options[9]).toEqual({
+        id: 'rx_packet_delim',
+        desc: 'RX packet delimiter',
+        default: '',
+        type: 'string'
+      });
+
+      expect(uartDecoder.options[10]).toEqual({
+        id: 'tx_packet_delim',
+        desc: 'TX packet delimiter',
+        default: '',
+        type: 'string'
+      });
+
+      expect(uartDecoder.options[11]).toEqual({
+        id: 'rx_packet_len',
+        desc: 'RX packet length',
+        default: 0,
+        type: 'int'
+      });
+
+      expect(uartDecoder.options[12]).toEqual({
+        id: 'tx_packet_len',
+        desc: 'TX packet length',
+        default: 0,
+        type: 'int'
       });
     });
 
@@ -1063,37 +1114,62 @@ describe('UARTDecoder', () => {
   });
 
   describe('长数据包测试', () => {
-    it('应该处理长数据包并触发包处理', () => {
-      // 创建一个包含多个字节的长数据流，触发包处理逻辑
-      const frames = [];
-      
-      // 添加18个连续的UART帧以触发包处理
-      for (let i = 0; i < 18; i++) {
-        frames.push(
-          1, 1, 1, // 空闲状态
-          0,       // 起始位
-          i & 1, (i >> 1) & 1, (i >> 2) & 1, (i >> 3) & 1, 0, 0, 0, 0, // 数据位
-          1        // 停止位
-        );
-      }
-      frames.push(1, 1, 1); // 最终空闲状态
-
-      const channels: ChannelData[] = [
-        { 
-          channelNumber: 0, 
-          channelName: 'RX', 
-          samples: new Uint8Array(frames)
-        }
-      ];
+    it('默认配置下不应该自动产出RX packet注释', () => {
+      const channels = createRxFrames(18);
 
       const results = uartDecoder.decode(115200, channels, []);
-      
-      // 检查是否有包注释生成
-      const packetAnnotations = results.filter(r => 
+
+      const packetAnnotations = results.filter(r =>
+        r.annotationType === 16
+      );
+
+      expect(packetAnnotations).toHaveLength(0);
+    });
+
+    it('ASCII模式下配置rx_packet_delim后应该在收到delimiter字符时产出RX packet注释', () => {
+      const channels: ChannelData[] = [
+        {
+          channelNumber: 0,
+          channelName: 'RX',
+          samples: new Uint8Array([
+            1, 1, 1,
+            0,
+            1, 0, 0, 0, 0, 0, 1, 0,
+            1,
+            1, 1, 1
+          ])
+        }
+      ];
+      const options: DecoderOptionValue[] = [
+        { optionIndex: 5, value: 'ascii' },
+        { optionIndex: 9, value: 'A' },
+        { optionIndex: 11, value: 0 }
+      ];
+
+      const results = uartDecoder.decode(115200, channels, options);
+
+      const packetAnnotations = results.filter(r =>
         r.annotationType === 16 // rx-packet
       );
-      
-      expect(packetAnnotations.length).toBeGreaterThan(0);
+
+      expect(packetAnnotations).toHaveLength(1);
+      expect(packetAnnotations[0].values).toEqual(['A']);
+    });
+
+    it('配置rx_packet_len后应该按长度产出RX packet注释', () => {
+      const channels = createRxFrames(4);
+      const options: DecoderOptionValue[] = [
+        { optionIndex: 11, value: 4 }
+      ];
+
+      const results = uartDecoder.decode(115200, channels, options);
+
+      const packetAnnotations = results.filter(r =>
+        r.annotationType === 16 // rx-packet
+      );
+
+      expect(packetAnnotations).toHaveLength(1);
+      expect(packetAnnotations[0].values).toEqual(['00 01 02 03']);
     });
   });
 

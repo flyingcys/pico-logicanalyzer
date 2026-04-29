@@ -160,6 +160,30 @@ export class UARTDecoder extends DecoderBase {
       desc: 'Sample point (%)',
       default: 50,
       type: 'int'
+    },
+    {
+      id: 'rx_packet_delim',
+      desc: 'RX packet delimiter',
+      default: '',
+      type: 'string'
+    },
+    {
+      id: 'tx_packet_delim',
+      desc: 'TX packet delimiter',
+      default: '',
+      type: 'string'
+    },
+    {
+      id: 'rx_packet_len',
+      desc: 'RX packet length',
+      default: 0,
+      type: 'int'
+    },
+    {
+      id: 'tx_packet_len',
+      desc: 'TX packet length',
+      default: 0,
+      type: 'int'
     }
   ];
 
@@ -235,6 +259,8 @@ export class UARTDecoder extends DecoderBase {
   private bitOrder = 'lsb-first';
   private format = 'hex';
   private samplePoint = 50;
+  private packetDelim = ['', ''];
+  private packetLength = [0, 0];
 
   /**
    * 主解码方法
@@ -293,6 +319,17 @@ export class UARTDecoder extends DecoderBase {
    * 处理配置选项
    */
   private processOptions(options: DecoderOptionValue[]): void {
+    this.baudrate = 115200;
+    this.dataBitsCount = 8;
+    this.parity = 'none';
+    this.stopBitsCount = 1.0;
+    this.bitOrder = 'lsb-first';
+    this.format = 'hex';
+    this.inv = [false, false];
+    this.samplePoint = 50;
+    this.packetDelim = ['', ''];
+    this.packetLength = [0, 0];
+
     for (const option of options) {
       switch (option.optionIndex) {
         case 0: // baudrate
@@ -321,6 +358,18 @@ export class UARTDecoder extends DecoderBase {
           break;
         case 8: // sample_point
           this.samplePoint = option.value as number;
+          break;
+        case 9: // rx_packet_delim
+          this.packetDelim[RX] = option.value as string;
+          break;
+        case 10: // tx_packet_delim
+          this.packetDelim[TX] = option.value as string;
+          break;
+        case 11: // rx_packet_len
+          this.packetLength[RX] = Math.max(0, Number(option.value) || 0);
+          break;
+        case 12: // tx_packet_len
+          this.packetLength[TX] = Math.max(0, Number(option.value) || 0);
           break;
       }
     }
@@ -698,15 +747,25 @@ export class UARTDecoder extends DecoderBase {
    * 对应原解码器的 handle_packet()
    */
   private handlePacket(rxtx: number): void {
-    // 简化实现 - 可根据需要扩展包处理功能
-    // 这里主要用于记录数据到包缓存
+    const targetLength = this.packetLength[rxtx];
+    const delimiter = this.packetDelim[rxtx];
+    const delimiterEnabled = this.format === 'ascii' && delimiter !== '';
+    const lengthEnabled = targetLength > 0;
+
+    if (!lengthEnabled && !delimiterEnabled) {
+      return;
+    }
+
     if (this.packetCache[rxtx].length === 0) {
       this.ssPacket[rxtx] = this.startSample[rxtx];
     }
     this.packetCache[rxtx].push(this.dataValue[rxtx]);
 
-    // 简单的包终止条件 - 可配置
-    if (this.packetCache[rxtx].length >= 16) { // 最多16字节的包
+    const formattedValue = this.formatValue(this.dataValue[rxtx]);
+    const delimiterMatched = delimiterEnabled && formattedValue === delimiter;
+    const lengthReached = lengthEnabled && this.packetCache[rxtx].length >= targetLength;
+
+    if (lengthReached || delimiterMatched) {
       this.esPacket[rxtx] = this.sampleIndex;
       let packetString = '';
       for (const byte of this.packetCache[rxtx]) {
@@ -725,6 +784,8 @@ export class UARTDecoder extends DecoderBase {
         values: [packetString]
       });
       this.packetCache[rxtx] = [];
+      this.ssPacket[rxtx] = null;
+      this.esPacket[rxtx] = null;
     }
   }
 

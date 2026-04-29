@@ -235,7 +235,24 @@ export class DecoderManager {
    * @returns 是否支持流式处理
    */
   public isStreamingSupported(decoderId: string): boolean {
-    return this.streamingDecoders.has(decoderId);
+    return this.resolveStreamingDecoderId(decoderId) !== null;
+  }
+
+  /**
+   * 解析流式解码器 ID。
+   * 兼容 executeStreamingDecoder('i2c', ...) 命中注册键 streaming_i2c 的主流程。
+   */
+  private resolveStreamingDecoderId(decoderId: string): string | null {
+    if (this.streamingDecoders.has(decoderId)) {
+      return decoderId;
+    }
+
+    const prefixedDecoderId = `streaming_${decoderId}`;
+    if (this.streamingDecoders.has(prefixedDecoderId)) {
+      return prefixedDecoderId;
+    }
+
+    return null;
   }
 
   /**
@@ -271,12 +288,16 @@ export class DecoderManager {
    * @returns 流式解码器实例或null
    */
   private createStreamingDecoderInstance(decoderId: string): StreamingDecoderBase | null {
+    const resolvedDecoderId = this.resolveStreamingDecoderId(decoderId);
+
     // 检查缓存
-    if (this.streamingDecoderInstances.has(decoderId)) {
-      return this.streamingDecoderInstances.get(decoderId)!;
+    if (resolvedDecoderId && this.streamingDecoderInstances.has(resolvedDecoderId)) {
+      return this.streamingDecoderInstances.get(resolvedDecoderId)!;
     }
 
-    const StreamingDecoderClass = this.streamingDecoders.get(decoderId);
+    const StreamingDecoderClass = resolvedDecoderId
+      ? this.streamingDecoders.get(resolvedDecoderId)
+      : undefined;
     if (!StreamingDecoderClass) {
       console.error(`Unknown streaming decoder: ${decoderId}`);
       return null;
@@ -284,7 +305,7 @@ export class DecoderManager {
 
     try {
       const instance = new StreamingDecoderClass();
-      this.streamingDecoderInstances.set(decoderId, instance);
+      this.streamingDecoderInstances.set(resolvedDecoderId!, instance);
       return instance;
     } catch (error) {
       console.error(`Failed to create streaming decoder instance for ${decoderId}:`, error);
