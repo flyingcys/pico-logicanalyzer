@@ -70,10 +70,13 @@ interface BrowserDecoderDocument {
 
 const I2C_DECODER_ID = 'i2c';
 const I2C_DECODER_NAME = 'I²C HTML 模拟';
+const LIN_DECODER_ID = 'lin';
+const LIN_DECODER_NAME = 'LIN HTML 模拟';
 const NO_DECODABLE_SAMPLES = '当前文件没有可解码样本';
 const INVALID_SAMPLE_RATE = '采样率无效，无法执行协议解码';
 const I2C_CHANNELS_REQUIRED = 'I2C 解码需要 SCL 和 SDA 两个通道';
 const I2C_SAME_CHANNEL = 'SCL 和 SDA 不能映射到同一采集通道';
+const LIN_CHANNEL_REQUIRED = 'LIN 解码需要 RX 通道';
 
 function cloneDocument(document?: FrontendDocumentData): FrontendDocumentData | undefined {
   return document ? { ...document } : undefined;
@@ -366,6 +369,29 @@ function createSyntheticI2CResults(sampleCount: number): BrowserDecoderResult[] 
   ];
 }
 
+function createSyntheticLINResults(sampleCount: number): BrowserDecoderResult[] {
+  const point = (sample: number) => toStableSample(sampleCount, sample);
+  const breakStart = point(2);
+  const breakEnd = Math.max(breakStart, point(15));
+  const syncStart = point(16);
+  const syncEnd = Math.max(syncStart, point(26));
+  const pidStart = point(26);
+  const pidEnd = Math.max(pidStart, point(36));
+  const dataStart = point(36);
+  const dataEnd = Math.max(dataStart, point(46));
+  const checksumStart = point(56);
+  const checksumEnd = Math.max(checksumStart, point(66));
+
+  return [
+    { startSample: breakStart, endSample: breakEnd, annotationType: 0, values: ['Break'] },
+    { startSample: syncStart, endSample: syncEnd, annotationType: 1, values: ['Sync: 55', '55'], rawData: 0x55 },
+    { startSample: pidStart, endSample: pidEnd, annotationType: 2, values: ['PID: 50', '50'], rawData: 0x50 },
+    { startSample: pidStart, endSample: pidEnd, annotationType: 3, values: ['ID: 10', '10'], rawData: 0x10 },
+    { startSample: dataStart, endSample: dataEnd, annotationType: 4, values: ['Data[0]: 12', '12'], rawData: 0x12 },
+    { startSample: checksumStart, endSample: checksumEnd, annotationType: 5, values: ['Checksum: ED', 'ED'], rawData: 0xed }
+  ];
+}
+
 function validateI2CMapping(
   document: BrowserDecoderDocument,
   channelMapping: BrowserDecoderChannelMapping[]
@@ -390,32 +416,55 @@ function validateI2CMapping(
   return null;
 }
 
+function validateLINMapping(
+  document: BrowserDecoderDocument,
+  channelMapping: BrowserDecoderChannelMapping[]
+): string | null {
+  const rxMapping = channelMapping.find(mapping => mapping.decoderIndex === 0);
+
+  if (!rxMapping) {
+    return LIN_CHANNEL_REQUIRED;
+  }
+
+  const rxChannel = document.channels[rxMapping.captureIndex];
+  if (!rxChannel || rxChannel.sampleCount <= 0) {
+    return LIN_CHANNEL_REQUIRED;
+  }
+
+  return null;
+}
+
 function runBrowserDecoder(documentData: FrontendDocumentData, payload: unknown): HostCommandResult<BrowserRunDecoderResponse> {
   const request = readRunDecoderRequest(payload);
   const { decoderId } = request;
 
-  if (decoderId !== I2C_DECODER_ID) {
+  if (decoderId !== I2C_DECODER_ID && decoderId !== LIN_DECODER_ID) {
     return createRunDecoderFailure(decoderId, decoderId, `Decoder not found: ${decoderId}`);
   }
+  const decoderName = decoderId === LIN_DECODER_ID ? LIN_DECODER_NAME : I2C_DECODER_NAME;
 
   const decoderDocument = readBrowserDecoderDocument(documentData);
   if (!decoderDocument.hasSamples) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, NO_DECODABLE_SAMPLES);
+    return createRunDecoderFailure(decoderId, decoderName, NO_DECODABLE_SAMPLES);
   }
 
   if (decoderDocument.sampleRate <= 0) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, INVALID_SAMPLE_RATE);
+    return createRunDecoderFailure(decoderId, decoderName, INVALID_SAMPLE_RATE);
   }
 
-  const mappingError = validateI2CMapping(decoderDocument, request.channelMapping);
+  const mappingError = decoderId === LIN_DECODER_ID
+    ? validateLINMapping(decoderDocument, request.channelMapping)
+    : validateI2CMapping(decoderDocument, request.channelMapping);
   if (mappingError) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, mappingError);
+    return createRunDecoderFailure(decoderId, decoderName, mappingError);
   }
 
-  return createRunDecoderResponse(decoderId, I2C_DECODER_NAME, {
+  return createRunDecoderResponse(decoderId, decoderName, {
     success: true,
     executionTime: 1,
-    results: createSyntheticI2CResults(decoderDocument.sampleCount).map(result => ({
+    results: (decoderId === LIN_DECODER_ID
+      ? createSyntheticLINResults(decoderDocument.sampleCount)
+      : createSyntheticI2CResults(decoderDocument.sampleCount)).map(result => ({
       ...result,
       rawData: result.rawData ?? { source: 'html-host-synthetic' }
     })),

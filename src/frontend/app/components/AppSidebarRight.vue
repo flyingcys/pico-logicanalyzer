@@ -9,6 +9,7 @@ import { useWaveformStore } from '../../core/stores/waveformStore';
 
 type SidebarTab = 'decoder' | 'performance';
 type I2CRole = 'scl' | 'sda';
+type DecoderProtocolId = 'i2c' | 'lin';
 
 const host = useHost({ fallback: 'auto' });
 const uiStore = useUiStore();
@@ -37,29 +38,47 @@ watch(
     .map(entry => `${entry.captureIndex}:${entry.channel.channelNumber}:${entry.channel.channelName}`)
     .join('|'),
   () => {
-    decoderStore.initializeI2CMapping(sessionStore.channels);
+    decoderStore.initializeProtocolMappings(sessionStore.channels);
   },
   { immediate: true }
 );
+
+const selectedDecoderConfig = computed(() =>
+  decoderStore.activeDecoderConfigs.find(config => config.decoderId === decoderStore.selectedDecoderId)
+  ?? decoderStore.activeDecoderConfigs[0]
+);
+
+const decoderTitle = computed(() => `${selectedDecoderConfig.value.label} 协议解码`);
 
 const decoderStatusText = computed(() => {
   if (!sessionStore.hasData) {
     return '当前文件没有可解码样本';
   }
 
-  if (visibleChannels.value.length < 2) {
+  if (decoderStore.selectedDecoderId === 'i2c' && visibleChannels.value.length < 2) {
     return 'I2C 解码需要至少两个通道';
+  }
+
+  if (decoderStore.selectedDecoderId === 'lin' && visibleChannels.value.length < 1) {
+    return 'LIN 解码需要 RX 通道';
   }
 
   return `${sessionStore.totalSamples} 样本 · ${sessionStore.sampleRate} Hz`;
 });
 
-const canRunI2CDecoder = computed(() =>
-  sessionStore.hasData
-  && visibleChannels.value.length >= 2
-  && decoderStore.channelConflicts.length === 0
-  && !decoderStore.isDecoding
-);
+const canRunDecoder = computed(() => {
+  if (!sessionStore.hasData || decoderStore.channelConflicts.length > 0 || decoderStore.isDecoding) {
+    return false;
+  }
+
+  if (decoderStore.selectedDecoderId === 'lin') {
+    return visibleChannels.value.length >= 1 && decoderStore.linMapping.rxCaptureIndex !== null;
+  }
+
+  return visibleChannels.value.length >= 2
+    && decoderStore.i2cMapping.sclCaptureIndex !== null
+    && decoderStore.i2cMapping.sdaCaptureIndex !== null;
+});
 
 const decoderSummary = computed(() => [
   {
@@ -77,7 +96,7 @@ const decoderSummary = computed(() => [
 ]);
 
 const visibleDecoderName = computed(() =>
-  decoderStore.lastDecoderName && decoderStore.lastDecoderName !== 'I2C'
+  decoderStore.lastDecoderName && decoderStore.lastDecoderName !== selectedDecoderConfig.value.label
     ? decoderStore.lastDecoderName
     : ''
 );
@@ -105,8 +124,30 @@ function setMappingFromEvent(role: I2CRole, event: Event) {
   decoderStore.setI2CMapping(role, Number.isFinite(value) ? value : null);
 }
 
-async function runI2CDecoder() {
-  await decoderStore.runI2CDecoder(host, sessionStore);
+function setLINMappingFromEvent(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const value = select.value === '' ? null : Number(select.value);
+  decoderStore.setLINMapping(Number.isFinite(value) ? value : null);
+}
+
+function setProtocolFromEvent(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const value = select.value === 'lin' ? 'lin' : 'i2c';
+  decoderStore.selectDecoder(value as DecoderProtocolId);
+}
+
+function setLINNumberOption(option: 'baudrate' | 'dataLength', event: Event) {
+  const input = event.target as HTMLInputElement;
+  decoderStore.setLINOption(option, Number(input.value));
+}
+
+function setLINChecksumFromEvent(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  decoderStore.setLINOption('checksum', select.value as 'classic' | 'enhanced' | 'lin1.x' | 'lin2.x');
+}
+
+async function runDecoder() {
+  await decoderStore.runSelectedDecoder(host, sessionStore);
 }
 </script>
 
@@ -135,7 +176,7 @@ async function runI2CDecoder() {
       >
         <header class="decoder-panel__header">
           <h2 class="app-sidebar-right__title">
-            I2C 协议解码
+            {{ decoderTitle }}
           </h2>
           <p
             v-if="visibleDecoderName"
@@ -148,7 +189,27 @@ async function runI2CDecoder() {
           </p>
         </header>
 
-        <div class="decoder-panel__mapping">
+        <label class="decoder-panel__field decoder-panel__field--full">
+          <span>协议</span>
+          <select
+            data-testid="decoder-protocol-select"
+            :value="decoderStore.selectedDecoderId"
+            @change="setProtocolFromEvent"
+          >
+            <option
+              v-for="config in decoderStore.activeDecoderConfigs"
+              :key="config.decoderId"
+              :value="config.decoderId"
+            >
+              {{ config.label }}
+            </option>
+          </select>
+        </label>
+
+        <div
+          v-if="decoderStore.selectedDecoderId === 'i2c'"
+          class="decoder-panel__mapping"
+        >
           <label class="decoder-panel__field">
             <span>SCL</span>
             <select
@@ -183,6 +244,62 @@ async function runI2CDecoder() {
         </div>
 
         <div
+          v-else
+          class="decoder-panel__mapping decoder-panel__mapping--single"
+        >
+          <label class="decoder-panel__field">
+            <span>RX</span>
+            <select
+              :value="decoderStore.linMapping.rxCaptureIndex ?? ''"
+              @change="setLINMappingFromEvent"
+            >
+              <option
+                v-for="channel in visibleChannels"
+                :key="`lin-rx-${channel.captureIndex}`"
+                :value="channel.captureIndex"
+              >
+                CH{{ channel.channel.channelNumber }} - {{ channel.channel.channelName }}
+              </option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>Baud</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              :value="decoderStore.linOptions.baudrate"
+              @change="setLINNumberOption('baudrate', $event)"
+            >
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>Data</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              :value="decoderStore.linOptions.dataLength"
+              @change="setLINNumberOption('dataLength', $event)"
+            >
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>Checksum</span>
+            <select
+              :value="decoderStore.linOptions.checksum"
+              @change="setLINChecksumFromEvent"
+            >
+              <option value="classic">classic</option>
+              <option value="enhanced">enhanced</option>
+              <option value="lin1.x">LIN 1.x</option>
+              <option value="lin2.x">LIN 2.x</option>
+            </select>
+          </label>
+        </div>
+
+        <div
           v-if="decoderStore.channelConflicts.length > 0"
           class="decoder-panel__errors"
         >
@@ -197,14 +314,14 @@ async function runI2CDecoder() {
         <button
           type="button"
           class="decoder-panel__run"
-          :disabled="!canRunI2CDecoder"
-          data-testid="run-i2c-decoder"
-          @click="runI2CDecoder"
+          :disabled="!canRunDecoder"
+          :data-testid="decoderStore.selectedDecoderId === 'lin' ? 'run-lin-decoder' : 'run-i2c-decoder'"
+          @click="runDecoder"
         >
           <span class="decoder-panel__run-icon">
             <VideoPlay />
           </span>
-          <span>{{ decoderStore.isDecoding ? '解码中...' : '运行 I2C 解码' }}</span>
+          <span>{{ decoderStore.isDecoding ? '解码中...' : `运行 ${selectedDecoderConfig.label} 解码` }}</span>
         </button>
 
         <dl class="app-sidebar-right__summary">
@@ -397,6 +514,10 @@ async function runI2CDecoder() {
   gap: 10px;
 }
 
+.decoder-panel__mapping--single {
+  grid-template-columns: 1fr;
+}
+
 .decoder-panel__field {
   display: grid;
   gap: 6px;
@@ -405,7 +526,12 @@ async function runI2CDecoder() {
   font-size: 12px;
 }
 
-.decoder-panel__field select {
+.decoder-panel__field--full {
+  width: 100%;
+}
+
+.decoder-panel__field select,
+.decoder-panel__field input {
   width: 100%;
   min-width: 0;
   height: 34px;

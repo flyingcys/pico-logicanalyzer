@@ -12,7 +12,7 @@ import {
   DecoderResult
 } from '../types';
 
-type LINChecksumMode = 'classic' | 'enhanced';
+type LINChecksumMode = 'classic' | 'enhanced' | 'lin1.x' | 'lin2.x';
 
 interface LINByte {
   value: number;
@@ -39,9 +39,9 @@ export class LINDecoder extends DecoderBase {
     { id: 'data_length', desc: 'Data length', default: 2, type: 'int' },
     {
       id: 'checksum',
-      desc: 'Checksum model',
+      desc: 'Checksum model / LIN version',
       default: 'classic',
-      values: ['classic', 'enhanced'],
+      values: ['classic', 'enhanced', 'lin1.x', 'lin2.x'],
       type: 'list'
     }
   ];
@@ -65,6 +65,7 @@ export class LINDecoder extends DecoderBase {
   private dataLength = 2;
   private checksumMode: LINChecksumMode = 'classic';
   private bitWidth = 1;
+  private readonly minimumBreakCandidateBits = 10;
 
   decode(
     sampleRate: number,
@@ -84,14 +85,14 @@ export class LINDecoder extends DecoderBase {
     this.prepareChannelData(channels, [{ captureIndex: 0, decoderIndex: 0 }]);
     this.start();
 
-    this.decodeFrame(channels[0].samples);
+    this.decodeFrames(channels[0].samples);
     return this.results;
   }
 
   private processOptions(options: DecoderOptionValue[]): void {
     this.baudrate = Number(this.options[0].default);
     this.dataLength = Number(this.options[1].default);
-    this.checksumMode = this.options[2].default === 'enhanced' ? 'enhanced' : 'classic';
+    this.checksumMode = this.normalizeChecksumMode(this.options[2].default);
 
     for (const option of options) {
       if (option.optionIndex === 0) {
@@ -99,15 +100,38 @@ export class LINDecoder extends DecoderBase {
       } else if (option.optionIndex === 1) {
         this.dataLength = Math.max(0, Number(option.value));
       } else if (option.optionIndex === 2) {
-        this.checksumMode = option.value === 'enhanced' ? 'enhanced' : 'classic';
+        this.checksumMode = this.normalizeChecksumMode(option.value);
       }
     }
   }
 
-  private decodeFrame(samples: Uint8Array): void {
-    const breakRun = this.findBreak(samples);
+  private normalizeChecksumMode(value: unknown): LINChecksumMode {
+    if (value === 'enhanced' || value === 'lin2.x') {
+      return value;
+    }
+    if (value === 'lin1.x') {
+      return 'lin1.x';
+    }
+    return 'classic';
+  }
+
+  private decodeFrames(samples: Uint8Array): void {
+    let cursor = 0;
+
+    while (cursor < samples.length) {
+      const nextCursor = this.decodeFrame(samples, cursor);
+      if (nextCursor === null) {
+        return;
+      }
+
+      cursor = Math.max(nextCursor, cursor + 1);
+    }
+  }
+
+  private decodeFrame(samples: Uint8Array, from: number): number | null {
+    const breakRun = this.findBreak(samples, from);
     if (!breakRun) {
-      return;
+      return null;
     }
 
     const breakBits = Math.round((breakRun.end - breakRun.start) / this.bitWidth);
@@ -127,7 +151,7 @@ export class LINDecoder extends DecoderBase {
     const sync = this.readByte(samples, cursor);
     if (!sync) {
       this.warn(cursor, cursor + this.bitWidth, ['Missing sync', 'Sync']);
-      return;
+      return breakRun.end;
     }
     cursor = sync.endSample;
     this.emit(1, sync.startSample, sync.endSample, [`Sync: ${this.hex(sync.value)}`, this.hex(sync.value)], sync.value);
@@ -138,7 +162,7 @@ export class LINDecoder extends DecoderBase {
     const pid = this.readByte(samples, cursor);
     if (!pid) {
       this.warn(cursor, cursor + this.bitWidth, ['Missing PID', 'PID']);
-      return;
+      return sync.endSample;
     }
     cursor = pid.endSample;
     this.emit(2, pid.startSample, pid.endSample, [`PID: ${this.hex(pid.value)}`, this.hex(pid.value)], pid.value);
@@ -149,15 +173,24 @@ export class LINDecoder extends DecoderBase {
       this.warn(pid.startSample, pid.endSample, ['PID parity error', 'PID parity']);
     }
 
+    if (this.dataLength === 0) {
+      return cursor;
+    }
+
     const data: LINByte[] = [];
     for (let index = 0; index < this.dataLength; index++) {
+      if (index === 0) {
+        const noResponseEnd = this.findNoResponseEnd(samples, cursor);
+        if (noResponseEnd !== null) {
+          this.warn(cursor, Math.max(cursor + this.bitWidth, noResponseEnd), ['No response', 'No response']);
+          return noResponseEnd;
+        }
+      }
+
       const byte = this.readByte(samples, cursor);
       if (!byte) {
-        if (this.hasNoResponse(samples, cursor)) {
-          return;
-        }
         this.warn(cursor, cursor + this.bitWidth, ['Missing data', 'Data']);
-        return;
+        return this.findBreak(samples, cursor)?.start ?? samples.length;
       }
       cursor = byte.endSample;
       data.push(byte);
@@ -166,11 +199,8 @@ export class LINDecoder extends DecoderBase {
 
     const checksum = this.readByte(samples, cursor);
     if (!checksum) {
-      if (this.hasNoResponse(samples, cursor)) {
-        return;
-      }
       this.warn(cursor, cursor + this.bitWidth, ['Missing checksum', 'Checksum']);
-      return;
+      return this.findBreak(samples, cursor)?.start ?? samples.length;
     }
 
     const expected = this.calculateChecksum(pid.value, data.map(item => item.value));
@@ -178,10 +208,12 @@ export class LINDecoder extends DecoderBase {
     if (checksum.value !== expected) {
       this.warn(checksum.startSample, checksum.endSample, [`Checksum error: expected ${this.hex(expected)}`, 'Checksum error']);
     }
+
+    return checksum.endSample;
   }
 
-  private findBreak(samples: Uint8Array): { start: number; end: number } | null {
-    for (let index = 0; index < samples.length; index++) {
+  private findBreak(samples: Uint8Array, from: number = 0): { start: number; end: number } | null {
+    for (let index = Math.max(0, from); index < samples.length; index++) {
       if (samples[index] !== 0) {
         continue;
       }
@@ -189,9 +221,11 @@ export class LINDecoder extends DecoderBase {
       while (end < samples.length && samples[end] === 0) {
         end++;
       }
-      if (end > index) {
+      const lowBits = Math.round((end - index) / this.bitWidth);
+      if (lowBits >= this.minimumBreakCandidateBits) {
         return { start: index, end };
       }
+      index = end;
     }
     return null;
   }
@@ -226,13 +260,21 @@ export class LINDecoder extends DecoderBase {
     };
   }
 
-  private hasNoResponse(samples: Uint8Array, from: number): boolean {
-    for (let index = from; index < samples.length; index++) {
-      if (samples[index] === 0) {
-        return false;
+  private findNoResponseEnd(samples: Uint8Array, from: number): number | null {
+    if (from < samples.length && samples[from] !== 1) {
+      return null;
+    }
+
+    const nextBreak = this.findBreak(samples, from);
+    const end = nextBreak?.start ?? samples.length;
+
+    for (let index = from; index < end; index++) {
+      if (samples[index] !== 1) {
+        return null;
       }
     }
-    return true;
+
+    return end;
   }
 
   private hasValidPidParity(pid: number): boolean {
@@ -243,12 +285,24 @@ export class LINDecoder extends DecoderBase {
   }
 
   private calculateChecksum(pid: number, data: number[]): number {
-    const values = this.checksumMode === 'enhanced' ? [pid, ...data] : data;
+    const values = this.shouldIncludePidInChecksum(pid) ? [pid, ...data] : data;
     let sum = values.reduce((total, value) => total + value, 0);
     while (sum > 0xff) {
       sum = (sum & 0xff) + (sum >> 8);
     }
     return (~sum) & 0xff;
+  }
+
+  private shouldIncludePidInChecksum(pid: number): boolean {
+    if (this.checksumMode === 'enhanced') {
+      return true;
+    }
+    if (this.checksumMode !== 'lin2.x') {
+      return false;
+    }
+
+    const identifier = pid & 0x3f;
+    return identifier !== 0x3c && identifier !== 0x3d;
   }
 
   private emit(
