@@ -1048,6 +1048,53 @@ describe('decoderStore I2C 解码状态', () => {
     expect(store.lastDecoderName).toBe('CAN');
     expect(store.decoderErrors).toEqual([]);
   });
+
+  it('runLINDecoder 成功时应发送 LIN 映射和版本化 checksum 选项', async () => {
+    const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
+    const store = useDecoderStore();
+    store.initializeLINMapping([
+      { channelNumber: 0, channelName: 'LIN_RX', hidden: false }
+    ]);
+    store.setLINOption('checksum', 'lin2.x');
+    const host = {
+      sendCommand: jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          decoderId: 'lin',
+          decoderName: 'LIN',
+          success: true,
+          executionTime: 5,
+          results: [
+            { startSample: 2, endSample: 15, annotationType: 0, values: ['Break'] },
+            { startSample: 16, endSample: 26, annotationType: 1, values: ['Sync: 55', '55'] }
+          ]
+        }
+      })
+    };
+
+    await store.runLINDecoder(host, {
+      hasData: true,
+      sampleRate: 19200,
+      channels: [
+        { channelNumber: 0, channelName: 'LIN_RX', hidden: false }
+      ]
+    });
+
+    expect(host.sendCommand).toHaveBeenCalledWith('runDecoder', {
+      decoderId: 'lin',
+      channelMapping: [
+        { captureIndex: 0, decoderIndex: 0, name: 'LIN RX' }
+      ],
+      options: [
+        { optionIndex: 0, value: 19200 },
+        { optionIndex: 1, value: 2 },
+        { optionIndex: 2, value: 'lin2.x' }
+      ]
+    });
+    expect(store.decoderResults).toHaveLength(2);
+    expect(store.lastDecoderName).toBe('LIN');
+    expect(store.decoderErrors).toEqual([]);
+  });
 });
 
 describe('AppSidebarRight 协议解码面板', () => {
@@ -1314,6 +1361,91 @@ describe('AppSidebarRight 协议解码面板', () => {
       }));
       expect(mountPoint.textContent).toContain('ID: 123');
       expect(mountPoint.textContent).toContain('Data[0]: 11');
+
+      app.unmount();
+      mountPoint.remove();
+    });
+  });
+
+  it('AppSidebarRight 应允许切换到 LIN 并运行解码', async () => {
+    if (!(globalThis as typeof globalThis & { __WEBVIEW_JEST__?: boolean }).__WEBVIEW_JEST__) {
+      return;
+    }
+
+    await jest.isolateModulesAsync(async () => {
+      jest.unmock('vue');
+      jest.unmock('pinia');
+      jest.unmock('../../../src/frontend/app/components/AppSidebarRight.vue');
+
+      const { createApp, nextTick } = await import('vue');
+      const { createPinia } = await import('pinia');
+      const { useSessionStore } = await import('../../../src/frontend/core/stores/sessionStore');
+      const AppSidebarRight = (await import('../../../src/frontend/app/components/AppSidebarRight.vue')).default;
+      const host = {
+        sendCommand: jest.fn().mockResolvedValue({
+          success: true,
+          data: {
+            decoderId: 'lin',
+            decoderName: 'LIN',
+            success: true,
+            executionTime: 2,
+            results: [
+              { startSample: 2, endSample: 15, annotationType: 0, values: ['Break'] },
+              { startSample: 16, endSample: 26, annotationType: 1, values: ['Sync: 55', '55'] }
+            ]
+          }
+        })
+      };
+      const mountPoint = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+      document.body.appendChild(mountPoint);
+
+      const app = createApp(AppSidebarRight);
+      app.use(createPinia());
+      app.provide('host', host);
+      app.mount(mountPoint);
+
+      const sessionStore = useSessionStore();
+      sessionStore.applyDocument({
+        uri: 'file:///tmp/lin.lac',
+        fileName: 'lin.lac',
+        content: JSON.stringify({
+          captureSession: {
+            sampleRate: 19200,
+            totalSamples: 64,
+            captureChannels: [
+              { channelNumber: 0, channelName: 'LIN_RX', samples: [1, 1, 0, 0, 0, 1] }
+            ]
+          }
+        })
+      });
+
+      await nextTick();
+      await Promise.resolve();
+
+      const protocolSelect = mountPoint.querySelector('[data-testid="decoder-protocol-select"]') as HTMLSelectElement | null;
+      expect(protocolSelect).toBeTruthy();
+      protocolSelect!.value = 'lin';
+      protocolSelect!.dispatchEvent(new Event('change', { bubbles: true }));
+      await nextTick();
+
+      const runButton = Array.from(mountPoint.querySelectorAll('button')).find(button =>
+        button.textContent?.includes('运行 LIN 解码')
+      ) as HTMLButtonElement | undefined;
+
+      expect(runButton).toBeTruthy();
+      expect(runButton?.disabled).toBe(false);
+
+      runButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await nextTick();
+      await Promise.resolve();
+      await nextTick();
+
+      expect(host.sendCommand).toHaveBeenCalledWith('runDecoder', expect.objectContaining({
+        decoderId: 'lin',
+        channelMapping: [{ captureIndex: 0, decoderIndex: 0, name: 'LIN RX' }]
+      }));
+      expect(mountPoint.textContent).toContain('Break');
+      expect(mountPoint.textContent).toContain('Sync: 55');
 
       app.unmount();
       mountPoint.remove();
@@ -1870,6 +2002,63 @@ describe('browserHost 实现', () => {
       });
       const values = result.data.results.flatMap((item: any) => item.values);
       expect(values).toEqual(expect.arrayContaining(['ID: 123', 'Data[0]: 11']));
+    });
+  });
+
+  it('HTML host runDecoder 应返回 LIN fixture 结果', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actual = await import('../../../src/frontend/platform/host/browserHost');
+      window.__FRONTEND_BOOTSTRAP__ = {
+        host: 'html',
+        document: {
+          uri: 'memory://logic-analyzer/lin.lac',
+          fileName: 'lin.lac',
+          content: JSON.stringify({
+            Settings: {
+              Frequency: 19200,
+              PreTriggerSamples: 0,
+              PostTriggerSamples: 84,
+              CaptureChannels: [
+                { ChannelNumber: 0, ChannelName: 'LIN_RX', Hidden: false }
+              ]
+            },
+            Samples: Array.from({ length: 84 }, () => '1')
+          })
+        },
+        capabilities: {
+          canSave: false,
+          canExport: true,
+          canStartCapture: false,
+          canConnectDevice: false
+        }
+      };
+      const host = actual.createBrowserHost();
+
+      const result: any = await host.sendCommand('runDecoder', {
+        decoderId: 'lin',
+        channelMapping: [
+          { captureIndex: 0, decoderIndex: 0, name: 'LIN RX' }
+        ],
+        options: [
+          { optionIndex: 0, value: 19200 },
+          { optionIndex: 1, value: 2 },
+          { optionIndex: 2, value: 'classic' }
+        ]
+      });
+
+      expect(result).toEqual({
+        success: true,
+        data: expect.objectContaining({
+          decoderId: 'lin',
+          decoderName: 'LIN HTML 模拟',
+          success: true,
+          executionTime: expect.any(Number),
+          results: expect.any(Array)
+        })
+      });
+      expect(result.data.results.map((item: any) => item.values[0])).toEqual(
+        expect.arrayContaining(['Break', 'Sync: 55', 'PID: 50'])
+      );
     });
   });
 
@@ -2509,6 +2698,19 @@ describe('LACEditorProvider 契约', () => {
     ...(samples ? { Samples: samples } : {})
   });
 
+  const createLINLacPayload = (channels: Array<{ ChannelNumber: number; ChannelName: string }>, samples?: string[]) => ({
+    Settings: {
+      Frequency: 19200,
+      PreTriggerSamples: 0,
+      PostTriggerSamples: samples?.length ?? 0,
+      CaptureChannels: channels.map(channel => ({
+        ...channel,
+        Hidden: false
+      }))
+    },
+    ...(samples ? { Samples: samples } : {})
+  });
+
   const defaultI2CPayload = {
     decoderId: 'i2c',
     channelMapping: [
@@ -2997,6 +3199,61 @@ describe('LACEditorProvider 契约', () => {
       expect(result.data.results).toEqual(expect.arrayContaining([
         expect.objectContaining({ annotationType: 1, values: ['ID: 123', '123'], rawData: 0x123 }),
         expect.objectContaining({ annotationType: 4, values: ['Data[0]: 11', '11'], rawData: 0x11 })
+      ]));
+    });
+  });
+
+  it('executeHostCommand runDecoder 应返回 LIN 解码结果', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const provider = await createProvider();
+      const bits: number[] = [1, 1, ...Array.from({ length: 13 }, () => 0), 1];
+      const pushByte = (byte: number) => {
+        bits.push(0);
+        for (let bit = 0; bit < 8; bit++) {
+          bits.push((byte >> bit) & 1);
+        }
+        bits.push(1);
+      };
+      pushByte(0x55);
+      pushByte(0x50);
+      pushByte(0x12);
+      pushByte(0x34);
+      pushByte(0xb9);
+      const linRx = new Uint8Array(bits);
+      const document = createLacDocument(createLINLacPayload(
+        [
+          { ChannelNumber: 0, ChannelName: 'LIN_RX' }
+        ],
+        packDigitalSamples([linRx])
+      ));
+
+      const result = await (provider as any).executeHostCommand(
+        document,
+        'runDecoder',
+        {
+          decoderId: 'lin',
+          channelMapping: [
+            { captureIndex: 0, decoderIndex: 0, name: 'LIN RX' }
+          ],
+          options: [
+            { optionIndex: 0, value: 19200 },
+            { optionIndex: 1, value: 2 },
+            { optionIndex: 2, value: 'classic' }
+          ]
+        }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        decoderId: 'lin',
+        success: true,
+        results: expect.any(Array)
+      });
+      expect(result.data.results).toEqual(expect.arrayContaining([
+        expect.objectContaining({ values: ['Break'] }),
+        expect.objectContaining({ values: ['Sync: 55', '55'] }),
+        expect.objectContaining({ values: ['PID: 50', '50'] }),
+        expect.objectContaining({ values: ['Checksum: B9', 'B9'] })
       ]));
     });
   });
