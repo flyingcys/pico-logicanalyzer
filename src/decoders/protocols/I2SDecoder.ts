@@ -93,6 +93,7 @@ export class I2SDecoder extends DecoderBase {
     let bits: number[] = [];
     let wordStart = 0;
     let skipCurrentBit = this.justification === 'i2s';
+    let isFirstWord = true;
 
     for (let index = 1; index < sck.length; index++) {
       if (!(sck[index - 1] === 0 && sck[index] === 1)) {
@@ -107,7 +108,8 @@ export class I2SDecoder extends DecoderBase {
         wordStart = index;
         skipCurrentBit = this.justification === 'i2s';
       } else if (wordSelect !== activeWs) {
-        this.flushWord(activeWs, bits, wordStart, index);
+        this.flushWord(activeWs, bits, wordStart, index, isFirstWord);
+        isFirstWord = false;
         activeWs = wordSelect;
         bits = [];
         wordStart = index;
@@ -119,18 +121,26 @@ export class I2SDecoder extends DecoderBase {
         continue;
       }
 
-      if (bits.length < this.wordLength) {
-        bits.push(bit);
-      }
+      bits.push(bit);
     }
 
     if (activeWs !== null) {
-      this.flushWord(activeWs, bits, wordStart, sck.length);
+      this.flushWord(activeWs, bits, wordStart, sck.length, isFirstWord);
     }
   }
 
-  private flushWord(wordSelect: number, bits: number[], startSample: number, endSample: number): void {
+  private flushWord(
+    wordSelect: number,
+    bits: number[],
+    startSample: number,
+    endSample: number,
+    isFirstWord: boolean
+  ): void {
     if (bits.length < this.wordLength) {
+      if (isFirstWord) {
+        return;
+      }
+
       this.warn(startSample, endSample, ['Incomplete word', 'Incomplete']);
       return;
     }
@@ -145,6 +155,15 @@ export class I2SDecoder extends DecoderBase {
       this.emit(0, startSample, endSample, [`Left: ${hex}`, `L: ${hex}`, hex], value);
     } else {
       this.emit(1, startSample, endSample, [`Right: ${hex}`, `R: ${hex}`, hex], value);
+    }
+
+    if (bits.length > this.wordLength) {
+      this.warn(
+        startSample,
+        endSample,
+        ['Extra bits after word', 'Extra bits', 'Extra'],
+        bits.length - this.wordLength
+      );
     }
   }
 
@@ -163,7 +182,7 @@ export class I2SDecoder extends DecoderBase {
     });
   }
 
-  private warn(startSample: number, endSample: number, values: string[]): void {
-    this.emit(3, startSample, endSample, values);
+  private warn(startSample: number, endSample: number, values: string[], rawData?: number): void {
+    this.emit(3, startSample, endSample, values, rawData);
   }
 }
