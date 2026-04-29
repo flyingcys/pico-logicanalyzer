@@ -59,6 +59,7 @@ interface HostRunDecoderResponse {
   decoderId: string;
   decoderName: string;
   success: boolean;
+  isStreaming?: boolean;
   executionTime: number;
   results: DecoderResult[];
   error?: string;
@@ -66,6 +67,7 @@ interface HostRunDecoderResponse {
     totalSamples: number;
     processingSpeed: number;
     memoryUsage?: number;
+    chunksProcessed?: number;
   };
 }
 
@@ -794,6 +796,7 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
       decoderId,
       decoderName: result.decoderName,
       success: result.success,
+      isStreaming: result.isStreaming,
       executionTime: result.executionTime,
       results: result.results.map(item => ({
         startSample: item.startSample,
@@ -808,7 +811,8 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
         ? {
           totalSamples: result.performanceStats.totalSamples,
           processingSpeed: result.performanceStats.processingSpeed,
-          memoryUsage: result.performanceStats.memoryUsage
+          memoryUsage: result.performanceStats.memoryUsage,
+          chunksProcessed: result.performanceStats.chunksProcessed
         }
         : undefined
     };

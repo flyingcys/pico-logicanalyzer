@@ -174,43 +174,46 @@
 **当前实现**
 
 - 实现体：`src/decoders/protocols/StreamingI2CDecoder.ts`
-- ID 是独立的 `streaming_i2c`，不是 `i2c` 的透明增强
+- ID 仍注册为 `streaming_i2c`，但用户入口采用 `i2c` 大样本透明执行模式
 - `DecoderManager` 会注册它；`DecoderRegistry` 也会再次注册
 
 **已实现能力**
 
 - 已实现双线输入、基础 I2C 状态机、7 位地址加 R/W、`shifted/unshifted`
 - 已接入 `src/decoders/StreamingDecoder.ts` 的分块、进度、部分结果、停止机制
+- `DecoderManager.executeDecoder('i2c')` 会在大样本下按推荐策略透明切换到 `streaming_i2c`
+- 前端 I2C 面板继续使用 `decoderId: 'i2c'`，并显示流式模式和分块数量，不新增独立 `streaming_i2c` 协议入口
 
-**主要差距**
+**2026-04-30 `.worktree/02` 已关闭项**
 
-- `executeStreamingDecoder('i2c', ...)` 现在已经能命中 `streaming_i2c`
-- 当前未打通的是“上层调用方根据 `getRecommendedExecutionMode()` 自动选择走流式 API”的主流程
-- 当前更像仓库自定义分支，而不是基线 `i2c` 的流式执行形态
-- 缺 `BIT/BITS`、binary 输出、bitrate metadata、annotation rows 对齐、10 位地址
-- 声明了 `warning/error`，但代码里没有真正产出
-- 输出内容包含仓库自定义扩展文本，不是基线 `pd.py` 输出形态
-- 更严重的是 correctness 风险：
-  - 基类支持并发分块
-  - `StreamingI2CDecoder` 又依赖跨块 `globalState`
-  - 对顺序敏感的 I2C 来说，这会让重叠区重复处理、边界处错位或重复解码
+- 上层主流程已打通：推荐为 `streaming` 时由 `executeDecoder('i2c')` 自动调用流式实现。
+- 已强制 I2C 流式分块串行处理，避免跨块 `globalState` 并发污染。
+- 已跳过 overlap 重复区，避免边界重复解码。
+- 已对齐常规 I2C 的 annotationType、地址格式、结果文案和 rawData。
+- 已补 bit annotation 输出，并补充 annotation row。
 
 **测试可信度**
 
-- 当前只有 `DecoderParityCore.test.ts` 间接验证：
-  - 大样本 `i2c` 推荐 streaming
-  - 注册信息里有 `streaming_i2c`
-- 没有直接实例化 `StreamingI2CDecoder` 的协议行为测试
+- `tests/unit/decoders/protocols/StreamingI2CDecoder.test.ts` 直接覆盖：
+  - 跨块 Start/Stop、地址、数据、ACK/NACK 顺序稳定
+  - bit annotation 输出
+  - 显式通道映射和反序通道输入
+  - 停止请求
+  - 大样本 `executeDecoder('i2c')` 透明切换到 `streaming_i2c`
+- `tests/unit/webview/main.test.ts` 覆盖 host 到 UI 的流式元信息传递和面板展示。
+
+**剩余差距**
+
+- 缺 binary 输出、bitrate metadata、10 位地址。
+- 声明了 `warning/error`，但完整 warning/error 语义仍未作为本轮 P0 闭环。
+- 真实硬件大样本 I2C 采集仍需手工记录、截图、日志和 `.lac` hash，不能由 fixture 测试替代。
 
 **达到一致所需工作**
 
 - `P0`
-  - 打通上层主流程，让推荐为 streaming 时真正自动走流式 API
-  - 禁止并发分块或重做跨块状态传递
-  - 补基线对齐测试，尤其是跨块边界
+  - 已由 `.worktree/02` 完成：上层主流程、串行分块、跨块边界、停止请求和 UI 元信息闭环
 - `P1`
-  - 补 `BIT/BITS`、warning、10 位地址、binary、bitrate metadata
-  - 统一选项名与注释语义
+  - 补 warning、10 位地址、binary、bitrate metadata
 - `P2`
   - 扩展 stop、progress、partial result 的控制面测试
 

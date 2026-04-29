@@ -45,12 +45,14 @@ interface BrowserRunDecoderResponse {
   decoderId: string;
   decoderName: string;
   success: boolean;
+  isStreaming?: boolean;
   executionTime: number;
   results: BrowserDecoderResult[];
   error?: string;
   performanceStats?: {
     totalSamples: number;
     processingSpeed: number;
+    chunksProcessed?: number;
   };
 }
 

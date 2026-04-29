@@ -801,6 +801,48 @@ describe('decoderStore I2C 解码状态', () => {
     expect(store.decoderErrors).toEqual([]);
   });
 
+  it('runI2CDecoder 应保存 Streaming I2C 执行元信息', async () => {
+    const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
+    const store = useDecoderStore();
+    store.initializeI2CMapping([
+      { channelNumber: 0, channelName: 'SCL', hidden: false },
+      { channelNumber: 1, channelName: 'SDA', hidden: false }
+    ]);
+    const host = {
+      sendCommand: jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          decoderId: 'i2c',
+          decoderName: 'I2C',
+          success: true,
+          isStreaming: true,
+          executionTime: 8,
+          results: [
+            { startSample: 1, endSample: 2, annotationType: 0, values: ['Start', 'S'] }
+          ],
+          performanceStats: {
+            totalSamples: 1000001,
+            processingSpeed: 500000,
+            chunksProcessed: 201
+          }
+        }
+      })
+    };
+
+    await store.runI2CDecoder(host, {
+      hasData: true,
+      sampleRate: 1000000,
+      channels: [
+        { channelNumber: 0, channelName: 'SCL', hidden: false },
+        { channelNumber: 1, channelName: 'SDA', hidden: false }
+      ]
+    });
+
+    expect(store.lastExecutionMode).toBe('streaming');
+    expect(store.lastChunksProcessed).toBe(201);
+    expect(store.decoderResults).toHaveLength(1);
+  });
+
   it('runI2CDecoder 失败时应保存错误', async () => {
     const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
     const store = useDecoderStore();
@@ -859,12 +901,18 @@ describe('AppSidebarRight 协议解码面板', () => {
             decoderId: 'i2c',
             decoderName: 'I²C HTML 模拟',
             success: true,
+            isStreaming: true,
             executionTime: 4,
             results: [
               { startSample: 1, endSample: 2, annotationType: 0, values: ['START'] },
               { startSample: 3, endSample: 4, annotationType: 1, values: ['ACK'] },
               { startSample: 5, endSample: 6, annotationType: 2, values: ['STOP'] }
-            ]
+            ],
+            performanceStats: {
+              totalSamples: 1000001,
+              processingSpeed: 500000,
+              chunksProcessed: 201
+            }
           }
         })
       };
@@ -914,6 +962,8 @@ describe('AppSidebarRight 协议解码面板', () => {
       expect(mountPoint.textContent).toContain('ACK');
       expect(mountPoint.textContent).toContain('STOP');
       expect(mountPoint.textContent).toContain('I²C HTML 模拟');
+      expect(mountPoint.textContent).toContain('流式');
+      expect(mountPoint.textContent).toContain('201 块');
 
       app.unmount();
       mountPoint.remove();
@@ -2393,6 +2443,65 @@ describe('LACEditorProvider 契约', () => {
       expect(result.data.results.some((item: any) =>
         item.values.includes('START') || item.values.includes('ACK')
       )).toBe(true);
+    });
+  });
+
+  it('executeHostCommand runDecoder 应向 UI 返回 Streaming I2C 元信息', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const executeDecoder = jest.fn().mockResolvedValue({
+        decoderName: 'i2c',
+        success: true,
+        isStreaming: true,
+        executionTime: 7,
+        results: [],
+        performanceStats: {
+          totalSamples: 1000001,
+          processingSpeed: 250000,
+          chunksProcessed: 201
+        }
+      });
+
+      jest.doMock('../../../src/decoders/DecoderManager', () => ({
+        DecoderManager: jest.fn().mockImplementation(() => ({
+          getDecoder: jest.fn(() => ({})),
+          getDecoderInfo: jest.fn(() => ({ id: 'i2c' })),
+          executeDecoder
+        }))
+      }));
+
+      const provider = await createProvider();
+      const document = createLacDocument(createI2CLacPayload(
+        [
+          { ChannelNumber: 0, ChannelName: 'CH0' },
+          { ChannelNumber: 1, ChannelName: 'CH1' }
+        ],
+        packDigitalSamples([new Uint8Array([1, 1]), new Uint8Array([1, 0])])
+      ));
+
+      const result = await (provider as any).executeHostCommand(
+        document,
+        'runDecoder',
+        defaultI2CPayload
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        decoderId: 'i2c',
+        success: true,
+        isStreaming: true,
+        performanceStats: {
+          totalSamples: 1000001,
+          processingSpeed: 250000,
+          chunksProcessed: 201
+        }
+      });
+      expect(executeDecoder).toHaveBeenCalledWith(
+        'i2c',
+        1000000,
+        expect.any(Array),
+        defaultI2CPayload.options,
+        defaultI2CPayload.channelMapping
+      );
     });
   });
 

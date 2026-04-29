@@ -43,6 +43,10 @@ interface I2CChunkState {
   isRead: boolean;
   /** 当前数据字节 */
   dataBytes: number[];
+  /** 当前字节的 bit 注释信息 */
+  currentBits: Array<{ value: number; startSample: number; endSample: number }>;
+  /** 当前字节起始样本 */
+  currentByteStartSample: number | null;
   /** 上一个SCL状态 */
   lastSCL: number;
   /** 上一个SDA状态 */
@@ -63,9 +67,9 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
     super({
       chunkSize: 5000, // I2C 适中的块大小
       processingInterval: 5, // 较短的处理间隔
-      maxConcurrentChunks: 2, // I2C 需要保持时序，限制并发数
       enableProgressCallback: true,
-      ...config
+      ...config,
+      maxConcurrentChunks: 1 // I2C 依赖跨块状态，必须按顺序处理
     });
 
     // 初始化全局状态
@@ -101,7 +105,7 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
       ] as DecoderChannel[],
       options: [
         {
-          id: 'address-format',
+          id: 'address_format',
           desc: 'Address format',
           default: 'shifted',
           values: ['shifted', 'unshifted']
@@ -113,12 +117,18 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
         ['stop', 'Stop condition'],
         ['ack', 'ACK'],
         ['nack', 'NACK'],
+        ['bit', 'Data/address bit'],
         ['address-read', 'Address read'],
         ['address-write', 'Address write'],
         ['data-read', 'Data read'],
         ['data-write', 'Data write'],
         ['warning', 'Warning'],
         ['error', 'Error']
+      ],
+      annotationRows: [
+        ['bits', 'Bits', [5]],
+        ['addr-data', 'Address/data', [0, 1, 2, 3, 4, 6, 7, 8, 9]],
+        ['warnings', 'Warnings', [10, 11]]
       ]
     };
   }
@@ -131,12 +141,22 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
     options: DecoderOptionValue[],
     selectedChannels: DecoderSelectedChannel[]
   ): Promise<void> {
-    // 设置通道映射
+    this.channels = { scl: 0, sda: 1 };
+
+    // 设置通道映射，兼容 Manager 的 captureIndex/decoderIndex 和旧 name/channel 字段
     for (const channel of selectedChannels) {
-      if (channel.name === 'scl' && channel.channel !== undefined) {
-        this.channels.scl = channel.channel;
-      } else if (channel.name === 'sda' && channel.channel !== undefined) {
-        this.channels.sda = channel.channel;
+      const captureIndex = Number.isInteger(channel.captureIndex)
+        ? channel.captureIndex
+        : channel.channel;
+      if (captureIndex === undefined) {
+        continue;
+      }
+
+      const channelName = channel.name?.toLowerCase();
+      if (channel.decoderIndex === 0 || channelName === 'scl') {
+        this.channels.scl = captureIndex;
+      } else if (channel.decoderIndex === 1 || channelName === 'sda') {
+        this.channels.sda = captureIndex;
       }
     }
 
@@ -171,7 +191,11 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
     const chunkState = { ...this.globalState };
 
     // 逐样本处理
-    for (let i = 0; i < minLength; i++) {
+    for (let i = chunk.overlapSize; i < minLength; i++) {
+      if (this.shouldStop) {
+        throw new Error('用户停止处理');
+      }
+
       const sampleIndex = chunk.startSample + i - chunk.overlapSize;
       const scl = sclData[i];
       const sda = sdaData[i];
@@ -184,13 +208,16 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
           condition,
           sampleIndex,
           chunkState,
-          options
+          options,
+          sda
         );
 
         if (result) {
-          result.startSample = Math.max(0, result.startSample); // 确保样本索引有效
-          results.push(result);
-          this.resultCounter++;
+          for (const item of result) {
+            item.startSample = Math.max(0, item.startSample); // 确保样本索引有效
+            results.push(item);
+          }
+          this.resultCounter += result.length;
         }
       }
 
@@ -235,6 +262,8 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
       address: 0,
       isRead: false,
       dataBytes: [],
+      currentBits: [],
+      currentByteStartSample: null,
       lastSCL: 1,
       lastSDA: 1,
       startSample: 0
@@ -245,6 +274,11 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
    * 获取通道数据
    */
   private getChannelData(channelData: ChannelData[], channelIndex: number): Uint8Array | null {
+    const channelByCaptureIndex = channelData[channelIndex];
+    if (channelByCaptureIndex?.samples) {
+      return channelByCaptureIndex.samples;
+    }
+
     const channel = channelData.find(ch => ch.channelNumber === channelIndex);
     return channel?.samples || null;
   }
@@ -282,17 +316,18 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
     condition: 'start' | 'stop' | 'bit',
     sampleIndex: number,
     state: I2CChunkState,
-    options: DecoderOptionValue[]
-  ): DecoderResult | null {
+    options: DecoderOptionValue[],
+    bitValue: number
+  ): DecoderResult[] | null {
     switch (condition) {
       case 'start':
-        return this.processStartCondition(sampleIndex, state);
+        return [this.processStartCondition(sampleIndex, state)];
 
       case 'stop':
-        return this.processStopCondition(sampleIndex, state);
+        return [this.processStopCondition(sampleIndex, state)];
 
       case 'bit':
-        return this.processBit(sampleIndex, state, options);
+        return this.processBit(sampleIndex, state, options, bitValue);
 
       default:
         return null;
@@ -308,13 +343,16 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
     state.state = I2CState.START;
     state.currentByte = 0;
     state.bitCount = 0;
+    state.currentBits = [];
+    state.currentByteStartSample = null;
+    state.dataBytes = [];
     state.startSample = sampleIndex;
 
     return {
       startSample: sampleIndex,
-      endSample: sampleIndex + 1,
+      endSample: sampleIndex,
       annotationType: isRepeatStart ? 1 : 0, // repeat-start : start
-      values: [isRepeatStart ? 'Sr' : 'S'],
+      values: isRepeatStart ? ['Start repeat', 'Sr'] : ['Start', 'S'],
       rawData: null
     };
   }
@@ -324,13 +362,17 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
    */
   private processStopCondition(sampleIndex: number, state: I2CChunkState): DecoderResult {
     state.state = I2CState.IDLE;
+    state.currentByte = 0;
+    state.bitCount = 0;
     state.dataBytes = [];
+    state.currentBits = [];
+    state.currentByteStartSample = null;
 
     return {
       startSample: sampleIndex,
-      endSample: sampleIndex + 1,
+      endSample: sampleIndex,
       annotationType: 2, // stop
-      values: ['P'],
+      values: ['Stop', 'P'],
       rawData: null
     };
   }
@@ -341,13 +383,12 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
   private processBit(
     sampleIndex: number,
     state: I2CChunkState,
-    options: DecoderOptionValue[]
-  ): DecoderResult | null {
+    options: DecoderOptionValue[],
+    bit: number
+  ): DecoderResult[] | null {
     if (state.state === I2CState.IDLE) {
       return null;
     }
-
-    const bit = state.lastSDA; // SDA 在 SCL 上升沿时的值
 
     switch (state.state) {
       case I2CState.START:
@@ -357,7 +398,7 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
         return this.processAddressBit(sampleIndex, state, bit, options);
 
       case I2CState.ACK_NACK:
-        return this.processAckNackBit(sampleIndex, state, bit);
+        return [this.processAckNackBit(sampleIndex, state, bit)];
 
       case I2CState.DATA:
         return this.processDataBit(sampleIndex, state, bit);
@@ -375,31 +416,49 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
     state: I2CChunkState,
     bit: number,
     options: DecoderOptionValue[]
-  ): DecoderResult | null {
+  ): DecoderResult[] | null {
     state.state = I2CState.ADDRESS;
+    if (state.bitCount === 0) {
+      state.currentByteStartSample = sampleIndex;
+      state.currentBits = [];
+    }
+
     state.currentByte = (state.currentByte << 1) | bit;
+    state.currentBits.push({ value: bit, startSample: sampleIndex, endSample: sampleIndex + 1 });
     state.bitCount++;
 
     if (state.bitCount === 8) {
       // 地址字节完成
-      state.address = state.currentByte >> 1; // 7位地址
-      state.isRead = (state.currentByte & 1) === 1;
+      const addressByte = state.currentByte;
+      state.address = addressByte >> 1; // 7位地址
+      state.isRead = (addressByte & 1) === 1;
       state.state = I2CState.ACK_NACK;
       state.bitCount = 0;
 
       const addressFormat = this.getOptionValue(options, 0, 'shifted');
-      const displayAddress = addressFormat === 'shifted' ? state.currentByte : state.address;
+      const displayAddress = addressFormat === 'shifted' ? state.address : addressByte;
+      const addressHex = displayAddress.toString(16).toUpperCase().padStart(2, '0');
+      const bitAnnotations = this.createBitAnnotations(state.currentBits);
+      const startSample = state.currentByteStartSample ?? state.startSample;
 
-      return {
-        startSample: state.startSample,
-        endSample: sampleIndex,
-        annotationType: state.isRead ? 5 : 6, // address-read : address-write
-        values: [
-          `${displayAddress.toString(16).toUpperCase().padStart(2, '0')}`,
-          state.isRead ? 'READ' : 'WRITE'
-        ],
-        rawData: state.currentByte
-      };
+      state.currentByte = 0;
+      state.currentBits = [];
+      state.currentByteStartSample = null;
+
+      return [
+        ...bitAnnotations,
+        {
+          startSample,
+          endSample: sampleIndex,
+          annotationType: state.isRead ? 6 : 7, // address-read : address-write
+          values: [
+            `Address ${state.isRead ? 'read' : 'write'}: ${addressHex}`,
+            `A${state.isRead ? 'R' : 'W'}: ${addressHex}`,
+            addressHex
+          ],
+          rawData: displayAddress
+        }
+      ];
     }
 
     return null;
@@ -413,43 +472,73 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
     state.state = I2CState.DATA;
     state.currentByte = 0;
     state.bitCount = 0;
+    state.currentBits = [];
+    state.currentByteStartSample = null;
     state.startSample = sampleIndex;
 
     return {
       startSample: sampleIndex,
-      endSample: sampleIndex + 1,
+      endSample: sampleIndex,
       annotationType: isAck ? 3 : 4, // ack : nack
-      values: [isAck ? 'A' : 'N'],
-      rawData: bit
+      values: isAck ? ['ACK', 'A'] : ['NACK', 'N']
     };
   }
 
   /**
    * 处理数据位
    */
-  private processDataBit(sampleIndex: number, state: I2CChunkState, bit: number): DecoderResult | null {
+  private processDataBit(sampleIndex: number, state: I2CChunkState, bit: number): DecoderResult[] | null {
+    if (state.bitCount === 0) {
+      state.currentByteStartSample = sampleIndex;
+      state.currentBits = [];
+    }
+
     state.currentByte = (state.currentByte << 1) | bit;
+    state.currentBits.push({ value: bit, startSample: sampleIndex, endSample: sampleIndex + 1 });
     state.bitCount++;
 
     if (state.bitCount === 8) {
       // 数据字节完成
-      state.dataBytes.push(state.currentByte);
+      const dataByte = state.currentByte;
+      state.dataBytes.push(dataByte);
       state.state = I2CState.ACK_NACK;
       state.bitCount = 0;
+      const dataHex = dataByte.toString(16).toUpperCase().padStart(2, '0');
+      const bitAnnotations = this.createBitAnnotations(state.currentBits);
+      const startSample = state.currentByteStartSample ?? sampleIndex;
 
-      return {
-        startSample: state.startSample,
-        endSample: sampleIndex,
-        annotationType: state.isRead ? 7 : 8, // data-read : data-write
-        values: [
-          `${state.currentByte.toString(16).toUpperCase().padStart(2, '0')}`,
-          String.fromCharCode(state.currentByte) // ASCII 表示（如果可打印）
-        ],
-        rawData: state.currentByte
-      };
+      state.currentByte = 0;
+      state.currentBits = [];
+      state.currentByteStartSample = null;
+
+      return [
+        ...bitAnnotations,
+        {
+          startSample,
+          endSample: sampleIndex,
+          annotationType: state.isRead ? 8 : 9, // data-read : data-write
+          values: [
+            `Data ${state.isRead ? 'read' : 'write'}: ${dataHex}`,
+            `D${state.isRead ? 'R' : 'W'}: ${dataHex}`,
+            dataHex
+          ],
+          rawData: dataByte
+        }
+      ];
     }
 
     return null;
+  }
+
+  private createBitAnnotations(
+    bits: Array<{ value: number; startSample: number; endSample: number }>
+  ): DecoderResult[] {
+    return bits.map(bit => ({
+      startSample: bit.startSample,
+      endSample: bit.endSample,
+      annotationType: 5,
+      values: [String(bit.value)]
+    }));
   }
 
   /**

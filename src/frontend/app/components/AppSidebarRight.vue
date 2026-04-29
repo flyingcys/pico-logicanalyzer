@@ -73,6 +73,18 @@ const decoderSummary = computed(() => [
   {
     label: '耗时',
     value: decoderStore.lastExecutionTime === null ? '-' : `${decoderStore.lastExecutionTime} ms`
+  },
+  {
+    label: '模式',
+    value: decoderStore.lastExecutionMode === null
+      ? '-'
+      : decoderStore.lastExecutionMode === 'streaming'
+        ? '流式'
+        : '常规'
+  },
+  {
+    label: '分块',
+    value: decoderStore.lastChunksProcessed === null ? '-' : `${decoderStore.lastChunksProcessed} 块`
   }
 ]);
 
