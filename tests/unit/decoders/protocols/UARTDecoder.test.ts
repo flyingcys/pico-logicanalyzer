@@ -4,10 +4,22 @@
  */
 
 import { UARTDecoder } from '../../../../src/decoders/protocols/UARTDecoder';
-import { DecoderOptionValue, ChannelData, DecoderOutputType } from '../../../../src/decoders/types';
+import { DecoderManager } from '../../../../src/decoders/DecoderManager';
+import { DecoderOptionValue, ChannelData } from '../../../../src/decoders/types';
 
 describe('UARTDecoder', () => {
   let uartDecoder: UARTDecoder;
+
+  const create8n1Samples = (value: number, idlePrefix = 3, idleSuffix = 3): Uint8Array => {
+    const bits = Array.from({ length: 8 }, (_, bit) => (value >> bit) & 1);
+    return new Uint8Array([
+      ...Array(idlePrefix).fill(1),
+      0,
+      ...bits,
+      1,
+      ...Array(idleSuffix).fill(1)
+    ]);
+  };
 
   const createRxFrames = (count: number): ChannelData[] => {
     const frames: number[] = [];
@@ -572,8 +584,34 @@ describe('UARTDecoder', () => {
       const warningAnnotations = results.filter(r => 
         r.annotationType === 10 // rx-warning
       );
-      
+
       expect(warningAnnotations.length).toBeGreaterThan(0);
+    });
+
+    it('应该在主路径输出RX break注释并跳过伪帧数据', () => {
+      const channels: ChannelData[] = [
+        {
+          channelNumber: 0,
+          channelName: 'RX',
+          samples: new Uint8Array([
+            1, 1, 1,
+            ...Array(12).fill(0),
+            1, 1, 1
+          ])
+        }
+      ];
+
+      const results = uartDecoder.decode(115200, channels, []);
+
+      expect(results).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            annotationType: 14,
+            values: ['Break condition', 'Break', 'Brk', 'B']
+          })
+        ])
+      );
+      expect(results.filter(r => r.annotationType === 0)).toHaveLength(0);
     });
   });
 
@@ -600,8 +638,37 @@ describe('UARTDecoder', () => {
       const txDataAnnotations = results.filter(r => 
         r.annotationType === 1 // tx-data
       );
-      
+
       expect(txDataAnnotations.length).toBeGreaterThan(0);
+    });
+
+    it('应该按采样时间合并RX和TX双向事件顺序', () => {
+      const channels: ChannelData[] = [
+        {
+          channelNumber: 0,
+          channelName: 'RX',
+          samples: create8n1Samples(0x55, 10)
+        },
+        {
+          channelNumber: 1,
+          channelName: 'TX',
+          samples: create8n1Samples(0x33, 3)
+        }
+      ];
+
+      const results = uartDecoder.decode(115200, channels, []);
+      const orderedEvents = results.filter(r =>
+        [0, 1, 2, 3, 8, 9, 10, 11, 14, 15].includes(r.annotationType)
+      );
+      const sampleOrder = orderedEvents.map(r => r.startSample);
+
+      expect(sampleOrder).toEqual([...sampleOrder].sort((a, b) => a - b));
+      expect(orderedEvents[0]).toEqual(
+        expect.objectContaining({
+          annotationType: 3,
+          values: ['Start bit', 'Start', 'S']
+        })
+      );
     });
   });
 
@@ -1170,6 +1237,53 @@ describe('UARTDecoder', () => {
 
       expect(packetAnnotations).toHaveLength(1);
       expect(packetAnnotations[0].values).toEqual(['00 01 02 03']);
+    });
+  });
+
+  describe('DecoderManager闭环测试', () => {
+    it('应该支持RX/TX映射，并在复用实例时重置UART选项和packet状态', async () => {
+      const manager = new DecoderManager();
+      const mappedRun = await manager.executeDecoder(
+        'uart',
+        115200,
+        [
+          { channelNumber: 0, channelName: 'CAPTURE_TX', samples: create8n1Samples(0x42) },
+          { channelNumber: 1, channelName: 'CAPTURE_RX', samples: create8n1Samples(0x41) }
+        ],
+        [
+          { optionIndex: 5, value: 'ascii' },
+          { optionIndex: 11, value: 1 }
+        ],
+        [
+          { captureIndex: 1, decoderIndex: 0 },
+          { captureIndex: 0, decoderIndex: 1 }
+        ]
+      );
+
+      expect(mappedRun.success).toBe(true);
+      expect(mappedRun.results).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ annotationType: 0, values: ['A'], rawData: 0x41 }),
+          expect.objectContaining({ annotationType: 1, values: ['B'], rawData: 0x42 }),
+          expect.objectContaining({ annotationType: 16, values: ['A'] })
+        ])
+      );
+
+      const defaultRun = await manager.executeDecoder(
+        'uart',
+        115200,
+        [{ channelNumber: 0, channelName: 'RX', samples: create8n1Samples(0x55) }],
+        [],
+        [{ captureIndex: 0, decoderIndex: 0 }]
+      );
+
+      expect(defaultRun.success).toBe(true);
+      expect(defaultRun.results).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ annotationType: 0, values: ['55'], rawData: 0x55 })
+        ])
+      );
+      expect(defaultRun.results.filter(r => r.annotationType === 16)).toHaveLength(0);
     });
   });
 

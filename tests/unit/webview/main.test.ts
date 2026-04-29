@@ -936,6 +936,68 @@ describe('decoderStore I2C 解码状态', () => {
     expect(store.decoderErrors[0]).toBe('采样率无效，无法执行协议解码');
     expect(store.lastExecutionTime).toBe(1);
   });
+
+  it('decoderStore 应支持 UART RX/TX 映射和核心选项', async () => {
+    const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
+    const store = useDecoderStore();
+
+    store.initializeUARTMapping([
+      { channelNumber: 0, channelName: 'TX', hidden: false },
+      { channelNumber: 1, channelName: 'RX', hidden: false }
+    ]);
+    store.setSelectedDecoder('uart');
+    store.setUARTOption('baudrate', 9600);
+    store.setUARTOption('parity', 'even');
+    store.setUARTOption('stopBits', '2.0');
+    store.setUARTOption('invertRx', true);
+
+    const host = {
+      sendCommand: jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          decoderId: 'uart',
+          decoderName: 'UART',
+          success: true,
+          executionTime: 5,
+          results: [
+            { startSample: 1, endSample: 9, annotationType: 0, values: ['55'], rawData: 0x55 }
+          ]
+        }
+      })
+    };
+
+    await store.runUARTDecoder(host, {
+      hasData: true,
+      sampleRate: 115200,
+      channels: [
+        { channelNumber: 0, channelName: 'TX', hidden: false },
+        { channelNumber: 1, channelName: 'RX', hidden: false }
+      ]
+    });
+
+    expect(store.uartMapping).toEqual({
+      rxCaptureIndex: 1,
+      txCaptureIndex: 0
+    });
+    expect(host.sendCommand).toHaveBeenCalledWith('runDecoder', {
+      decoderId: 'uart',
+      channelMapping: [
+        { captureIndex: 1, decoderIndex: 0, name: 'RX' },
+        { captureIndex: 0, decoderIndex: 1, name: 'TX' }
+      ],
+      options: [
+        { optionIndex: 0, value: 9600 },
+        { optionIndex: 1, value: '8' },
+        { optionIndex: 2, value: 'even' },
+        { optionIndex: 3, value: '2.0' },
+        { optionIndex: 6, value: 'yes' },
+        { optionIndex: 7, value: 'no' },
+        { optionIndex: 8, value: 50 }
+      ]
+    });
+    expect(store.decoderResults[0].values).toEqual(['55']);
+    expect(store.lastDecoderName).toBe('UART');
+  });
 });
 
 describe('AppSidebarRight 协议解码面板', () => {
@@ -1023,6 +1085,100 @@ describe('AppSidebarRight 协议解码面板', () => {
       expect(mountPoint.textContent).toContain('I²C HTML 模拟');
       expect(mountPoint.textContent).toContain('流式');
       expect(mountPoint.textContent).toContain('201 块');
+
+      app.unmount();
+      mountPoint.remove();
+    });
+  });
+
+  it('AppSidebarRight 应显示 UART 映射、选项并发送解码请求', async () => {
+    if (!(globalThis as typeof globalThis & { __WEBVIEW_JEST__?: boolean }).__WEBVIEW_JEST__) {
+      return;
+    }
+
+    await jest.isolateModulesAsync(async () => {
+      jest.unmock('vue');
+      jest.unmock('pinia');
+      jest.unmock('../../../src/frontend/app/components/AppSidebarRight.vue');
+
+      const { createApp, nextTick } = await import('vue');
+      const { createPinia } = await import('pinia');
+      const { useSessionStore } = await import('../../../src/frontend/core/stores/sessionStore');
+      const AppSidebarRight = (await import('../../../src/frontend/app/components/AppSidebarRight.vue')).default;
+      const host = {
+        sendCommand: jest.fn().mockResolvedValue({
+          success: true,
+          data: {
+            decoderId: 'uart',
+            decoderName: 'UART',
+            success: true,
+            executionTime: 4,
+            results: [
+              { startSample: 1, endSample: 10, annotationType: 0, values: ['55'], rawData: 0x55 },
+              { startSample: 12, endSample: 21, annotationType: 1, values: ['33'], rawData: 0x33 }
+            ]
+          }
+        })
+      };
+      const mountPoint = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+      document.body.appendChild(mountPoint);
+
+      const app = createApp(AppSidebarRight);
+      app.use(createPinia());
+      app.provide('host', host);
+      app.mount(mountPoint);
+
+      const sessionStore = useSessionStore();
+      sessionStore.applyDocument({
+        uri: 'file:///tmp/uart.lac',
+        fileName: 'uart.lac',
+        content: JSON.stringify({
+          captureSession: {
+            sampleRate: 115200,
+            totalSamples: 16,
+            captureChannels: [
+              { channelNumber: 0, channelName: 'RX', samples: [1, 0, 1, 0] },
+              { channelNumber: 1, channelName: 'TX', samples: [1, 1, 0, 0] }
+            ]
+          }
+        })
+      });
+
+      await nextTick();
+      await Promise.resolve();
+
+      const protocolSelect = mountPoint.querySelector('[data-testid="decoder-protocol-select"]') as HTMLSelectElement;
+      protocolSelect.value = 'uart';
+      protocolSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await nextTick();
+
+      const baudrateInput = mountPoint.querySelector('[data-testid="uart-baudrate-input"]') as HTMLInputElement;
+      baudrateInput.value = '9600';
+      baudrateInput.dispatchEvent(new Event('input', { bubbles: true }));
+      await nextTick();
+
+      const runButton = mountPoint.querySelector('[data-testid="run-uart-decoder"]') as HTMLButtonElement;
+      expect(runButton).toBeTruthy();
+      expect(runButton.disabled).toBe(false);
+
+      runButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await nextTick();
+      await Promise.resolve();
+      await nextTick();
+
+      expect(host.sendCommand).toHaveBeenCalledWith('runDecoder', expect.objectContaining({
+        decoderId: 'uart',
+        channelMapping: expect.arrayContaining([
+          { captureIndex: 0, decoderIndex: 0, name: 'RX' },
+          { captureIndex: 1, decoderIndex: 1, name: 'TX' }
+        ]),
+        options: expect.arrayContaining([
+          { optionIndex: 0, value: 9600 }
+        ])
+      }));
+      expect(mountPoint.textContent).toContain('UART');
+      expect(mountPoint.textContent).toContain('55');
+      expect(mountPoint.textContent).toContain('33');
 
       app.unmount();
       mountPoint.remove();
@@ -1463,6 +1619,66 @@ describe('browserHost 实现', () => {
     });
   });
 
+  it('HTML host runDecoder 应返回 UART 模拟结果', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actual = await import('../../../src/frontend/platform/host/browserHost');
+      window.__FRONTEND_BOOTSTRAP__ = {
+        host: 'html',
+        document: {
+          uri: 'memory://logic-analyzer/uart.lac',
+          fileName: 'uart.lac',
+          content: JSON.stringify({
+            Settings: {
+              Frequency: 115200,
+              PreTriggerSamples: 0,
+              PostTriggerSamples: 16,
+              CaptureChannels: [
+                { ChannelNumber: 0, ChannelName: 'RX', Hidden: false },
+                { ChannelNumber: 1, ChannelName: 'TX', Hidden: false }
+              ]
+            },
+            Samples: Array.from({ length: 16 }, (_, index) => (index % 2 === 0 ? '1' : '0'))
+          })
+        },
+        capabilities: {
+          canSave: false,
+          canExport: true,
+          canStartCapture: false,
+          canConnectDevice: false
+        }
+      };
+      const host = actual.createBrowserHost();
+
+      const result: any = await host.sendCommand('runDecoder', {
+        decoderId: 'uart',
+        channelMapping: [
+          { captureIndex: 0, decoderIndex: 0, name: 'RX' },
+          { captureIndex: 1, decoderIndex: 1, name: 'TX' }
+        ],
+        options: [
+          { optionIndex: 0, value: 115200 }
+        ]
+      });
+
+      expect(result).toEqual({
+        success: true,
+        data: expect.objectContaining({
+          decoderId: 'uart',
+          decoderName: 'UART HTML 模拟',
+          success: true,
+          executionTime: expect.any(Number),
+          results: expect.any(Array),
+          performanceStats: expect.objectContaining({
+            totalSamples: 16,
+            processingSpeed: expect.any(Number)
+          })
+        })
+      });
+      const values = result.data.results.flatMap((item: any) => item.values);
+      expect(values).toEqual(expect.arrayContaining(['55', '33']));
+    });
+  });
+
   it('HTML host runDecoder 应拒绝无样本文档', async () => {
     await jest.isolateModulesAsync(async () => {
       const actual = await import('../../../src/frontend/platform/host/browserHost');
@@ -1659,16 +1875,16 @@ describe('browserHost 实现', () => {
       const host = actual.createBrowserHost();
 
       await expect(host.sendCommand('runDecoder', {
-        decoderId: 'uart'
+        decoderId: 'lin'
       })).resolves.toEqual({
         success: true,
         data: {
-          decoderId: 'uart',
-          decoderName: 'uart',
+          decoderId: 'lin',
+          decoderName: 'lin',
           success: false,
           executionTime: 0,
           results: [],
-          error: 'Decoder not found: uart'
+          error: 'Decoder not found: lin'
         }
       });
     });
@@ -2053,6 +2269,17 @@ describe('LACEditorProvider 契约', () => {
     };
   };
 
+  const generateUART8N1Sequence = (value: number, idlePrefix = 3, idleSuffix = 3): Uint8Array => {
+    const bits = Array.from({ length: 8 }, (_, bit) => (value >> bit) & 1);
+    return new Uint8Array([
+      ...Array(idlePrefix).fill(1),
+      0,
+      ...bits,
+      1,
+      ...Array(idleSuffix).fill(1)
+    ]);
+  };
+
   const createI2CLacPayload = (channels: Array<{ ChannelNumber: number; ChannelName: string }>, samples?: string[]) => ({
     Settings: {
       Frequency: 1000000,
@@ -2074,6 +2301,20 @@ describe('LACEditorProvider 契约', () => {
     ],
     options: [
       { optionIndex: 0, value: 'shifted' }
+    ]
+  };
+
+  const defaultUARTPayload = {
+    decoderId: 'uart',
+    channelMapping: [
+      { captureIndex: 0, decoderIndex: 0, name: 'RX' },
+      { captureIndex: 1, decoderIndex: 1, name: 'TX' }
+    ],
+    options: [
+      { optionIndex: 0, value: 1000000 },
+      { optionIndex: 1, value: '8' },
+      { optionIndex: 2, value: 'none' },
+      { optionIndex: 3, value: '1.0' }
     ]
   };
 
@@ -2560,6 +2801,40 @@ describe('LACEditorProvider 契约', () => {
         expect.any(Array),
         defaultI2CPayload.options,
         defaultI2CPayload.channelMapping
+      );
+    });
+  });
+
+  it('executeHostCommand runDecoder 应返回 UART 解码结果', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const provider = await createProvider();
+      const rx = generateUART8N1Sequence(0x55);
+      const tx = generateUART8N1Sequence(0x33);
+      const document = createLacDocument(createI2CLacPayload(
+        [
+          { ChannelNumber: 0, ChannelName: 'RX' },
+          { ChannelNumber: 1, ChannelName: 'TX' }
+        ],
+        packDigitalSamples([rx, tx])
+      ));
+
+      const result = await (provider as any).executeHostCommand(
+        document,
+        'runDecoder',
+        defaultUARTPayload
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        decoderId: 'uart',
+        success: true,
+        results: expect.any(Array)
+      });
+      expect(result.data.results).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ annotationType: 0, values: ['55'], rawData: 0x55 }),
+          expect.objectContaining({ annotationType: 1, values: ['33'], rawData: 0x33 })
+        ])
       );
     });
   });

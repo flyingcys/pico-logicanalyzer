@@ -269,6 +269,7 @@
 
 - 主实现：`src/decoders/protocols/UARTDecoder.ts`
 - `DecoderManager`、`initializeDecoders()`、`registerAllDecoders()` 现在都能提供常规 `uart`
+- 04 worktree 已把 UART 接入右侧协议 UI，并提供 VSCode host、HTML/browser host 和 browser smoke 自动化证据
 
 **已实现能力**
 
@@ -279,6 +280,9 @@
   - `rx_packet_len`
   - `tx_packet_len`
 - 可产出 RX/TX 的起始位、数据位、数据值、校验正确/错误、停止位、帧 warning
+- 主路径可识别持续低电平 break，并避免把 break 误解成普通 `0x00` 数据帧
+- RX/TX 双向结果按采样时间排序，直接实例化和 Manager 路径结果顺序一致
+- UI 可配置 RX/TX 映射、baudrate、data bits、parity、stop bits、invert RX/TX、sample point
 - 数据格式化覆盖 `ascii/dec/hex/oct/bin`
 - 默认情况下不再硬编码“16 字节自动产出 packet”
 - 已支持最基础的 `rx_packet_len/tx_packet_len` 按长度聚合 packet
@@ -287,25 +291,27 @@
 **主要差距**
 
 - 当前 packet 行为已从“默认 16 字节自动触发”收口为“默认禁用 + 最基础长度/ASCII delimiter 触发”，但仍未达到基线的 delimiter/length 全语义
+- UI 暂不暴露 packet delimiter / packet length 配置；手工测试不能把 packet 能力记录为 UI 通过项
 - 主解码循环被简化成 `decodeChannelSimple()` 的逐通道扫描
-- `getWaitCond()`、`inspectEdge()`、`inspectIdle()`、`handleIdle()`、`handleFrame()` 等关键逻辑没有真正参与主路径
+- `getWaitCond()`、`inspectIdle()`、`handleIdle()`、`handleFrame()` 等关键逻辑没有真正参与主路径
 - 结果是：
-  - break/idle 实际未落地
+  - idle 实际未落地
   - frame/python/binary 输出缺失
-  - RX/TX 双向事件顺序也与基线不同
+  - 结果模型仍停留在 annotation 层，未达到完整 parity
 
 **测试可信度**
 
 - `UARTDecoder.test.ts`、`DecoderParityCore.test.ts`、`DecoderSigrokGolden.test.ts` 已跑通
-- 但很多断言只是“不抛异常”或“结果存在”
+- `tests/unit/webview/main.test.ts` 已覆盖 UART UI 状态、host request 和 HTML host 模拟结果
+- `tests/unit/webview/webview-browser-smoke.js` 已覆盖从 UI 选择 UART 并显示 RX/TX 结果
+- 仍有部分旧断言只是“不抛异常”或“结果存在”
 - golden 只覆盖：普通 8N1、偶校验错误、仅 TX 通道
 
 **达到一致所需工作**
 
 - `P0`
-  - 统一注册入口
-  - 把主循环改回 `wait + edge + idle`
-  - 补齐 4 个 packet 配置项
+  - 决定是否把主循环改回 `wait + edge + idle`，或在文档中长期声明当前为简化扫描主路径
+  - 若 packet 进入 UI 手工测试，需补齐 UI 配置入口和全语义测试
   - 在框架层补全 Python/Binary 输出承载
 - `P1`
   - 补 `handleFrame()`、`handleIdle()` 的真实行为

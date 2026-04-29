@@ -30,6 +30,7 @@ interface BrowserDecoderChannelMapping {
 interface BrowserRunDecoderRequest {
   decoderId: string;
   channelMapping: BrowserDecoderChannelMapping[];
+  options: Array<{ optionIndex: number; value: unknown }>;
 }
 
 interface BrowserDecoderResult {
@@ -72,10 +73,14 @@ interface BrowserDecoderDocument {
 
 const I2C_DECODER_ID = 'i2c';
 const I2C_DECODER_NAME = 'I²C HTML 模拟';
+const UART_DECODER_ID = 'uart';
+const UART_DECODER_NAME = 'UART HTML 模拟';
 const NO_DECODABLE_SAMPLES = '当前文件没有可解码样本';
 const INVALID_SAMPLE_RATE = '采样率无效，无法执行协议解码';
 const I2C_CHANNELS_REQUIRED = 'I2C 解码需要 SCL 和 SDA 两个通道';
 const I2C_SAME_CHANNEL = 'SCL 和 SDA 不能映射到同一采集通道';
+const UART_CHANNEL_REQUIRED = 'UART 解码需要至少一个 RX 或 TX 通道';
+const UART_SAME_CHANNEL = 'RX 和 TX 不能映射到同一采集通道';
 
 function cloneDocument(document?: FrontendDocumentData): FrontendDocumentData | undefined {
   return document ? { ...document } : undefined;
@@ -277,6 +282,7 @@ function readBrowserDecoderDocument(document: FrontendDocumentData): BrowserDeco
 function readRunDecoderRequest(payload: unknown): BrowserRunDecoderRequest {
   const payloadRecord = isRecord(payload) ? payload : {};
   const rawMapping = Array.isArray(payloadRecord.channelMapping) ? payloadRecord.channelMapping : [];
+  const rawOptions = Array.isArray(payloadRecord.options) ? payloadRecord.options : [];
   const channelMapping = rawMapping
     .filter(isRecord)
     .map(item => ({
@@ -293,7 +299,14 @@ function readRunDecoderRequest(payload: unknown): BrowserRunDecoderRequest {
 
   return {
     decoderId: readString(payloadRecord.decoderId) ?? I2C_DECODER_ID,
-    channelMapping
+    channelMapping,
+    options: rawOptions
+      .filter(isRecord)
+      .map(item => ({
+        optionIndex: readNumber(item.optionIndex) ?? -1,
+        value: item.value
+      }))
+      .filter(item => Number.isInteger(item.optionIndex) && item.optionIndex >= 0)
   };
 }
 
@@ -368,6 +381,44 @@ function createSyntheticI2CResults(sampleCount: number): BrowserDecoderResult[] 
   ];
 }
 
+function createSyntheticUARTResults(
+  sampleCount: number,
+  channelMapping: BrowserDecoderChannelMapping[]
+): BrowserDecoderResult[] {
+  const point = (sample: number) => toStableSample(sampleCount, sample);
+  const results: BrowserDecoderResult[] = [];
+
+  if (channelMapping.some(mapping => mapping.decoderIndex === 0)) {
+    results.push(
+      { startSample: point(3), endSample: point(4), annotationType: 2, values: ['Start bit', 'Start', 'S'] },
+      {
+        startSample: point(4),
+        endSample: point(12),
+        annotationType: 0,
+        values: ['55'],
+        rawData: 0x55
+      },
+      { startSample: point(12), endSample: point(13), annotationType: 8, values: ['Stop bit', 'Stop', 'T'] }
+    );
+  }
+
+  if (channelMapping.some(mapping => mapping.decoderIndex === 1)) {
+    results.push(
+      { startSample: point(14), endSample: point(15), annotationType: 3, values: ['Start bit', 'Start', 'S'] },
+      {
+        startSample: point(15),
+        endSample: point(23),
+        annotationType: 1,
+        values: ['33'],
+        rawData: 0x33
+      },
+      { startSample: point(23), endSample: point(24), annotationType: 9, values: ['Stop bit', 'Stop', 'T'] }
+    );
+  }
+
+  return results.sort((a, b) => a.startSample - b.startSample || a.annotationType - b.annotationType);
+}
+
 function validateI2CMapping(
   document: BrowserDecoderDocument,
   channelMapping: BrowserDecoderChannelMapping[]
@@ -392,32 +443,68 @@ function validateI2CMapping(
   return null;
 }
 
+function validateUARTMapping(
+  document: BrowserDecoderDocument,
+  channelMapping: BrowserDecoderChannelMapping[]
+): string | null {
+  const rxMapping = channelMapping.find(mapping => mapping.decoderIndex === 0);
+  const txMapping = channelMapping.find(mapping => mapping.decoderIndex === 1);
+
+  if (!rxMapping && !txMapping) {
+    return UART_CHANNEL_REQUIRED;
+  }
+
+  for (const mapping of [rxMapping, txMapping]) {
+    if (!mapping) {
+      continue;
+    }
+
+    const channel = document.channels[mapping.captureIndex];
+    if (!channel || channel.sampleCount <= 0) {
+      return UART_CHANNEL_REQUIRED;
+    }
+  }
+
+  if (rxMapping && txMapping && rxMapping.captureIndex === txMapping.captureIndex) {
+    return UART_SAME_CHANNEL;
+  }
+
+  return null;
+}
+
 function runBrowserDecoder(documentData: FrontendDocumentData, payload: unknown): HostCommandResult<BrowserRunDecoderResponse> {
   const request = readRunDecoderRequest(payload);
   const { decoderId } = request;
 
-  if (decoderId !== I2C_DECODER_ID) {
+  if (decoderId !== I2C_DECODER_ID && decoderId !== UART_DECODER_ID) {
     return createRunDecoderFailure(decoderId, decoderId, `Decoder not found: ${decoderId}`);
   }
 
   const decoderDocument = readBrowserDecoderDocument(documentData);
+  const decoderName = decoderId === UART_DECODER_ID ? UART_DECODER_NAME : I2C_DECODER_NAME;
   if (!decoderDocument.hasSamples) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, NO_DECODABLE_SAMPLES);
+    return createRunDecoderFailure(decoderId, decoderName, NO_DECODABLE_SAMPLES);
   }
 
   if (decoderDocument.sampleRate <= 0) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, INVALID_SAMPLE_RATE);
+    return createRunDecoderFailure(decoderId, decoderName, INVALID_SAMPLE_RATE);
   }
 
-  const mappingError = validateI2CMapping(decoderDocument, request.channelMapping);
+  const mappingError = decoderId === UART_DECODER_ID
+    ? validateUARTMapping(decoderDocument, request.channelMapping)
+    : validateI2CMapping(decoderDocument, request.channelMapping);
   if (mappingError) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, mappingError);
+    return createRunDecoderFailure(decoderId, decoderName, mappingError);
   }
 
-  return createRunDecoderResponse(decoderId, I2C_DECODER_NAME, {
+  const results = decoderId === UART_DECODER_ID
+    ? createSyntheticUARTResults(decoderDocument.sampleCount, request.channelMapping)
+    : createSyntheticI2CResults(decoderDocument.sampleCount);
+
+  return createRunDecoderResponse(decoderId, decoderName, {
     success: true,
     executionTime: 1,
-    results: createSyntheticI2CResults(decoderDocument.sampleCount).map(result => ({
+    results: results.map(result => ({
       ...result,
       rawData: result.rawData ?? { source: 'html-host-synthetic' }
     })),
