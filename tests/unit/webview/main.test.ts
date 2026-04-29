@@ -797,6 +797,7 @@ describe('decoderStore I2C 解码状态', () => {
     });
     expect(store.decoderResults).toHaveLength(2);
     expect(store.lastExecutionTime).toBe(3);
+    expect(store.lastDecoderName).toBe('I2C');
     expect(store.decoderErrors).toEqual([]);
   });
 
@@ -856,7 +857,7 @@ describe('AppSidebarRight 协议解码面板', () => {
           success: true,
           data: {
             decoderId: 'i2c',
-            decoderName: 'I2C',
+            decoderName: 'I²C HTML 模拟',
             success: true,
             executionTime: 4,
             results: [
@@ -912,6 +913,7 @@ describe('AppSidebarRight 协议解码面板', () => {
       expect(mountPoint.textContent).toContain('START');
       expect(mountPoint.textContent).toContain('ACK');
       expect(mountPoint.textContent).toContain('STOP');
+      expect(mountPoint.textContent).toContain('I²C HTML 模拟');
 
       app.unmount();
       mountPoint.remove();
@@ -1284,6 +1286,281 @@ describe('browserHost 实现', () => {
       })).resolves.toEqual({
         success: false,
         error: '采集配置无效'
+      });
+    });
+  });
+
+  it('HTML host runDecoder 应直接返回 I2C fixture 结果', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actual = await import('../../../src/frontend/platform/host/browserHost');
+      window.__FRONTEND_BOOTSTRAP__ = {
+        host: 'html',
+        document: {
+          uri: 'memory://logic-analyzer/i2c.lac',
+          fileName: 'i2c.lac',
+          content: JSON.stringify({
+            Settings: {
+              Frequency: 1000000,
+              PreTriggerSamples: 0,
+              PostTriggerSamples: 84,
+              CaptureChannels: [
+                { ChannelNumber: 0, ChannelName: 'SCL', Hidden: false },
+                { ChannelNumber: 1, ChannelName: 'SDA', Hidden: false }
+              ]
+            },
+            Samples: Array.from({ length: 84 }, (_, index) => (index % 2 === 0 ? '3' : '1'))
+          })
+        },
+        capabilities: {
+          canSave: false,
+          canExport: true,
+          canStartCapture: false,
+          canConnectDevice: false
+        }
+      };
+      const host = actual.createBrowserHost();
+
+      const result: any = await host.sendCommand('runDecoder', {
+        decoderId: 'i2c',
+        channelMapping: [
+          { captureIndex: 0, decoderIndex: 0, name: 'SCL' },
+          { captureIndex: 1, decoderIndex: 1, name: 'SDA' }
+        ],
+        options: []
+      });
+
+      expect(result).toEqual({
+        success: true,
+        data: expect.objectContaining({
+          decoderId: 'i2c',
+          decoderName: 'I²C HTML 模拟',
+          success: true,
+          executionTime: expect.any(Number),
+          results: expect.any(Array),
+          performanceStats: expect.objectContaining({
+            totalSamples: 84,
+            processingSpeed: expect.any(Number)
+          })
+        })
+      });
+      const values = result.data.results.flatMap((item: any) => item.values);
+      expect(values).toEqual(expect.arrayContaining([
+        'START',
+        'Address write: 50',
+        'ACK',
+        'Data write: 3C',
+        'STOP'
+      ]));
+    });
+  });
+
+  it('HTML host runDecoder 应拒绝无样本文档', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actual = await import('../../../src/frontend/platform/host/browserHost');
+      window.__FRONTEND_BOOTSTRAP__ = {
+        host: 'html',
+        document: {
+          uri: 'memory://logic-analyzer/settings-only.lac',
+          fileName: 'settings-only.lac',
+          content: JSON.stringify({
+            Settings: {
+              Frequency: 1000000,
+              CaptureChannels: [
+                { ChannelNumber: 0, ChannelName: 'SCL', Hidden: false },
+                { ChannelNumber: 1, ChannelName: 'SDA', Hidden: false }
+              ]
+            }
+          })
+        },
+        capabilities: {
+          canSave: false,
+          canExport: true,
+          canStartCapture: false,
+          canConnectDevice: false
+        }
+      };
+      const host = actual.createBrowserHost();
+
+      await expect(host.sendCommand('runDecoder', {
+        decoderId: 'i2c',
+        channelMapping: [
+          { captureIndex: 0, decoderIndex: 0, name: 'SCL' },
+          { captureIndex: 1, decoderIndex: 1, name: 'SDA' }
+        ]
+      })).resolves.toEqual({
+        success: true,
+        data: {
+          decoderId: 'i2c',
+          decoderName: 'I²C HTML 模拟',
+          success: false,
+          executionTime: 0,
+          results: [],
+          error: '当前文件没有可解码样本'
+        }
+      });
+    });
+  });
+
+  it('HTML host runDecoder 应拒绝无效采样率', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actual = await import('../../../src/frontend/platform/host/browserHost');
+      window.__FRONTEND_BOOTSTRAP__ = {
+        host: 'html',
+        document: {
+          uri: 'memory://logic-analyzer/invalid-rate.lac',
+          fileName: 'invalid-rate.lac',
+          content: JSON.stringify({
+            Settings: {
+              Frequency: 0,
+              CaptureChannels: [
+                { ChannelNumber: 0, ChannelName: 'SCL', Hidden: false },
+                { ChannelNumber: 1, ChannelName: 'SDA', Hidden: false }
+              ]
+            },
+            Samples: ['3', '1', '2', '3']
+          })
+        },
+        capabilities: {
+          canSave: false,
+          canExport: true,
+          canStartCapture: false,
+          canConnectDevice: false
+        }
+      };
+      const host = actual.createBrowserHost();
+
+      await expect(host.sendCommand('runDecoder', {
+        decoderId: 'i2c',
+        channelMapping: [
+          { captureIndex: 0, decoderIndex: 0, name: 'SCL' },
+          { captureIndex: 1, decoderIndex: 1, name: 'SDA' }
+        ]
+      })).resolves.toEqual({
+        success: true,
+        data: {
+          decoderId: 'i2c',
+          decoderName: 'I²C HTML 模拟',
+          success: false,
+          executionTime: 0,
+          results: [],
+          error: '采样率无效，无法执行协议解码'
+        }
+      });
+    });
+  });
+
+  it('HTML host runDecoder 应拒绝单通道 I2C 映射', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actual = await import('../../../src/frontend/platform/host/browserHost');
+      window.__FRONTEND_BOOTSTRAP__ = {
+        host: 'html',
+        document: {
+          uri: 'memory://logic-analyzer/single-channel.lac',
+          fileName: 'single-channel.lac',
+          content: JSON.stringify({
+            Settings: {
+              Frequency: 1000000,
+              CaptureChannels: [
+                { ChannelNumber: 0, ChannelName: 'SCL', Hidden: false }
+              ]
+            },
+            Samples: ['1', '0', '1', '0']
+          })
+        },
+        capabilities: {
+          canSave: false,
+          canExport: true,
+          canStartCapture: false,
+          canConnectDevice: false
+        }
+      };
+      const host = actual.createBrowserHost();
+
+      await expect(host.sendCommand('runDecoder', {
+        decoderId: 'i2c',
+        channelMapping: [
+          { captureIndex: 0, decoderIndex: 0, name: 'SCL' },
+          { captureIndex: 1, decoderIndex: 1, name: 'SDA' }
+        ]
+      })).resolves.toEqual({
+        success: true,
+        data: {
+          decoderId: 'i2c',
+          decoderName: 'I²C HTML 模拟',
+          success: false,
+          executionTime: 0,
+          results: [],
+          error: 'I2C 解码需要 SCL 和 SDA 两个通道'
+        }
+      });
+    });
+  });
+
+  it('HTML host runDecoder 应拒绝 SCL/SDA 同通道', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actual = await import('../../../src/frontend/platform/host/browserHost');
+      window.__FRONTEND_BOOTSTRAP__ = {
+        host: 'html',
+        document: {
+          uri: 'memory://logic-analyzer/same-channel.lac',
+          fileName: 'same-channel.lac',
+          content: JSON.stringify({
+            Settings: {
+              Frequency: 1000000,
+              CaptureChannels: [
+                { ChannelNumber: 0, ChannelName: 'SCL', Hidden: false },
+                { ChannelNumber: 1, ChannelName: 'SDA', Hidden: false }
+              ]
+            },
+            Samples: ['3', '1', '2', '3']
+          })
+        },
+        capabilities: {
+          canSave: false,
+          canExport: true,
+          canStartCapture: false,
+          canConnectDevice: false
+        }
+      };
+      const host = actual.createBrowserHost();
+
+      await expect(host.sendCommand('runDecoder', {
+        decoderId: 'i2c',
+        channelMapping: [
+          { captureIndex: 0, decoderIndex: 0, name: 'SCL' },
+          { captureIndex: 0, decoderIndex: 1, name: 'SDA' }
+        ]
+      })).resolves.toEqual({
+        success: true,
+        data: {
+          decoderId: 'i2c',
+          decoderName: 'I²C HTML 模拟',
+          success: false,
+          executionTime: 0,
+          results: [],
+          error: 'SCL 和 SDA 不能映射到同一采集通道'
+        }
+      });
+    });
+  });
+
+  it('HTML host runDecoder 应拒绝未知 decoder', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actual = await import('../../../src/frontend/platform/host/browserHost');
+      const host = actual.createBrowserHost();
+
+      await expect(host.sendCommand('runDecoder', {
+        decoderId: 'uart'
+      })).resolves.toEqual({
+        success: true,
+        data: {
+          decoderId: 'uart',
+          decoderName: 'uart',
+          success: false,
+          executionTime: 0,
+          results: [],
+          error: 'Decoder not found: uart'
+        }
       });
     });
   });

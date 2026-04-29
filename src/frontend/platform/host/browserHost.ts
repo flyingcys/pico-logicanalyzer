@@ -21,6 +21,60 @@ const defaultCapabilities: FrontendCapabilities = {
   canConnectDevice: false
 };
 
+interface BrowserDecoderChannelMapping {
+  captureIndex: number;
+  decoderIndex: number;
+  name?: string;
+}
+
+interface BrowserRunDecoderRequest {
+  decoderId: string;
+  channelMapping: BrowserDecoderChannelMapping[];
+}
+
+interface BrowserDecoderResult {
+  startSample: number;
+  endSample: number;
+  annotationType: number;
+  values: string[];
+  rawData?: unknown;
+  shape?: 'hexagon' | 'rectangle' | 'diamond';
+}
+
+interface BrowserRunDecoderResponse {
+  decoderId: string;
+  decoderName: string;
+  success: boolean;
+  executionTime: number;
+  results: BrowserDecoderResult[];
+  error?: string;
+  performanceStats?: {
+    totalSamples: number;
+    processingSpeed: number;
+  };
+}
+
+interface BrowserDecoderChannel {
+  channelNumber: number;
+  channelName: string;
+  hidden: boolean;
+  sampleCount: number;
+}
+
+interface BrowserDecoderDocument {
+  sampleRate: number;
+  channels: BrowserDecoderChannel[];
+  sampleCount: number;
+  hasSamples: boolean;
+}
+
+const I2C_DECODER_ID = 'i2c';
+const I2C_DECODER_NAME = 'I²C HTML 模拟';
+const NO_DECODABLE_SAMPLES = '当前文件没有可解码样本';
+const INVALID_SAMPLE_RATE = '采样率无效，无法执行协议解码';
+const I2C_CHANNELS_REQUIRED = 'I2C 解码需要 SCL 和 SDA 两个通道';
+const I2C_SAME_CHANNEL = 'SCL 和 SDA 不能映射到同一采集通道';
+
 function cloneDocument(document?: FrontendDocumentData): FrontendDocumentData | undefined {
   return document ? { ...document } : undefined;
 }
@@ -85,6 +139,291 @@ function cloneCaptureConfig(config: FrontendCaptureConfig): FrontendCaptureConfi
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function readNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function readString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string') {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function readBoolean(...values: unknown[]): boolean {
+  for (const value of values) {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+  }
+
+  return false;
+}
+
+function readArray(...values: unknown[]): unknown[] {
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+
+  return [];
+}
+
+function readSampleCount(value: unknown): number {
+  if (value instanceof Uint8Array || Array.isArray(value)) {
+    return value.length;
+  }
+
+  if (typeof value === 'string') {
+    return value.trim().length;
+  }
+
+  return 0;
+}
+
+function parseJsonRecord(content: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(content);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function readDecoderSessionPayload(rootPayload: Record<string, unknown>): Record<string, unknown> {
+  if (isRecord(rootPayload.Settings)) {
+    return rootPayload.Settings;
+  }
+
+  if (isRecord(rootPayload.captureSession)) {
+    return rootPayload.captureSession;
+  }
+
+  return rootPayload;
+}
+
+function readBrowserDecoderDocument(document: FrontendDocumentData): BrowserDecoderDocument {
+  const rootPayload = parseJsonRecord(document.content);
+  if (!rootPayload) {
+    return {
+      sampleRate: 0,
+      channels: [],
+      sampleCount: 0,
+      hasSamples: false
+    };
+  }
+
+  const sessionPayload = readDecoderSessionPayload(rootPayload);
+  const metadata = isRecord(sessionPayload.metadata) ? sessionPayload.metadata : undefined;
+  const rootSamples = readArray(rootPayload.Samples, rootPayload.samples);
+  const rootSampleCount = rootSamples.length;
+  const channelPayloads = readArray(
+    sessionPayload.CaptureChannels,
+    sessionPayload.captureChannels,
+    sessionPayload.Channels,
+    sessionPayload.channels
+  );
+  const channels = channelPayloads
+    .filter(isRecord)
+    .map((channelPayload, index): BrowserDecoderChannel => {
+      const channelNumber = readNumber(channelPayload.ChannelNumber, channelPayload.channelNumber, index) ?? index;
+      const sampleCount = readSampleCount(channelPayload.Samples ?? channelPayload.samples) || rootSampleCount;
+
+      return {
+        channelNumber,
+        channelName: readString(
+          channelPayload.ChannelName,
+          channelPayload.channelName,
+          `Channel ${channelNumber + 1}`
+        ) ?? `Channel ${channelNumber + 1}`,
+        hidden: readBoolean(channelPayload.Hidden, channelPayload.hidden),
+        sampleCount
+      };
+    });
+  const channelSampleCount = channels.reduce(
+    (maxSamples, channel) => Math.max(maxSamples, channel.sampleCount),
+    0
+  );
+  const sampleCount = Math.max(rootSampleCount, channelSampleCount);
+
+  return {
+    sampleRate: readNumber(
+      sessionPayload.Frequency,
+      sessionPayload.frequency,
+      sessionPayload.SampleRate,
+      sessionPayload.sampleRate,
+      metadata?.sampleRate
+    ) ?? 0,
+    channels,
+    sampleCount,
+    hasSamples: sampleCount > 0
+  };
+}
+
+function readRunDecoderRequest(payload: unknown): BrowserRunDecoderRequest {
+  const payloadRecord = isRecord(payload) ? payload : {};
+  const rawMapping = Array.isArray(payloadRecord.channelMapping) ? payloadRecord.channelMapping : [];
+  const channelMapping = rawMapping
+    .filter(isRecord)
+    .map(item => ({
+      captureIndex: readNumber(item.captureIndex) ?? -1,
+      decoderIndex: readNumber(item.decoderIndex) ?? -1,
+      name: readString(item.name)
+    }))
+    .filter(item =>
+      Number.isInteger(item.captureIndex) &&
+      item.captureIndex >= 0 &&
+      Number.isInteger(item.decoderIndex) &&
+      item.decoderIndex >= 0
+    );
+
+  return {
+    decoderId: readString(payloadRecord.decoderId) ?? I2C_DECODER_ID,
+    channelMapping
+  };
+}
+
+function createRunDecoderResponse(
+  decoderId: string,
+  decoderName: string,
+  response: Omit<BrowserRunDecoderResponse, 'decoderId' | 'decoderName'>
+): HostCommandResult<BrowserRunDecoderResponse> {
+  return {
+    success: true,
+    data: {
+      decoderId,
+      decoderName,
+      ...response
+    }
+  };
+}
+
+function createRunDecoderFailure(
+  decoderId: string,
+  decoderName: string,
+  error: string
+): HostCommandResult<BrowserRunDecoderResponse> {
+  return createRunDecoderResponse(decoderId, decoderName, {
+    success: false,
+    executionTime: 0,
+    results: [],
+    error
+  });
+}
+
+function toStableSample(sampleCount: number, sample: number): number {
+  if (sampleCount >= 84) {
+    return sample;
+  }
+
+  const lastSample = Math.max(sampleCount - 1, 0);
+  return Math.min(lastSample, Math.max(0, Math.round((sample / 83) * lastSample)));
+}
+
+function createSyntheticI2CResults(sampleCount: number): BrowserDecoderResult[] {
+  const point = (sample: number) => toStableSample(sampleCount, sample);
+  const addressStart = point(10);
+  const addressEnd = Math.max(addressStart, point(42));
+  const ackStart = point(42);
+  const ackEnd = Math.max(ackStart, point(46));
+  const dataStart = point(46);
+  const dataEnd = Math.max(dataStart, point(78));
+  const dataAckStart = point(78);
+  const dataAckEnd = Math.max(dataAckStart, point(82));
+  const stopSample = point(82);
+
+  return [
+    { startSample: point(6), endSample: point(6), annotationType: 0, values: ['START', 'S'] },
+    {
+      startSample: addressStart,
+      endSample: addressEnd,
+      annotationType: 7,
+      values: ['Address write: 50', 'AW: 50', '50'],
+      rawData: 80
+    },
+    { startSample: ackStart, endSample: ackEnd, annotationType: 3, values: ['ACK', 'A'] },
+    {
+      startSample: dataStart,
+      endSample: dataEnd,
+      annotationType: 9,
+      values: ['Data write: 3C', 'DW: 3C', '3C'],
+      rawData: 60
+    },
+    { startSample: dataAckStart, endSample: dataAckEnd, annotationType: 3, values: ['ACK', 'A'] },
+    { startSample: stopSample, endSample: stopSample, annotationType: 2, values: ['STOP', 'P'] }
+  ];
+}
+
+function validateI2CMapping(
+  document: BrowserDecoderDocument,
+  channelMapping: BrowserDecoderChannelMapping[]
+): string | null {
+  const sclMapping = channelMapping.find(mapping => mapping.decoderIndex === 0);
+  const sdaMapping = channelMapping.find(mapping => mapping.decoderIndex === 1);
+
+  if (!sclMapping || !sdaMapping) {
+    return I2C_CHANNELS_REQUIRED;
+  }
+
+  const sclChannel = document.channels[sclMapping.captureIndex];
+  const sdaChannel = document.channels[sdaMapping.captureIndex];
+  if (!sclChannel || !sdaChannel || sclChannel.sampleCount <= 0 || sdaChannel.sampleCount <= 0) {
+    return I2C_CHANNELS_REQUIRED;
+  }
+
+  if (sclMapping.captureIndex === sdaMapping.captureIndex) {
+    return I2C_SAME_CHANNEL;
+  }
+
+  return null;
+}
+
+function runBrowserDecoder(documentData: FrontendDocumentData, payload: unknown): HostCommandResult<BrowserRunDecoderResponse> {
+  const request = readRunDecoderRequest(payload);
+  const { decoderId } = request;
+
+  if (decoderId !== I2C_DECODER_ID) {
+    return createRunDecoderFailure(decoderId, decoderId, `Decoder not found: ${decoderId}`);
+  }
+
+  const decoderDocument = readBrowserDecoderDocument(documentData);
+  if (!decoderDocument.hasSamples) {
+    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, NO_DECODABLE_SAMPLES);
+  }
+
+  if (decoderDocument.sampleRate <= 0) {
+    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, INVALID_SAMPLE_RATE);
+  }
+
+  const mappingError = validateI2CMapping(decoderDocument, request.channelMapping);
+  if (mappingError) {
+    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, mappingError);
+  }
+
+  return createRunDecoderResponse(decoderId, I2C_DECODER_NAME, {
+    success: true,
+    executionTime: 1,
+    results: createSyntheticI2CResults(decoderDocument.sampleCount).map(result => ({
+      ...result,
+      rawData: result.rawData ?? { source: 'html-host-synthetic' }
+    })),
+    performanceStats: {
+      totalSamples: decoderDocument.sampleCount,
+      processingSpeed: decoderDocument.sampleRate
+    }
+  });
 }
 
 function readCaptureConfig(payload: unknown): FrontendCaptureConfig | null {
@@ -340,6 +679,8 @@ export function createBrowserHost(): HostAdapter {
           } as HostCommandResult<T>;
         case 'startCapture':
           return runSyntheticCapture(payload) as HostCommandResult<T>;
+        case 'runDecoder':
+          return runBrowserDecoder(documentData, payload) as HostCommandResult<T>;
         case 'repeatCapture':
           if (!lastCaptureConfig) {
             return {

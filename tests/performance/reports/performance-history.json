@@ -1,9 +1,9 @@
 {
   "lastRun": {
-    "LogicAnalyzerDriver-连接性能": 0.035,
-    "LogicAnalyzerDriver-数据采集性能": 76.481,
-    "LogicAnalyzerDriver-大数据量处理": 101.563,
-    "LogicAnalyzerDriver-内存效率": 70.97
+    "LogicAnalyzerDriver-连接性能": 0.077,
+    "LogicAnalyzerDriver-数据采集性能": 78.164,
+    "LogicAnalyzerDriver-大数据量处理": 101.791,
+    "LogicAnalyzerDriver-内存效率": 71.498
   },
-  "timestamp": "2025-08-15T00:45:23.981Z"
+  "timestamp": "2026-04-28T05:57:57.392Z"
 }

@@ -75,6 +75,20 @@ function i2cOperationsToChannels(operations: Array<{ type: string; value?: numbe
   ];
 }
 
+function reverseNamedI2cChannels(channels: ChannelData[]): ChannelData[] {
+  const sclChannel = channels.find(channel => channel.channelName === 'SCL');
+  const sdaChannel = channels.find(channel => channel.channelName === 'SDA');
+
+  if (!sclChannel || !sdaChannel) {
+    throw new Error('缺少 I2C golden 所需的 SCL/SDA 通道');
+  }
+
+  return [
+    { ...sdaChannel, channelNumber: 7 },
+    { ...sclChannel, channelNumber: 3 }
+  ];
+}
+
 function spiTransferToChannels(input: {
   miso: number[];
   mosi: number[];
@@ -272,6 +286,17 @@ describe('sigrok golden 解码器对齐', () => {
     const results = decodeGoldenCase(testCase);
 
     expectGoldenSegments(results, testCase.expected);
+  });
+
+  it('i2c.write-byte.normal 在逆序命名通道下仍与 sigrok 风格 golden 对齐', () => {
+    const testCase = cases.find(current => current.id === 'i2c.write-byte.normal');
+
+    expect(testCase).toBeDefined();
+
+    const channels = reverseNamedI2cChannels(inputToChannels(testCase!.input));
+    const results = new I2CDecoder().decode(testCase!.sampleRate, channels, testCase!.options);
+
+    expectGoldenSegments(results, testCase!.expected);
   });
 
   it('后续协议路线图明确优先级、接口和外部 sigrok 策略', () => {

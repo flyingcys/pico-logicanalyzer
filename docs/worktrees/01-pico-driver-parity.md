@@ -28,7 +28,7 @@
 - 采集请求包仍使用原版 `0x55 0xAA ... 0xAA 0x55` 包头包尾和 `0xAA/0x55/0xF0` 转义规则。
 - `CaptureRequest.channels` 写入捕获通道号列表，不是 bit mask。
 - 串口二进制采集帧布局为 `UInt32LE sampleCount + samples + UInt8 timestampLength + optional timestamps`。
-- 样本提取与原版一致：按捕获列表索引作为 bit mask，`captureChannels[0]` 读取 bit0，`captureChannels[1]` 读取 bit1。
+- 样本提取与当前代码和 fixture 一致：Pico 帧样本 word 按真实物理通道号编码，驱动使用 `channel.channelNumber` 生成 bit mask；非连续捕获列表 `[0, 3, 8]` 分别读取 bit0、bit3、bit8。
 - `NetConfig` 固定字段按 C# `Encoding.ASCII` 语义写入；非 ASCII 字符写为 `?`，端口为 little-endian `UInt16`。
 
 ## 执行日志

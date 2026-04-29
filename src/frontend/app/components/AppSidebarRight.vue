@@ -76,6 +76,12 @@ const decoderSummary = computed(() => [
   }
 ]);
 
+const visibleDecoderName = computed(() =>
+  decoderStore.lastDecoderName && decoderStore.lastDecoderName !== 'I2C'
+    ? decoderStore.lastDecoderName
+    : ''
+);
+
 const resultRows = computed(() => decoderStore.decoderResults.slice(0, 500));
 
 const performanceSummary = computed(() => [
@@ -131,6 +137,12 @@ async function runI2CDecoder() {
           <h2 class="app-sidebar-right__title">
             I2C 协议解码
           </h2>
+          <p
+            v-if="visibleDecoderName"
+            class="decoder-panel__decoder-name"
+          >
+            {{ visibleDecoderName }}
+          </p>
           <p class="decoder-panel__status">
             {{ decoderStatusText }}
           </p>
@@ -369,6 +381,13 @@ async function runI2CDecoder() {
   margin: 0;
   color: #94a3b8;
   font-size: 13px;
+  line-height: 1.4;
+}
+
+.decoder-panel__decoder-name {
+  margin: 0;
+  color: #facc15;
+  font-size: 12px;
   line-height: 1.4;
 }
 

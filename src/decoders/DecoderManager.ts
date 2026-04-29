@@ -129,8 +129,6 @@ export class DecoderManager {
       this.registerDecoder('lin', LINDecoder);
       this.registerDecoder('i2s', I2SDecoder);
       this.registerStreamingDecoder('streaming_i2c', StreamingI2CDecoder);
-
-      console.log('内置解码器注册完成: i2c, spi, uart, can, lin, i2s, streaming_i2c');
     } catch (error) {
       console.warn('内置解码器注册失败:', error);
     }
@@ -148,7 +146,6 @@ export class DecoderManager {
     }
 
     this.decoders.set(id, decoderClass);
-    console.log(`Decoder registered: ${id}`);
   }
 
   /**
@@ -158,7 +155,6 @@ export class DecoderManager {
    */
   public registerStreamingDecoder(id: string, decoderClass: new () => StreamingDecoderBase): void {
     this.streamingDecoders.set(id, decoderClass);
-    console.log(`Streaming decoder registered: ${id}`);
   }
 
   /**
@@ -347,9 +343,7 @@ export class DecoderManager {
 
     try {
       // 执行解码
-      const startTime = performance.now();
       const decoderResults = branch.decoder.decode(sampleRate, mappedChannels, branch.options);
-      const endTime = performance.now();
 
       if (decoderResults && decoderResults.length > 0) {
         // 将结果转换为注释格式
@@ -358,12 +352,6 @@ export class DecoderManager {
           segments: decoderResults.sort((a, b) => a.startSample - b.startSample)
         };
         results.set(branch.name, annotation);
-
-        console.log(
-          `Decoder ${branch.name} executed successfully in ${(endTime - startTime).toFixed(
-            2
-          )}ms, produced ${decoderResults.length} results`
-        );
       }
 
       // 合并输出数据用于子分支

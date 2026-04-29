@@ -174,6 +174,43 @@ describe('I2CDecoder 修复版测试', () => {
             expect(results.length).toBeGreaterThanOrEqual(0);
         });
 
+        it('应该按通道名映射逆序输入的 SCL/SDA', () => {
+            const i2cData = generateI2CSequence([
+                { type: 'start' },
+                { type: 'byte', value: 0xA0 },
+                { type: 'ack' },
+                { type: 'stop' }
+            ]);
+
+            const channels: ChannelData[] = [
+                {
+                    channelNumber: 7,
+                    channelName: 'SDA',
+                    samples: i2cData.sda
+                },
+                {
+                    channelNumber: 3,
+                    channelName: 'SCL',
+                    samples: i2cData.scl
+                }
+            ];
+
+            const results = decoder.decode(1000000, channels, options);
+
+            expect(results).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ annotationType: 0, values: ['Start', 'S'] }),
+                    expect.objectContaining({
+                        annotationType: 7,
+                        rawData: 0x50,
+                        values: ['Address write: 50', 'AW: 50', '50']
+                    }),
+                    expect.objectContaining({ annotationType: 3, values: ['ACK', 'A'] }),
+                    expect.objectContaining({ annotationType: 2, values: ['Stop', 'P'] })
+                ])
+            );
+        });
+
         it('应该处理地址格式选项', () => {
             // 测试不同的地址格式选项
             const shiftedOptions = [{ optionIndex: 0, value: 'shifted' }];

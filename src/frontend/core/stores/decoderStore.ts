@@ -23,6 +23,7 @@ interface FrontendDecoderState {
   channelConflicts: string[];
   isDecoding: boolean;
   lastExecutionTime: number | null;
+  lastDecoderName: string | null;
   i2cMapping: I2CMappingState;
 }
 
@@ -78,6 +79,7 @@ export const useDecoderStore = defineStore('frontend-decoder', {
     channelConflicts: [],
     isDecoding: false,
     lastExecutionTime: null,
+    lastDecoderName: null,
     i2cMapping: {
       sclCaptureIndex: null,
       sdaCaptureIndex: null
@@ -123,6 +125,7 @@ export const useDecoderStore = defineStore('frontend-decoder', {
       this.decoderResults = [];
       this.decoderErrors = [];
       this.lastExecutionTime = null;
+      this.lastDecoderName = null;
     },
 
     async runI2CDecoder(host: Pick<HostAdapter, 'sendCommand'>, sessionStore: SessionLike) {
@@ -132,18 +135,21 @@ export const useDecoderStore = defineStore('frontend-decoder', {
       const visibleChannels = getVisibleChannelEntries(sessionStore.channels);
       if (!sessionStore.hasData) {
         this.decoderResults = [];
+        this.lastDecoderName = null;
         this.decoderErrors = [NO_DECODABLE_SAMPLES];
         return;
       }
 
       if (visibleChannels.length < 2 || this.i2cMapping.sclCaptureIndex === null || this.i2cMapping.sdaCaptureIndex === null) {
         this.decoderResults = [];
+        this.lastDecoderName = null;
         this.decoderErrors = [I2C_CHANNELS_REQUIRED];
         return;
       }
 
       if (this.channelConflicts.length > 0) {
         this.decoderResults = [];
+        this.lastDecoderName = null;
         this.decoderErrors = [...this.channelConflicts];
         return;
       }
@@ -172,6 +178,7 @@ export const useDecoderStore = defineStore('frontend-decoder', {
         if (!('decoderId' in commandResult) && !commandResult.success) {
           this.decoderResults = [];
           this.lastExecutionTime = response?.executionTime ?? null;
+          this.lastDecoderName = response?.decoderName ?? null;
           this.decoderErrors = [commandResult.error ?? 'I2C 解码失败'];
           return;
         }
@@ -179,11 +186,13 @@ export const useDecoderStore = defineStore('frontend-decoder', {
         if (!response) {
           this.decoderResults = [];
           this.lastExecutionTime = null;
+          this.lastDecoderName = null;
           this.decoderErrors = ['I2C 解码失败'];
           return;
         }
 
         this.lastExecutionTime = response.executionTime;
+        this.lastDecoderName = response.decoderName;
 
         if (!response.success) {
           this.decoderResults = [];
@@ -196,6 +205,7 @@ export const useDecoderStore = defineStore('frontend-decoder', {
       } catch (error) {
         this.decoderResults = [];
         this.lastExecutionTime = null;
+        this.lastDecoderName = null;
         this.decoderErrors = [error instanceof Error ? error.message : 'I2C 解码失败'];
       } finally {
         this.isDecoding = false;

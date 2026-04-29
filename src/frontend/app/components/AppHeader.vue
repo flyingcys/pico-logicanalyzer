@@ -154,6 +154,7 @@ async function saveRegions() {
         <el-button
           circle
           type="primary"
+          data-testid="webview-start-capture-button"
           :disabled="!canStartCapture"
           :loading="deviceStore.isCapturing"
           :icon="VideoPlay"

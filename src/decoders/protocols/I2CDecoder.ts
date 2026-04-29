@@ -431,13 +431,6 @@ export class I2CDecoder extends DecoderBase {
    * 对应原解码器的 handle_stop()
    */
   private handleStop(ss: number, es: number): void {
-    // 计算比特率元数据
-    if (this.sampleRate && this.pduStart !== null) {
-      const elapsed = (es - this.pduStart + 1) / this.sampleRate;
-      const bitrate = Math.floor(this.pduBits / elapsed);
-      console.log(`I2C bitrate: ${bitrate} bps`);
-    }
-
     this.put(ss, es, {
       type: DecoderOutputType.ANNOTATION,
       annotationType: 2, // stop

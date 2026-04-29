@@ -224,85 +224,20 @@ async function createPage(browserPort, scenario) {
   return page;
 }
 
-async function installRunDecoderMock(page) {
+async function verifyI2CDecoderSmoke(page) {
+  await page.waitForExpression(
+    'Array.from(document.querySelectorAll("button")).some(button => /运行 I2C 解码/.test(button.textContent || ""))',
+    'run I2C decoder button was not rendered'
+  );
   await page.evaluate(`(() => {
-    const context = window.__LOGIC_ANALYZER_FRONTEND__;
-    if (!context?.host) {
-      throw new Error('frontend host context is not available');
-    }
-
-    const originalSendCommand = context.host.sendCommand.bind(context.host);
-    context.host.sendCommand = async (command, payload) => {
-      if (command !== 'runDecoder') {
-        return originalSendCommand(command, payload);
-      }
-
-      return {
-        success: true,
-        data: {
-          decoderId: 'i2c',
-          decoderName: 'I²C',
-          success: true,
-          executionTime: 1,
-          results: [
-            { startSample: 6, endSample: 6, annotationType: 0, values: ['START', 'S'] },
-            { startSample: 10, endSample: 42, annotationType: 7, values: ['Address write: 50', 'AW: 50', '50'], rawData: 80 },
-            { startSample: 42, endSample: 46, annotationType: 3, values: ['ACK', 'A'] },
-            { startSample: 46, endSample: 78, annotationType: 9, values: ['Data write: 3C', 'DW: 3C', '3C'], rawData: 60 },
-            { startSample: 78, endSample: 82, annotationType: 3, values: ['ACK', 'A'] },
-            { startSample: 82, endSample: 82, annotationType: 2, values: ['STOP', 'P'] }
-          ],
-          performanceStats: {
-            totalSamples: 84,
-            processingSpeed: 84000000
-          }
-        }
-      };
-    };
+    const button = Array.from(document.querySelectorAll('button')).find(item => /运行 I2C 解码/.test(item.textContent || ''));
+    button.click();
     return true;
   })()`);
-}
-
-async function verifyI2CDecoderSmoke(page) {
-  await installRunDecoderMock(page);
-
-  const hasRunButton = await page.evaluate(
-    'Array.from(document.querySelectorAll("button")).some(button => /运行 I2C 解码/.test(button.textContent || ""))'
-  );
-  if (hasRunButton) {
-    await page.evaluate(`(() => {
-      const button = Array.from(document.querySelectorAll('button')).find(item => /运行 I2C 解码/.test(item.textContent || ''));
-      button.click();
-      return true;
-    })()`);
-    await page.waitForExpression('document.body.innerText.includes("START")', 'START result was not rendered');
-    await page.waitForExpression('document.body.innerText.includes("ACK")', 'ACK result was not rendered');
-    await page.waitForExpression('document.body.innerText.includes("STOP")', 'STOP result was not rendered');
-    return 'i2c-ui: decoder-button/results';
-  }
-
-  await page.waitForExpression(
-    'Array.from(document.querySelectorAll("button")).some(button => /协议解码/.test(button.textContent || ""))',
-    'decoder tab was not rendered'
-  );
-  const result = await page.evaluate(`(async () => {
-    const context = window.__LOGIC_ANALYZER_FRONTEND__;
-    return context.host.sendCommand('runDecoder', {
-      decoderId: 'i2c',
-      channelMapping: [
-        { captureIndex: 0, decoderIndex: 0, name: 'SCL' },
-        { captureIndex: 1, decoderIndex: 1, name: 'SDA' }
-      ],
-      options: []
-    });
-  })()`);
-
-  const values = JSON.stringify(result);
-  if (!result.success || !values.includes('START') || !values.includes('ACK') || !values.includes('STOP')) {
-    throw new Error(`unexpected runDecoder mock result: ${values}`);
-  }
-
-  return 'i2c-contract: runDecoder-mock/results';
+  await page.waitForExpression('document.body.innerText.includes("START")', 'START result was not rendered');
+  await page.waitForExpression('document.body.innerText.includes("ACK")', 'ACK result was not rendered');
+  await page.waitForExpression('document.body.innerText.includes("STOP")', 'STOP result was not rendered');
+  return 'i2c-ui: decoder-button/results';
 }
 
 (async () => {
@@ -365,18 +300,21 @@ async function verifyI2CDecoderSmoke(page) {
         }
         await page.evaluate('document.querySelector("[data-testid=\\"webview-export-button\\"]").click()');
 
-        const deviceError = await page.evaluate(`(async () => {
-          const context = window.__LOGIC_ANALYZER_FRONTEND__;
-          return context.host.sendCommand('startCapture', { config: { frequency: 1000000 } });
-        })()`);
-        if (deviceError.success || !String(deviceError.error || '').includes('请先连接')) {
-          throw new Error(`unexpected device error result: ${JSON.stringify(deviceError)}`);
+        await page.waitForExpression(
+          'Boolean(document.querySelector("[data-testid=\\"webview-start-capture-button\\"]"))',
+          `${scenario.name} start capture button was not rendered`
+        );
+        const startButtonDisabled = await page.evaluate(
+          'document.querySelector("[data-testid=\\"webview-start-capture-button\\"]").disabled'
+        );
+        if (!startButtonDisabled) {
+          throw new Error('start capture button should be disabled without a connected device');
         }
         if (scenario.decoderSmoke) {
           const decoderResult = await verifyI2CDecoderSmoke(page);
-          results.push(`${scenario.name}: canvas/export/device-error:${deviceError.error}/${decoderResult}`);
+          results.push(`${scenario.name}: canvas/export/start-disabled/${decoderResult}`);
         } else {
-          results.push(`samples: canvas/export/device-error:${deviceError.error}`);
+          results.push('samples: canvas/export/start-disabled');
         }
       }
       await page.close();

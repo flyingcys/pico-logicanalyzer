@@ -1,7 +1,7 @@
 import goldenCore from '../../fixtures/decoders/golden-core.json';
 import { DecoderBase } from '../../../src/decoders/DecoderBase';
-import { DecoderManager } from '../../../src/decoders/DecoderManager';
-import { getDecoderRegistryInfo } from '../../../src/decoders/DecoderRegistry';
+import { decoderManager, DecoderManager } from '../../../src/decoders/DecoderManager';
+import { getDecoderRegistryInfo, registerAllDecoders } from '../../../src/decoders/DecoderRegistry';
 import { I2CDecoder } from '../../../src/decoders/protocols/I2CDecoder';
 import { SPIDecoder } from '../../../src/decoders/protocols/SPIDecoder';
 import { UARTDecoder } from '../../../src/decoders/protocols/UARTDecoder';
@@ -352,5 +352,21 @@ describe('解码器 parity 核心', () => {
         streamingDecoders: ['streaming_i2c']
       })
     );
+  });
+
+  it('registerAllDecoders 会真实注册常规 i2c', () => {
+    const registerDecoderSpy = jest.spyOn(decoderManager, 'registerDecoder');
+    const registerStreamingDecoderSpy = jest.spyOn(decoderManager, 'registerStreamingDecoder');
+
+    registerAllDecoders();
+
+    expect(registerDecoderSpy).toHaveBeenCalledWith('i2c', I2CDecoder);
+    expect(registerStreamingDecoderSpy).toHaveBeenCalledWith(
+      'streaming_i2c',
+      expect.any(Function)
+    );
+
+    registerDecoderSpy.mockRestore();
+    registerStreamingDecoderSpy.mockRestore();
   });
 });
