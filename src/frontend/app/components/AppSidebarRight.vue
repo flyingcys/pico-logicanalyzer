@@ -2,7 +2,7 @@
 import { computed, watch } from 'vue';
 import { Cpu, DataAnalysis, VideoPlay } from '@element-plus/icons-vue';
 import { useHost } from '../composables/useHost';
-import { useDecoderStore } from '../../core/stores/decoderStore';
+import { useDecoderStore, type FrontendDecoderId } from '../../core/stores/decoderStore';
 import { useSessionStore } from '../../core/stores/sessionStore';
 import { useUiStore } from '../../core/stores/uiStore';
 import { useWaveformStore } from '../../core/stores/waveformStore';
@@ -37,9 +37,14 @@ watch(
     .map(entry => `${entry.captureIndex}:${entry.channel.channelNumber}:${entry.channel.channelName}`)
     .join('|'),
   () => {
-    decoderStore.initializeI2CMapping(sessionStore.channels);
+    decoderStore.initializeDecoderMappings(sessionStore.channels);
   },
   { immediate: true }
+);
+
+const selectedDecoderConfig = computed(() =>
+  decoderStore.activeDecoderConfigs.find(config => config.decoderId === decoderStore.selectedDecoderId)
+    ?? decoderStore.activeDecoderConfigs[0]
 );
 
 const decoderStatusText = computed(() => {
@@ -47,19 +52,31 @@ const decoderStatusText = computed(() => {
     return '当前文件没有可解码样本';
   }
 
-  if (visibleChannels.value.length < 2) {
+  if (decoderStore.selectedDecoderId === 'i2c' && visibleChannels.value.length < 2) {
     return 'I2C 解码需要至少两个通道';
+  }
+
+  if (decoderStore.selectedDecoderId === 'can' && visibleChannels.value.length < 1) {
+    return 'CAN 解码需要 CAN RX 通道';
   }
 
   return `${sessionStore.totalSamples} 样本 · ${sessionStore.sampleRate} Hz`;
 });
 
-const canRunI2CDecoder = computed(() =>
-  sessionStore.hasData
-  && visibleChannels.value.length >= 2
-  && decoderStore.channelConflicts.length === 0
-  && !decoderStore.isDecoding
-);
+const canRunSelectedDecoder = computed(() => {
+  if (!sessionStore.hasData || decoderStore.channelConflicts.length > 0 || decoderStore.isDecoding) {
+    return false;
+  }
+
+  if (decoderStore.selectedDecoderId === 'i2c') {
+    return visibleChannels.value.length >= 2
+      && decoderStore.i2cMapping.sclCaptureIndex !== null
+      && decoderStore.i2cMapping.sdaCaptureIndex !== null;
+  }
+
+  return visibleChannels.value.length >= 1
+    && decoderStore.canMapping.rxCaptureIndex !== null;
+});
 
 const decoderSummary = computed(() => [
   {
@@ -77,7 +94,7 @@ const decoderSummary = computed(() => [
 ]);
 
 const visibleDecoderName = computed(() =>
-  decoderStore.lastDecoderName && decoderStore.lastDecoderName !== 'I2C'
+  decoderStore.lastDecoderName && decoderStore.lastDecoderName !== selectedDecoderConfig.value?.label
     ? decoderStore.lastDecoderName
     : ''
 );
@@ -105,7 +122,28 @@ function setMappingFromEvent(role: I2CRole, event: Event) {
   decoderStore.setI2CMapping(role, Number.isFinite(value) ? value : null);
 }
 
-async function runI2CDecoder() {
+function setCANMappingFromEvent(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const value = select.value === '' ? null : Number(select.value);
+  decoderStore.setCANMapping(Number.isFinite(value) ? value : null);
+}
+
+function setProtocolFromEvent(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  decoderStore.setSelectedDecoder(select.value as FrontendDecoderId);
+}
+
+function setCANOptionFromEvent(option: 'bitrate' | 'samplePoint', event: Event) {
+  const input = event.target as HTMLInputElement;
+  decoderStore.setCANOption(option, Number(input.value));
+}
+
+async function runSelectedDecoder() {
+  if (decoderStore.selectedDecoderId === 'can') {
+    await decoderStore.runCANDecoder(host, sessionStore);
+    return;
+  }
+
   await decoderStore.runI2CDecoder(host, sessionStore);
 }
 </script>
@@ -135,7 +173,7 @@ async function runI2CDecoder() {
       >
         <header class="decoder-panel__header">
           <h2 class="app-sidebar-right__title">
-            I2C 协议解码
+            {{ selectedDecoderConfig?.label ?? 'I2C' }} 协议解码
           </h2>
           <p
             v-if="visibleDecoderName"
@@ -148,7 +186,27 @@ async function runI2CDecoder() {
           </p>
         </header>
 
-        <div class="decoder-panel__mapping">
+        <label class="decoder-panel__field">
+          <span>协议</span>
+          <select
+            data-testid="decoder-protocol-select"
+            :value="decoderStore.selectedDecoderId"
+            @change="setProtocolFromEvent"
+          >
+            <option
+              v-for="config in decoderStore.activeDecoderConfigs"
+              :key="config.decoderId"
+              :value="config.decoderId"
+            >
+              {{ config.label }}
+            </option>
+          </select>
+        </label>
+
+        <div
+          v-if="decoderStore.selectedDecoderId === 'i2c'"
+          class="decoder-panel__mapping"
+        >
           <label class="decoder-panel__field">
             <span>SCL</span>
             <select
@@ -183,6 +241,50 @@ async function runI2CDecoder() {
         </div>
 
         <div
+          v-else
+          class="decoder-panel__mapping"
+        >
+          <label class="decoder-panel__field">
+            <span>CAN RX</span>
+            <select
+              :value="decoderStore.canMapping.rxCaptureIndex ?? ''"
+              @change="setCANMappingFromEvent"
+            >
+              <option
+                v-for="channel in visibleChannels"
+                :key="`can-${channel.captureIndex}`"
+                :value="channel.captureIndex"
+              >
+                CH{{ channel.channel.channelNumber }} - {{ channel.channel.channelName }}
+              </option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>Bitrate</span>
+            <input
+              type="number"
+              min="1"
+              step="1000"
+              :value="decoderStore.canOptions.bitrate"
+              @input="setCANOptionFromEvent('bitrate', $event)"
+            >
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>Sample %</span>
+            <input
+              type="number"
+              min="1"
+              max="99"
+              step="1"
+              :value="decoderStore.canOptions.samplePoint"
+              @input="setCANOptionFromEvent('samplePoint', $event)"
+            >
+          </label>
+        </div>
+
+        <div
           v-if="decoderStore.channelConflicts.length > 0"
           class="decoder-panel__errors"
         >
@@ -197,14 +299,14 @@ async function runI2CDecoder() {
         <button
           type="button"
           class="decoder-panel__run"
-          :disabled="!canRunI2CDecoder"
+          :disabled="!canRunSelectedDecoder"
           data-testid="run-i2c-decoder"
-          @click="runI2CDecoder"
+          @click="runSelectedDecoder"
         >
           <span class="decoder-panel__run-icon">
             <VideoPlay />
           </span>
-          <span>{{ decoderStore.isDecoding ? '解码中...' : '运行 I2C 解码' }}</span>
+          <span>{{ decoderStore.isDecoding ? '解码中...' : `运行 ${selectedDecoderConfig?.label ?? 'I2C'} 解码` }}</span>
         </button>
 
         <dl class="app-sidebar-right__summary">
@@ -405,7 +507,8 @@ async function runI2CDecoder() {
   font-size: 12px;
 }
 
-.decoder-panel__field select {
+.decoder-panel__field select,
+.decoder-panel__field input {
   width: 100%;
   min-width: 0;
   height: 34px;

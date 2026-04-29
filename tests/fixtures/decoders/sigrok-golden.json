@@ -245,6 +245,36 @@
       ]
     },
     {
+      "id": "can.continuous-frames.normal",
+      "protocol": "can",
+      "category": "normal",
+      "sampleRate": 1000000,
+      "input": {
+        "kind": "can-frames",
+        "samplesPerBit": 2,
+        "frames": [
+          {
+            "identifier": 291,
+            "data": [17],
+            "ack": true
+          },
+          {
+            "identifier": 801,
+            "data": [34, 51],
+            "ack": true
+          }
+        ]
+      },
+      "options": [{ "optionIndex": 0, "value": 500000 }],
+      "expected": [
+        { "annotationType": 1, "rawData": 291, "values": ["ID: 123", "123"] },
+        { "annotationType": 4, "rawData": 17, "values": ["Data[0]: 11", "11"] },
+        { "annotationType": 1, "rawData": 801, "values": ["ID: 321", "321"] },
+        { "annotationType": 4, "rawData": 34, "values": ["Data[0]: 22", "22"] },
+        { "annotationType": 4, "rawData": 51, "values": ["Data[1]: 33", "33"] }
+      ]
+    },
+    {
       "id": "can.crc-delimiter.error",
       "protocol": "can",
       "category": "error",

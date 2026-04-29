@@ -55,6 +55,11 @@ export class CANDecoder extends DecoderBase {
   private bitWidth = 1;
   private bits: number[] = [];
   private cursor = 0;
+  private rawCursor = 0;
+  private logicalToRaw: number[] = [];
+  private stuffedLastBit: number | undefined;
+  private stuffedRunLength = 0;
+  private destuffEnabled = true;
 
   decode(
     sampleRate: number,
@@ -85,9 +90,8 @@ export class CANDecoder extends DecoderBase {
 
       this.frameStart = sof;
       this.bits = this.sampleBits(samples, sof);
-      this.cursor = 0;
 
-      const consumedBits = this.parseFrame();
+      const consumedBits = this.parseFrameWithFallback();
       const nextSearch = this.frameStart + Math.max(consumedBits, 1) * this.bitWidth;
       searchFrom = Math.max(sof + 1, nextSearch);
     }
@@ -125,10 +129,79 @@ export class CANDecoder extends DecoderBase {
       Math.max(0, Math.floor((this.bitWidth * this.samplePoint) / 100))
     );
 
-    for (let bit = 0; start + bit * this.bitWidth + sampleOffset < samples.length; bit++) {
-      result.push(samples[start + bit * this.bitWidth + sampleOffset] ? 1 : 0);
+    let bitStart = start;
+    while (bitStart + sampleOffset < samples.length) {
+      result.push(samples[bitStart + sampleOffset] ? 1 : 0);
+
+      const nextStart = bitStart + this.bitWidth;
+      const resyncedStart = this.findDominantEdgeNear(samples, nextStart, bitStart);
+      bitStart = resyncedStart ?? nextStart;
     }
+
     return result;
+  }
+
+  private parseFrameWithFallback(): number {
+    const frameResultsStart = this.results.length;
+    this.resetFrameReader(true);
+
+    const stuffedConsumedBits = this.parseFrame();
+    const stuffedResults = this.results.slice(frameResultsStart);
+
+    if (!this.shouldRetryWithoutDestuff(stuffedResults)) {
+      return stuffedConsumedBits;
+    }
+
+    this.results.splice(frameResultsStart);
+    this.resetFrameReader(false);
+    return this.parseFrame();
+  }
+
+  private resetFrameReader(destuffEnabled: boolean): void {
+    this.destuffEnabled = destuffEnabled;
+    this.cursor = 0;
+    this.rawCursor = 0;
+    this.logicalToRaw = [];
+    this.resetStuffState();
+  }
+
+  private shouldRetryWithoutDestuff(results: DecoderResult[]): boolean {
+    const warnings = results
+      .filter(result => result.annotationType === 8)
+      .map(result => result.values[0]);
+
+    if (warnings.includes('Stuff bit error')) {
+      return false;
+    }
+
+    return warnings.some(warning =>
+      warning === 'CRC delimiter error' ||
+      warning === 'ACK delimiter error' ||
+      warning === 'EOF error' ||
+      warning === 'Incomplete CAN frame'
+    );
+  }
+
+  private findDominantEdgeNear(
+    samples: Uint8Array,
+    expectedStart: number,
+    currentStart: number
+  ): number | undefined {
+    if (this.bitWidth <= 1) {
+      return undefined;
+    }
+
+    const window = Math.max(1, Math.floor(this.bitWidth * 0.75));
+    const start = Math.max(currentStart + 1, expectedStart - window, 1);
+    const end = Math.min(samples.length - 1, expectedStart + window);
+
+    for (let index = start; index <= end; index++) {
+      if (samples[index - 1] === 1 && samples[index] === 0) {
+        return index;
+      }
+    }
+
+    return undefined;
   }
 
   private parseFrame(): number {
@@ -168,13 +241,15 @@ export class CANDecoder extends DecoderBase {
       this.readNumber(15);
       this.emit(5, crcStart, this.cursor, ['CRC']);
 
-      const crcDelimiter = this.readBit();
+      this.finishStuffedSection();
+
+      const crcDelimiter = this.readRawBit();
       if (crcDelimiter !== 1) {
         this.warn(this.cursor - 1, this.cursor, ['CRC delimiter error', 'CRC delim']);
       }
 
-      const ackSlot = this.readBit();
-      const ackDelimiter = this.readBit();
+      const ackSlot = this.readRawBit();
+      const ackDelimiter = this.readRawBit();
       if (ackSlot === 0) {
         this.emit(6, this.cursor - 2, this.cursor, ['ACK']);
       } else {
@@ -184,7 +259,7 @@ export class CANDecoder extends DecoderBase {
         this.warn(this.cursor - 1, this.cursor, ['ACK delimiter error', 'ACK delim']);
       }
 
-      const eof = this.readBits(7);
+      const eof = this.readRawBits(7);
       if (eof.every(bit => bit === 1)) {
         this.emit(7, this.cursor - 7, this.cursor, ['EOF']);
       } else {
@@ -194,14 +269,35 @@ export class CANDecoder extends DecoderBase {
       this.warn(this.cursor, this.cursor + 1, [(error as Error).message]);
     }
 
-    return this.cursor;
+    return this.rawCursor;
   }
 
   private readBit(): number {
-    if (this.cursor >= this.bits.length) {
+    if (this.rawCursor >= this.bits.length) {
       throw new Error('Incomplete CAN frame');
     }
-    return this.bits[this.cursor++];
+
+    const rawIndex = this.rawCursor;
+    const bit = this.bits[this.rawCursor++];
+
+    if (!this.destuffEnabled) {
+      this.logicalToRaw[this.cursor++] = rawIndex;
+      return bit;
+    }
+
+    if (this.stuffedRunLength === 5 && this.stuffedLastBit !== undefined) {
+      if (bit !== this.stuffedLastBit) {
+        this.resetStuffState();
+        return this.readBit();
+      }
+
+      this.warnRaw(rawIndex, rawIndex + 1, ['Stuff bit error', 'Stuff']);
+      this.resetStuffState();
+    }
+
+    this.logicalToRaw[this.cursor++] = rawIndex;
+    this.updateStuffState(bit);
+    return bit;
   }
 
   private readBits(count: number): number[] {
@@ -210,6 +306,62 @@ export class CANDecoder extends DecoderBase {
 
   private readNumber(count: number): number {
     return this.readBits(count).reduce((value, bit) => (value << 1) | bit, 0);
+  }
+
+  private readRawBit(): number {
+    if (this.rawCursor >= this.bits.length) {
+      throw new Error('Incomplete CAN frame');
+    }
+
+    const rawIndex = this.rawCursor;
+    const bit = this.bits[this.rawCursor++];
+    this.logicalToRaw[this.cursor++] = rawIndex;
+    return bit;
+  }
+
+  private readRawBits(count: number): number[] {
+    return Array.from({ length: count }, () => this.readRawBit());
+  }
+
+  private finishStuffedSection(): void {
+    if (!this.destuffEnabled) {
+      this.resetStuffState();
+      return;
+    }
+
+    if (
+      this.stuffedRunLength === 5 &&
+      this.stuffedLastBit !== undefined &&
+      this.rawCursor < this.bits.length
+    ) {
+      const rawIndex = this.rawCursor;
+      const bit = this.bits[this.rawCursor];
+
+      if (bit !== this.stuffedLastBit) {
+        const nextRawBit = this.bits[this.rawCursor + 1];
+        if (nextRawBit === 1) {
+          this.rawCursor++;
+        }
+      } else {
+        this.warnRaw(rawIndex, rawIndex + 1, ['Stuff bit error', 'Stuff']);
+      }
+    }
+
+    this.resetStuffState();
+  }
+
+  private updateStuffState(bit: number): void {
+    if (bit === this.stuffedLastBit) {
+      this.stuffedRunLength++;
+    } else {
+      this.stuffedLastBit = bit;
+      this.stuffedRunLength = 1;
+    }
+  }
+
+  private resetStuffState(): void {
+    this.stuffedLastBit = undefined;
+    this.stuffedRunLength = 0;
   }
 
   private expectBit(expected: number, message: string): void {
@@ -239,7 +391,31 @@ export class CANDecoder extends DecoderBase {
   }
 
   private sampleForBit(bit: number): number {
+    if (bit <= 0) {
+      return this.frameStart;
+    }
+
+    if (bit < this.logicalToRaw.length) {
+      return this.frameStart + this.logicalToRaw[bit] * this.bitWidth;
+    }
+
+    if (bit === this.logicalToRaw.length && this.logicalToRaw.length > 0) {
+      return this.frameStart + (this.logicalToRaw[this.logicalToRaw.length - 1] + 1) * this.bitWidth;
+    }
+
     return this.frameStart + bit * this.bitWidth;
+  }
+
+  private warnRaw(startRawBit: number, endRawBit: number, values: string[]): void {
+    this.put(
+      this.frameStart + startRawBit * this.bitWidth,
+      this.frameStart + endRawBit * this.bitWidth,
+      {
+        type: DecoderOutputType.ANNOTATION,
+        annotationType: 8,
+        values
+      }
+    );
   }
 
   private hex(value: number, width: number): string {

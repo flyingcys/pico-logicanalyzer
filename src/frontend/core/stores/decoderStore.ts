@@ -16,8 +16,20 @@ export interface I2CMappingState {
   sdaCaptureIndex: number | null;
 }
 
+export interface CANMappingState {
+  rxCaptureIndex: number | null;
+}
+
+export interface CANOptionState {
+  bitrate: number;
+  samplePoint: number;
+}
+
+export type FrontendDecoderId = 'i2c' | 'can';
+
 interface FrontendDecoderState {
-  activeDecoderConfigs: Array<{ decoderId: 'i2c'; label: string }>;
+  activeDecoderConfigs: Array<{ decoderId: FrontendDecoderId; label: string }>;
+  selectedDecoderId: FrontendDecoderId;
   decoderResults: FrontendDecoderResult[];
   decoderErrors: string[];
   channelConflicts: string[];
@@ -25,6 +37,8 @@ interface FrontendDecoderState {
   lastExecutionTime: number | null;
   lastDecoderName: string | null;
   i2cMapping: I2CMappingState;
+  canMapping: CANMappingState;
+  canOptions: CANOptionState;
 }
 
 interface RunDecoderResponse {
@@ -49,6 +63,7 @@ interface VisibleChannelEntry {
 
 const I2C_MAPPING_CONFLICT = 'SCL 和 SDA 不能映射到同一采集通道';
 const I2C_CHANNELS_REQUIRED = 'I2C 解码需要 SCL 和 SDA 两个通道';
+const CAN_CHANNELS_REQUIRED = 'CAN 解码需要 CAN RX 通道';
 const NO_DECODABLE_SAMPLES = '当前文件没有可解码样本';
 
 function getVisibleChannelEntries(channels: FrontendAnalyzerChannel[]): VisibleChannelEntry[] {
@@ -73,7 +88,11 @@ function normalizeDecoderResponse(
 
 export const useDecoderStore = defineStore('frontend-decoder', {
   state: (): FrontendDecoderState => ({
-    activeDecoderConfigs: [{ decoderId: 'i2c', label: 'I2C' }],
+    activeDecoderConfigs: [
+      { decoderId: 'i2c', label: 'I2C' },
+      { decoderId: 'can', label: 'CAN' }
+    ],
+    selectedDecoderId: 'i2c',
     decoderResults: [],
     decoderErrors: [],
     channelConflicts: [],
@@ -83,9 +102,33 @@ export const useDecoderStore = defineStore('frontend-decoder', {
     i2cMapping: {
       sclCaptureIndex: null,
       sdaCaptureIndex: null
+    },
+    canMapping: {
+      rxCaptureIndex: null
+    },
+    canOptions: {
+      bitrate: 500000,
+      samplePoint: 75
     }
   }),
   actions: {
+    setSelectedDecoder(decoderId: FrontendDecoderId) {
+      this.selectedDecoderId = decoderId;
+      if (decoderId === 'i2c') {
+        this.recalculateI2CConflicts();
+      } else {
+        this.channelConflicts = [];
+      }
+    },
+
+    initializeDecoderMappings(channels: FrontendAnalyzerChannel[]) {
+      this.initializeI2CMapping(channels);
+      this.initializeCANMapping(channels);
+      if (this.selectedDecoderId === 'can') {
+        this.channelConflicts = [];
+      }
+    },
+
     initializeI2CMapping(channels: FrontendAnalyzerChannel[]) {
       const visibleChannels = getVisibleChannelEntries(channels);
 
@@ -96,6 +139,17 @@ export const useDecoderStore = defineStore('frontend-decoder', {
       this.recalculateI2CConflicts();
     },
 
+    initializeCANMapping(channels: FrontendAnalyzerChannel[]) {
+      const visibleChannels = getVisibleChannelEntries(channels);
+      const namedCan = visibleChannels.find(entry =>
+        /can|rx/i.test(entry.channel.channelName)
+      );
+
+      this.canMapping = {
+        rxCaptureIndex: namedCan?.captureIndex ?? visibleChannels[0]?.captureIndex ?? null
+      };
+    },
+
     setI2CMapping(role: 'scl' | 'sda', captureIndex: number | null) {
       if (role === 'scl') {
         this.i2cMapping.sclCaptureIndex = captureIndex;
@@ -104,6 +158,25 @@ export const useDecoderStore = defineStore('frontend-decoder', {
       }
 
       this.recalculateI2CConflicts();
+    },
+
+    setCANMapping(captureIndex: number | null) {
+      this.canMapping.rxCaptureIndex = captureIndex;
+      if (this.selectedDecoderId === 'can') {
+        this.channelConflicts = [];
+      }
+    },
+
+    setCANOption(option: keyof CANOptionState, value: number) {
+      if (!Number.isFinite(value)) {
+        return;
+      }
+
+      if (option === 'bitrate') {
+        this.canOptions.bitrate = Math.max(1, Math.round(value));
+      } else {
+        this.canOptions.samplePoint = Math.min(99, Math.max(1, Math.round(value)));
+      }
     },
 
     recalculateI2CConflicts() {
@@ -207,6 +280,81 @@ export const useDecoderStore = defineStore('frontend-decoder', {
         this.lastExecutionTime = null;
         this.lastDecoderName = null;
         this.decoderErrors = [error instanceof Error ? error.message : 'I2C 解码失败'];
+      } finally {
+        this.isDecoding = false;
+      }
+    },
+
+    async runCANDecoder(host: Pick<HostAdapter, 'sendCommand'>, sessionStore: SessionLike) {
+      this.channelConflicts = [];
+      this.decoderErrors = [];
+
+      const visibleChannels = getVisibleChannelEntries(sessionStore.channels);
+      if (!sessionStore.hasData) {
+        this.decoderResults = [];
+        this.lastDecoderName = null;
+        this.decoderErrors = [NO_DECODABLE_SAMPLES];
+        return;
+      }
+
+      if (visibleChannels.length < 1 || this.canMapping.rxCaptureIndex === null) {
+        this.decoderResults = [];
+        this.lastDecoderName = null;
+        this.decoderErrors = [CAN_CHANNELS_REQUIRED];
+        return;
+      }
+
+      this.isDecoding = true;
+
+      try {
+        const commandResult = await host.sendCommand<RunDecoderResponse>('runDecoder', {
+          decoderId: 'can',
+          channelMapping: [
+            {
+              captureIndex: this.canMapping.rxCaptureIndex,
+              decoderIndex: 0,
+              name: 'CAN RX'
+            }
+          ],
+          options: [
+            { optionIndex: 0, value: this.canOptions.bitrate },
+            { optionIndex: 1, value: this.canOptions.samplePoint }
+          ]
+        });
+        const response = normalizeDecoderResponse(commandResult);
+
+        if (!('decoderId' in commandResult) && !commandResult.success) {
+          this.decoderResults = [];
+          this.lastExecutionTime = response?.executionTime ?? null;
+          this.lastDecoderName = response?.decoderName ?? null;
+          this.decoderErrors = [commandResult.error ?? 'CAN 解码失败'];
+          return;
+        }
+
+        if (!response) {
+          this.decoderResults = [];
+          this.lastExecutionTime = null;
+          this.lastDecoderName = null;
+          this.decoderErrors = ['CAN 解码失败'];
+          return;
+        }
+
+        this.lastExecutionTime = response.executionTime;
+        this.lastDecoderName = response.decoderName;
+
+        if (!response.success) {
+          this.decoderResults = [];
+          this.decoderErrors = [response.error ?? 'CAN 解码失败'];
+          return;
+        }
+
+        this.decoderResults = response.results;
+        this.decoderErrors = [];
+      } catch (error) {
+        this.decoderResults = [];
+        this.lastExecutionTime = null;
+        this.lastDecoderName = null;
+        this.decoderErrors = [error instanceof Error ? error.message : 'CAN 解码失败'];
       } finally {
         this.isDecoding = false;
       }

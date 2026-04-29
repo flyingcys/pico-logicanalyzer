@@ -70,10 +70,13 @@ interface BrowserDecoderDocument {
 
 const I2C_DECODER_ID = 'i2c';
 const I2C_DECODER_NAME = 'I²C HTML 模拟';
+const CAN_DECODER_ID = 'can';
+const CAN_DECODER_NAME = 'CAN HTML 模拟';
 const NO_DECODABLE_SAMPLES = '当前文件没有可解码样本';
 const INVALID_SAMPLE_RATE = '采样率无效，无法执行协议解码';
 const I2C_CHANNELS_REQUIRED = 'I2C 解码需要 SCL 和 SDA 两个通道';
 const I2C_SAME_CHANNEL = 'SCL 和 SDA 不能映射到同一采集通道';
+const CAN_CHANNELS_REQUIRED = 'CAN 解码需要 CAN RX 通道';
 
 function cloneDocument(document?: FrontendDocumentData): FrontendDocumentData | undefined {
   return document ? { ...document } : undefined;
@@ -366,6 +369,37 @@ function createSyntheticI2CResults(sampleCount: number): BrowserDecoderResult[] 
   ];
 }
 
+function createSyntheticCANResults(sampleCount: number): BrowserDecoderResult[] {
+  const point = (sample: number) => toStableSample(sampleCount, sample);
+
+  return [
+    { startSample: point(2), endSample: point(3), annotationType: 0, values: ['SOF'] },
+    {
+      startSample: point(3),
+      endSample: point(14),
+      annotationType: 1,
+      values: ['ID: 123', '123'],
+      rawData: 0x123
+    },
+    {
+      startSample: point(17),
+      endSample: point(21),
+      annotationType: 3,
+      values: ['DLC: 1', '1'],
+      rawData: 1
+    },
+    {
+      startSample: point(21),
+      endSample: point(29),
+      annotationType: 4,
+      values: ['Data[0]: 11', '11'],
+      rawData: 0x11
+    },
+    { startSample: point(44), endSample: point(46), annotationType: 6, values: ['ACK'] },
+    { startSample: point(46), endSample: point(53), annotationType: 7, values: ['EOF'] }
+  ];
+}
+
 function validateI2CMapping(
   document: BrowserDecoderDocument,
   channelMapping: BrowserDecoderChannelMapping[]
@@ -390,32 +424,57 @@ function validateI2CMapping(
   return null;
 }
 
+function validateCANMapping(
+  document: BrowserDecoderDocument,
+  channelMapping: BrowserDecoderChannelMapping[]
+): string | null {
+  const rxMapping = channelMapping.find(mapping => mapping.decoderIndex === 0);
+
+  if (!rxMapping) {
+    return CAN_CHANNELS_REQUIRED;
+  }
+
+  const rxChannel = document.channels[rxMapping.captureIndex];
+  if (!rxChannel || rxChannel.sampleCount <= 0) {
+    return CAN_CHANNELS_REQUIRED;
+  }
+
+  return null;
+}
+
 function runBrowserDecoder(documentData: FrontendDocumentData, payload: unknown): HostCommandResult<BrowserRunDecoderResponse> {
   const request = readRunDecoderRequest(payload);
   const { decoderId } = request;
 
-  if (decoderId !== I2C_DECODER_ID) {
+  if (decoderId !== I2C_DECODER_ID && decoderId !== CAN_DECODER_ID) {
     return createRunDecoderFailure(decoderId, decoderId, `Decoder not found: ${decoderId}`);
   }
 
+  const decoderName = decoderId === CAN_DECODER_ID ? CAN_DECODER_NAME : I2C_DECODER_NAME;
   const decoderDocument = readBrowserDecoderDocument(documentData);
   if (!decoderDocument.hasSamples) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, NO_DECODABLE_SAMPLES);
+    return createRunDecoderFailure(decoderId, decoderName, NO_DECODABLE_SAMPLES);
   }
 
   if (decoderDocument.sampleRate <= 0) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, INVALID_SAMPLE_RATE);
+    return createRunDecoderFailure(decoderId, decoderName, INVALID_SAMPLE_RATE);
   }
 
-  const mappingError = validateI2CMapping(decoderDocument, request.channelMapping);
+  const mappingError = decoderId === CAN_DECODER_ID
+    ? validateCANMapping(decoderDocument, request.channelMapping)
+    : validateI2CMapping(decoderDocument, request.channelMapping);
   if (mappingError) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, mappingError);
+    return createRunDecoderFailure(decoderId, decoderName, mappingError);
   }
 
-  return createRunDecoderResponse(decoderId, I2C_DECODER_NAME, {
+  const syntheticResults = decoderId === CAN_DECODER_ID
+    ? createSyntheticCANResults(decoderDocument.sampleCount)
+    : createSyntheticI2CResults(decoderDocument.sampleCount);
+
+  return createRunDecoderResponse(decoderId, decoderName, {
     success: true,
     executionTime: 1,
-    results: createSyntheticI2CResults(decoderDocument.sampleCount).map(result => ({
+    results: syntheticResults.map(result => ({
       ...result,
       rawData: result.rawData ?? { source: 'html-host-synthetic' }
     })),

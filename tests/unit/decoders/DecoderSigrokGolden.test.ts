@@ -165,7 +165,8 @@ function canFramesToChannels(
     data: number[];
     ack?: boolean;
     crcDelimiter?: number;
-  }>
+  }>,
+  samplesPerBit = 1
 ): ChannelData[] {
   const bits = frames.flatMap((frame, index) => [
     ...(index === 0 ? [] : [1, 1, 1]),
@@ -176,7 +177,7 @@ function canFramesToChannels(
     {
       channelNumber: 0,
       channelName: 'CAN_RX',
-      samples: new Uint8Array([1, 1, ...bitsToSamples(bits), 1, 1])
+      samples: new Uint8Array([1, 1, ...bitsToSamples(bits, samplesPerBit), 1, 1])
     }
   ];
 }
@@ -270,6 +271,8 @@ function inputToChannels(input: any): ChannelData[] {
       return spiTransferToChannels(input);
     case 'can-frame':
       return canFrameToChannels(input);
+    case 'can-frames':
+      return canFramesToChannels(input.frames, input.samplesPerBit ?? 1);
     case 'lin-frame':
       return linFrameToChannels(input);
     case 'i2s-words':
