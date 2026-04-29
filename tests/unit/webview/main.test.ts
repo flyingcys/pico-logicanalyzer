@@ -10,19 +10,6 @@ const mockReady = jest.fn();
 const mockCreateVsCodeHost = jest.fn();
 const mockReadVsCodeBootstrap = jest.fn();
 
-jest.mock('vue', () => ({
-  ...jest.requireActual('vue'),
-  createApp: mockCreateApp
-}));
-
-jest.mock('pinia', () => ({
-  ...jest.requireActual('pinia'),
-  createPinia: jest.fn(() => ({
-    install: jest.fn(),
-    _plugin: 'pinia'
-  }))
-}));
-
 jest.mock('element-plus', () => ({
   __esModule: true,
   default: {
@@ -41,18 +28,6 @@ jest.mock('../../../src/frontend/shared/i18n', () => ({
     install: jest.fn(),
     _plugin: 'i18n'
   }
-}));
-
-jest.mock('../../../src/frontend/app/App.vue', () => ({
-  __esModule: true,
-  default: {
-    name: 'App'
-  }
-}));
-
-jest.mock('../../../src/frontend/platform/host/vscodeHost', () => ({
-  createVsCodeHost: mockCreateVsCodeHost,
-  readVsCodeBootstrap: mockReadVsCodeBootstrap
 }));
 
 describe('frontend vscode 入口', () => {
@@ -101,6 +76,31 @@ describe('frontend vscode 入口', () => {
     mockCreateApp.mockReturnValue(mockApp);
     mockCreateVsCodeHost.mockReturnValue(host);
     mockReadVsCodeBootstrap.mockReturnValue(bootstrap);
+
+    jest.doMock('vue', () => ({
+      ...jest.requireActual('vue'),
+      createApp: mockCreateApp
+    }));
+
+    jest.doMock('pinia', () => ({
+      ...jest.requireActual('pinia'),
+      createPinia: jest.fn(() => ({
+        install: jest.fn(),
+        _plugin: 'pinia'
+      }))
+    }));
+
+    jest.doMock('../../../src/frontend/app/App.vue', () => ({
+      __esModule: true,
+      default: {
+        name: 'App'
+      }
+    }));
+
+    jest.doMock('../../../src/frontend/platform/host/vscodeHost', () => ({
+      createVsCodeHost: mockCreateVsCodeHost,
+      readVsCodeBootstrap: mockReadVsCodeBootstrap
+    }));
   });
 
   it('应创建应用并按顺序安装插件、注入上下文、挂载到 #app', async () => {
@@ -2746,6 +2746,11 @@ describe('KeyboardShortcutManager', () => {
 });
 
 describe('LACEditorProvider 契约', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    jest.unmock('../../../src/decoders/DecoderManager');
+  });
+
   const mockProviderDependencies = () => {
     jest.doMock('../../../src/drivers/HardwareDriverManager', () => ({
       hardwareDriverManager: {

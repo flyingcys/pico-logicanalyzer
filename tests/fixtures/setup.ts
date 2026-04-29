@@ -274,15 +274,49 @@ class MockCanvas {
   }
 }
 
-// 模拟HTMLCanvasElement
-if (typeof window !== 'undefined') {
+const hasRealDomNodes = typeof document !== 'undefined'
+  && typeof Node !== 'undefined'
+  && typeof document.createElement === 'function'
+  && document.createElement('div') instanceof Node;
+
+const createMockCanvasContext = () => ({
+  clearRect: jest.fn(),
+  beginPath: jest.fn(),
+  moveTo: jest.fn(),
+  lineTo: jest.fn(),
+  stroke: jest.fn(),
+  strokeRect: jest.fn(),
+  fillRect: jest.fn(),
+  fillText: jest.fn(),
+  save: jest.fn(),
+  restore: jest.fn(),
+  scale: jest.fn(),
+  translate: jest.fn(),
+  setLineDash: jest.fn(),
+  measureText: jest.fn((text: string) => ({ width: text.length * 6 })),
+  strokeStyle: '#000000',
+  fillStyle: '#000000',
+  lineWidth: 1,
+  font: '12px Arial',
+  imageSmoothingEnabled: false,
+  lineCap: 'square',
+  lineJoin: 'miter'
+});
+
+// 模拟HTMLCanvasElement。jsdom 下保留真实 DOM 节点，只补齐 canvas API。
+if (hasRealDomNodes && typeof HTMLCanvasElement !== 'undefined') {
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    value: jest.fn((contextId: string) => contextId === '2d' ? createMockCanvasContext() : null)
+  });
+} else if (typeof window !== 'undefined') {
   window.HTMLCanvasElement = MockCanvas as any;
 } else {
   global.HTMLCanvasElement = MockCanvas as any;
 }
 
-// 模拟DOM APIs
-if (typeof document !== 'undefined') {
+// 模拟DOM APIs。真实 jsdom 环境不能覆盖 createElement，否则 Vue 会拿到非 Node 对象。
+if (typeof document !== 'undefined' && !hasRealDomNodes) {
   document.createElement = jest.fn((tagName: string) => {
     if (tagName === 'canvas') {
       return new MockCanvas() as any;

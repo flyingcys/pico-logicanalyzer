@@ -114,6 +114,10 @@ export class NetworkStabilityService extends EventEmitter {
    * 连接到指定地址
    */
   async connect(host: string, port: number): Promise<boolean> {
+    if (!host || !Number.isInteger(port) || port <= 0 || port > 65535) {
+      throw new Error(`连接参数无效: ${host}:${port}`);
+    }
+
     if (this.isConnected) {
       console.warn('已经连接到设备，请先断开连接');
       return true;
@@ -564,6 +568,10 @@ export class NetworkStabilityService extends EventEmitter {
       this.networkEvents = this.networkEvents.slice(-500);
     }
 
+    if (type === 'error' && this.listenerCount('error') === 0) {
+      return;
+    }
+
     this.emit(type, event);
   }
 
@@ -846,7 +854,7 @@ export class NetworkStabilityService extends EventEmitter {
     return {
       testName: '网络配置检查',
       passed,
-      details: passed ? '网络配置正常' : `配置问题: ${issues.join(', ')}`,
+      details: passed ? `网络配置正常: ${host}:${port}` : `配置问题: ${issues.join(', ')}`,
       duration: Date.now() - startTime,
       timestamp: new Date(),
       severity: passed ? 'info' : 'warning'
