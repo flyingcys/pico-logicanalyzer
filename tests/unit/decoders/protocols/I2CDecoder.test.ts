@@ -197,6 +197,26 @@ describe('I2CDecoder 修复版测试', () => {
             ]);
         });
 
+        it('应该为完整字节发出逐 bit 注释', () => {
+            const i2cData = generateI2CSequence([
+                { type: 'start' },
+                { type: 'byte', value: 0xA0 },
+                { type: 'ack' }
+            ]);
+
+            const channels = [sclChannel, sdaChannel];
+            sclChannel.samples = i2cData.scl;
+            sdaChannel.samples = i2cData.sda;
+
+            const results = decoder.decode(1000000, channels, options);
+            const bitAnnotations = results.filter(result => result.annotationType === 5);
+
+            expect(bitAnnotations).toHaveLength(8);
+            expect(bitAnnotations.map(result => result.values[0])).toEqual([
+                '1', '0', '1', '0', '0', '0', '0', '0'
+            ]);
+        });
+
         it('应该处理地址格式选项', () => {
             // 测试不同的地址格式选项
             const shiftedOptions = [{ optionIndex: 0, value: 'shifted' }];
