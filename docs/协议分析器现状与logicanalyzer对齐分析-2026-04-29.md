@@ -21,6 +21,36 @@
 3. 前端接入不足：新前端右侧面板只支持运行 I2C，浏览器 host 也只接受 `i2c`。
 4. 测试强度偏弱：多数 golden 断言是子集匹配，能证明“有基础结果”，不能证明“与 logicanalyzer 完整等价”。
 
+## 1.1 本轮已关闭缺口
+
+本轮在不扩大为大重构的前提下，已经完成以下可验证修复：
+
+- `I2C`
+  - `registerAllDecoders()` 现在真实注册 `i2c/spi/uart/can/lin/i2s`
+  - I2C 现已发出 bit annotation（`annotationType: 5`）
+  - `DecoderParityCore.test.ts` 已补齐单例恢复，避免污染后续协议测试
+  - `address_format` 在实例复用下会回到默认 `shifted`
+- `SPI`
+  - 修复了 `SPIDecoder` 在实例复用下的 option 泄漏
+  - `wordsize` 和 `bitorder` 现在在下一次未传参时会回到默认值
+- `UART`
+  - `UARTDecoder.options` 从 9 个补到 13 个
+  - 默认情况下不再硬编码“16 字节自动产出 packet”
+  - 已支持最基础的 `rx_packet_len/tx_packet_len` 控制
+  - `rx_packet_delim/tx_packet_delim` 已接入最小 ASCII delimiter 触发路径
+- `CAN`
+  - 同一 capture 中不再只解析首帧
+  - 当前已能连续解析多个 classic CAN 数据帧
+  - `bitrate/sample_point` 在实例复用下会回到默认值
+- `LIN`
+  - header-only / 无响应 capture 不再被强制报 `Missing checksum`
+  - `checksum/data_length` 在实例复用下会回到默认值
+- `I2S`
+  - 修复了 32 位样本在最高位为 1 时被当成负数的问题
+  - `word_length/justification` 在实例复用下会回到默认值
+- `Streaming I2C`
+  - `executeStreamingDecoder('i2c', ...)` 现在会真实命中 `streaming_i2c`
+
 ## 2. 对比范围
 
 本次分析只聚焦“当前仓库已有的协议分析器”以及它们与 `logicanalyzer` 基线解码器的对齐情况，不展开驱动、波形渲染、文件格式等其它模块。
@@ -55,8 +85,8 @@
 - `src/decoders/index.ts`
   - `initializeDecoders()` 会再次注册：`i2c`、`spi`、`uart`、`can`、`lin`、`i2s`
 - `src/decoders/DecoderRegistry.ts`
-  - `registerAllDecoders()` 只注册：`can`、`lin`、`i2s`、`streaming_i2c`
-  - 但 `getDecoderRegistryInfo()` 又硬编码返回：`i2c`、`spi`、`uart`、`can`、`lin`、`i2s`
+  - `registerAllDecoders()` 现在真实注册：`i2c`、`spi`、`uart`、`can`、`lin`、`i2s`，并注册 `streaming_i2c`
+  - `getDecoderRegistryInfo()` 返回与之对应的常规/流式清单
 
 这意味着：
 
@@ -87,11 +117,11 @@
 
 | 协议 | 当前状态 | 主要问题 | 对齐优先级 |
 | --- | --- | --- | --- |
-| I2C | 7 位基础注释可用 | 缺 Python/Binary/Meta、bit 注释未落地、注册分裂 | P0 |
+| I2C | 7 位基础注释可用 | 缺 Python/Binary/Meta、独立 R/W 位注释、10 位地址细节仍未对齐 | P0 |
 | Streaming I2C | 自定义扩展，未真正并入主流程 | `i2c` 不会自动切到流式；跨块状态正确性有风险 | P0 |
 | SPI | 注释层最完整 | 缺非 annotation 输出；实例复用下选项污染风险 | P0 |
 | UART | 基础注释可用 | 主循环被简化；packet/break/idle/frame 语义不对齐 | P0 |
-| CAN | 经典 CAN 单帧第一版可跑 | 无 bit stuffing、无 CAN-FD、只吃首帧 | P0 |
+| CAN | classic CAN 多帧基础解析可跑 | 无 bit stuffing、无 CAN-FD、固定 bitWidth 采样 | P0 |
 | LIN | raw logic 版第一版可跑 | 输入模型与基线完全不同，应改为 UART 级联 | P0 |
 | I2S | 第一版 3 线音频解码可跑 | 字边界模型、输出类型、32 位数值语义与基线不一致 | P0 |
 
@@ -102,8 +132,7 @@
 **当前实现**
 
 - 主实现位于 `src/decoders/protocols/I2CDecoder.ts`
-- 常规 `i2c` 注册只出现在 `src/decoders/index.ts` 的 `initializeDecoders()`
-- `DecoderRegistry.registerAllDecoders()` 并没有注册常规 `i2c`
+- `DecoderManager`、`initializeDecoders()`、`registerAllDecoders()` 现在都能提供常规 `i2c`
 
 **已实现能力**
 
@@ -115,8 +144,7 @@
 **主要差距**
 
 - 基线有 `OUTPUT_PYTHON`、`OUTPUT_BINARY`、`OUTPUT_META(bitrate)`；当前没有真正实现
-- 声明了 `bit` 注释类型，但实现里不会发 `annotationType 5`
-- 地址最后一位 `Read/Write` 没有单独注释
+- 当前已发出 `annotationType 5` 的 bit 注释，但地址最后一位 `Read/Write` 仍没有单独注释
 - `warning` 注释声明了，但没有实际发出路径
 - `STOP` 后没有 bitrate meta
 - 10 位地址显示语义与基线不完全一致
@@ -132,8 +160,7 @@
 
 - `P0`
   - 在框架层补齐 Python/Binary/Meta 输出承载
-  - 补齐 bit 注释与独立 `Read/Write` 位注释
-  - 修正 `registerAllDecoders()` 与 `getDecoderRegistryInfo()` 的分裂
+  - 补齐独立 `Read/Write` 位注释
 - `P1`
   - 对齐 10 位地址显示语义
   - 让实际使用的通道映射来自找到的 `sclChannel/sdaChannel`
@@ -157,7 +184,8 @@
 
 **主要差距**
 
-- `getRecommendedExecutionMode('i2c', >1_000_000)` 会推荐 streaming，但并不会自动切到 `streaming_i2c`
+- `executeStreamingDecoder('i2c', ...)` 现在已经能命中 `streaming_i2c`
+- 当前未打通的是“上层调用方根据 `getRecommendedExecutionMode()` 自动选择走流式 API”的主流程
 - 当前更像仓库自定义分支，而不是基线 `i2c` 的流式执行形态
 - 缺 `BIT/BITS`、binary 输出、bitrate metadata、annotation rows 对齐、10 位地址
 - 声明了 `warning/error`，但代码里没有真正产出
@@ -177,7 +205,7 @@
 **达到一致所需工作**
 
 - `P0`
-  - 打通主流程，让 `i2c` 的流式执行真正能命中流式实现
+  - 打通上层主流程，让推荐为 streaming 时真正自动走流式 API
   - 禁止并发分块或重做跨块状态传递
   - 补基线对齐测试，尤其是跨块边界
 - `P1`
@@ -237,21 +265,25 @@
 **当前实现**
 
 - 主实现：`src/decoders/protocols/UARTDecoder.ts`
-- `initializeDecoders()` 会注册 `uart`
-- `registerAllDecoders()` 不会注册 `uart`
-- `getDecoderRegistryInfo()` 却仍然把它写进 `regularDecoders`
+- `DecoderManager`、`initializeDecoders()`、`registerAllDecoders()` 现在都能提供常规 `uart`
 
 **已实现能力**
 
 - 已实现基础元数据、可选 RX/TX 通道、18 个 annotation 类型
-- 已支持 9 个核心选项：`baudrate`、`data_bits`、`parity`、`stop_bits`、`bit_order`、`format`、`invert_rx`、`invert_tx`、`sample_point`
+- 已支持 13 个选项，其中新增了：
+  - `rx_packet_delim`
+  - `tx_packet_delim`
+  - `rx_packet_len`
+  - `tx_packet_len`
 - 可产出 RX/TX 的起始位、数据位、数据值、校验正确/错误、停止位、帧 warning
 - 数据格式化覆盖 `ascii/dec/hex/oct/bin`
+- 默认情况下不再硬编码“16 字节自动产出 packet”
+- 已支持最基础的 `rx_packet_len/tx_packet_len` 按长度聚合 packet
+- 已支持最基础的 ASCII delimiter 触发 packet
 
 **主要差距**
 
-- 基线有 13 个选项；当前缺 `rx_packet_delim`、`tx_packet_delim`、`rx_packet_len`、`tx_packet_len`
-- 当前 packet 行为是硬编码“累计到 16 字节就输出”，与基线默认关闭、按 delimiter/length 触发不一致
+- 当前 packet 行为已从“默认 16 字节自动触发”收口为“默认禁用 + 最基础长度/ASCII delimiter 触发”，但仍未达到基线的 delimiter/length 全语义
 - 主解码循环被简化成 `decodeChannelSimple()` 的逐通道扫描
 - `getWaitCond()`、`inspectEdge()`、`inspectIdle()`、`handleIdle()`、`handleFrame()` 等关键逻辑没有真正参与主路径
 - 结果是：
@@ -288,14 +320,15 @@
 
 **已实现能力**
 
-- 已实现经典 CAN 2.0A / 2.0B 的单帧解析骨架
+- 已实现经典 CAN 2.0A / 2.0B 的基础解析骨架
 - 可解析：SOF、11-bit 标准 ID、29-bit 扩展 ID、DLC、数据字节、CRC 区段、ACK、EOF
 - 支持两个选项：`bitrate`、`sample_point`
 - 可发出 CRC delimiter、ACK 缺失、ACK delimiter、EOF、截断帧 warning
+- 当前已能在同一 capture 中连续解析多个 classic CAN 数据帧
 
 **主要差距**
 
-- 当前是“先找第一帧，再按固定 bitWidth 整帧采样一次”的简化方案
+- 当前仍是“按固定 bitWidth 采样”的简化方案
 - 基线是持续状态机，支持 dominant edge 重同步
 - 当前没有 bit stuffing 处理，因此不适合真实 CAN 波形
 - 不支持 CAN-FD
@@ -315,7 +348,6 @@
   - 改成持续状态机
   - 加 dominant edge 重同步
   - 加 bit stuffing 去填充
-  - 支持一段 capture 中连续多帧
 - `P1`
   - 补 CAN-FD
   - 对齐注释粒度和 Python 输出
@@ -344,7 +376,8 @@
   - 当前实现直接扫描 raw logic
 - 当前只解一个帧；基线可以持续处理多帧、break 重入、idle 结束与恢复
 - 当前强依赖 `data_length` 预先指定字节数
-- 不支持“只有主机头、无响应”分支
+- 当前已兼容 header-only / 无响应 capture，不再强制报 `Missing checksum`
+- 但整体仍不具备基线的完整“主机头 + 响应 + 持续流”语义
 - checksum 语义与基线 `version 1/2` 不一致
 - 注释契约与基线也不一致
 - `findBreak()` 过于粗糙，容易把普通低电平段误判成 break
@@ -406,12 +439,7 @@
   - 基线只有 `left/right/warnings`
   - 当前实现多了一个未使用的 `bit` 注释类型
   - 左右声道文案和十六进制宽度也与基线不同
-- 存在 32 位样本数值语义风险：
-  - 当前使用 JS 位运算累积值
-  - `0x80000000` 这类样本可能变成负数
-- 存在实例复用下的配置泄漏风险：
-  - `DecoderManager` 会缓存 decoder 实例
-  - `wordLength/justification` 是实例字段，只按传入项覆盖
+- 32 位最高位为 1 的无符号样本值问题本轮已修复
 - annotation 的 `startSample/endSample` 语义与基线也不完全一致
 
 **测试可信度**
@@ -427,7 +455,6 @@
 - `P0`
   - 把 I2S 从“固定 `word_length` 截断”改成“按 `WS` 翻转界定字边界”
   - 修正首字同步行为
-  - 修正 32 位值拼装，避免 JS 有符号位运算带来的负数语义
   - 对齐 `left/right/warnings` 的注释类型编号和外部文案
 - `P1`
   - 增加 Python 输出等价物
@@ -488,6 +515,38 @@
 这一点在 CAN、LIN、Streaming I2C 上尤其明显：仓库并不是把基线 decoder 原样桥过来，而是在做新的 TypeScript 状态机。这个方向并非错误，但它意味着“功能一致”必须靠更严格的协议对齐与 golden 体系来证明。
 
 ## 7. 建议的修复顺序
+
+### 7.1 本轮自动修复执行策略
+
+本轮执行采用以下约束，作为后续实现与验收的统一规则：
+
+1. 先补文档和执行计划，再开始代码修复。
+2. 所有实现都在项目根目录 `.worktree/decoder-parity-auto-20260429/` 中完成。
+3. 协议修复按固定顺序串行推进，不并行修改多个协议：
+   - `I2C`
+   - `SPI`
+   - `UART`
+   - `CAN`
+   - `LIN`
+   - `I2S`
+   - `Streaming I2C`
+4. 每个协议只分配给一个独立 subagent 负责实现，不与其它协议共享实现 worker。
+5. 前一个协议必须满足“测试新增、红绿验证、定向回归验证通过、代码复核通过”后，才允许进入下一个协议。
+6. 公共底座修改只允许服务于当前协议所需最小范围，避免先做大而全重构。
+7. 本轮完成标准不是“协议目录存在”，而是：
+   - 文档中的当前协议 P0 缺口已至少关闭一组可验证问题；
+   - 对应测试能证明新增行为；
+   - 主线程完成独立复核后再推进下一项。
+
+### 7.2 本轮任务边界
+
+为了让串行推进可以真正落地，本轮默认按“先 P0、后 P1/P2”的方式推进：
+
+- `P0`：必须修，直接影响 parity 主链路。
+- `P1`：若当前协议的 P0 已完成且改动边界仍清晰，则继续纳入同一轮。
+- `P2`：只在不显著扩大范围时处理；否则记入文档尾部剩余项。
+
+如果某个协议的全部 P0 已完成，而继续做 P1/P2 会阻塞后续所有协议，则优先转入下一个协议，确保整体吞吐。
 
 ### 第一阶段：先修公共底座
 

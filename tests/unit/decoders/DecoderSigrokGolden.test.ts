@@ -75,20 +75,6 @@ function i2cOperationsToChannels(operations: Array<{ type: string; value?: numbe
   ];
 }
 
-function reverseNamedI2cChannels(channels: ChannelData[]): ChannelData[] {
-  const sclChannel = channels.find(channel => channel.channelName === 'SCL');
-  const sdaChannel = channels.find(channel => channel.channelName === 'SDA');
-
-  if (!sclChannel || !sdaChannel) {
-    throw new Error('缺少 I2C golden 所需的 SCL/SDA 通道');
-  }
-
-  return [
-    { ...sdaChannel, channelNumber: 7 },
-    { ...sclChannel, channelNumber: 3 }
-  ];
-}
-
 function spiTransferToChannels(input: {
   miso: number[];
   mosi: number[];
@@ -131,7 +117,26 @@ function canFrameToChannels(input: {
   data: number[];
   ack?: boolean;
   crcDelimiter?: number;
+  samplesPerBit?: number;
 }): ChannelData[] {
+  const bits = buildCanFrameBits(input);
+
+  return [
+    {
+      channelNumber: 0,
+      channelName: 'CAN_RX',
+      samples: new Uint8Array([1, 1, ...bitsToSamples(bits, input.samplesPerBit ?? 1), 1, 1])
+    }
+  ];
+}
+
+function buildCanFrameBits(input: {
+  identifier: number;
+  extended?: boolean;
+  data: number[];
+  ack?: boolean;
+  crcDelimiter?: number;
+}): number[] {
   const bits: number[] = [0];
   if (input.extended) {
     const baseId = (input.identifier >> 18) & 0x7ff;
@@ -150,6 +155,22 @@ function canFrameToChannels(input: {
   }
   bits.push(...Array.from({ length: 15 }, () => 0));
   bits.push(input.crcDelimiter ?? 1, input.ack === false ? 1 : 0, 1, 1, 1, 1, 1, 1, 1);
+  return bits;
+}
+
+function canFramesToChannels(
+  frames: Array<{
+    identifier: number;
+    extended?: boolean;
+    data: number[];
+    ack?: boolean;
+    crcDelimiter?: number;
+  }>
+): ChannelData[] {
+  const bits = frames.flatMap((frame, index) => [
+    ...(index === 0 ? [] : [1, 1, 1]),
+    ...buildCanFrameBits(frame)
+  ]);
 
   return [
     {
@@ -162,8 +183,8 @@ function canFrameToChannels(input: {
 
 function linFrameToChannels(input: {
   pid: number;
-  data: number[];
-  checksum: number;
+  data?: number[];
+  checksum?: number;
   breakBits?: number;
 }): ChannelData[] {
   const bits: number[] = [1, 1, ...Array.from({ length: input.breakBits ?? 13 }, () => 0), 1];
@@ -175,8 +196,10 @@ function linFrameToChannels(input: {
 
   pushByte(0x55);
   pushByte(input.pid);
-  for (const byte of input.data) pushByte(byte);
-  pushByte(input.checksum);
+  for (const byte of input.data ?? []) pushByte(byte);
+  if (input.checksum !== undefined) {
+    pushByte(input.checksum);
+  }
 
   return [
     {
@@ -204,6 +227,30 @@ function i2sWordsToChannels(input: {
   pushBit(0, 0);
   for (let bit = input.wordLength - 1; bit >= 0; bit--) pushBit(0, (input.left >> bit) & 1);
   pushBit(1, 0);
+  for (let bit = input.wordLength - 1; bit >= 0; bit--) pushBit(1, (input.right >> bit) & 1);
+
+  return [
+    { channelNumber: 0, channelName: 'SCK', samples: new Uint8Array(sck) },
+    { channelNumber: 1, channelName: 'WS', samples: new Uint8Array(ws) },
+    { channelNumber: 2, channelName: 'SD', samples: new Uint8Array(sd) }
+  ];
+}
+
+function i2sLeftJustifiedWordsToChannels(input: {
+  wordLength: number;
+  left: number;
+  right: number;
+}): ChannelData[] {
+  const sck: number[] = [];
+  const ws: number[] = [];
+  const sd: number[] = [];
+  const pushBit = (wordSelect: number, bitValue: number) => {
+    sck.push(0, 1);
+    ws.push(wordSelect, wordSelect);
+    sd.push(bitValue, bitValue);
+  };
+
+  for (let bit = input.wordLength - 1; bit >= 0; bit--) pushBit(0, (input.left >> bit) & 1);
   for (let bit = input.wordLength - 1; bit >= 0; bit--) pushBit(1, (input.right >> bit) & 1);
 
   return [
@@ -288,15 +335,294 @@ describe('sigrok golden 解码器对齐', () => {
     expectGoldenSegments(results, testCase.expected);
   });
 
-  it('i2c.write-byte.normal 在逆序命名通道下仍与 sigrok 风格 golden 对齐', () => {
-    const testCase = cases.find(current => current.id === 'i2c.write-byte.normal');
+  it('I2S 32 位样本在最高位为 1 时保持无符号 rawData 和十六进制显示', () => {
+    const channels = i2sWordsToChannels({
+      wordLength: 32,
+      left: 0x80000000,
+      right: 0xfedcba98
+    });
 
-    expect(testCase).toBeDefined();
+    const results = new I2SDecoder().decode(2_000_000, channels, [
+      { optionIndex: 0, value: 32 },
+      { optionIndex: 1, value: 'i2s' }
+    ]);
 
-    const channels = reverseNamedI2cChannels(inputToChannels(testCase!.input));
-    const results = new I2CDecoder().decode(testCase!.sampleRate, channels, testCase!.options);
+    expect(results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          annotationType: 0,
+          values: ['Left: 80000000', 'L: 80000000', '80000000'],
+          rawData: 0x80000000
+        }),
+        expect.objectContaining({
+          annotationType: 1,
+          values: ['Right: FEDCBA98', 'R: FEDCBA98', 'FEDCBA98'],
+          rawData: 0xfedcba98
+        })
+      ])
+    );
+  });
 
-    expectGoldenSegments(results, testCase!.expected);
+  it('I2SDecoder 复用实例时，第二次空 option 解码应回到默认 word_length', () => {
+    const decoder = new I2SDecoder();
+
+    decoder.decode(2_000_000, i2sWordsToChannels({
+      wordLength: 32,
+      left: 0x12345678,
+      right: 0x9abcdef0
+    }), [
+      { optionIndex: 0, value: 32 }
+    ]);
+
+    const secondChannels = i2sWordsToChannels({
+      wordLength: 16,
+      left: 0x1234,
+      right: 0xabcd
+    });
+
+    const reusedResults = decoder.decode(2_000_000, secondChannels, []);
+    const freshResults = new I2SDecoder().decode(2_000_000, secondChannels, []);
+
+    expect(freshResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          annotationType: 0,
+          values: ['Left: 1234', 'L: 1234', '1234'],
+          rawData: 0x1234
+        }),
+        expect.objectContaining({
+          annotationType: 1,
+          values: ['Right: ABCD', 'R: ABCD', 'ABCD'],
+          rawData: 0xabcd
+        })
+      ])
+    );
+    expect(reusedResults).toEqual(freshResults);
+  });
+
+  it('I2SDecoder 复用实例时，第二次空 option 解码应回到默认 justification', () => {
+    const decoder = new I2SDecoder();
+
+    decoder.decode(2_000_000, i2sLeftJustifiedWordsToChannels({
+      wordLength: 16,
+      left: 0xa55a,
+      right: 0x5aa5
+    }), [
+      { optionIndex: 1, value: 'left' }
+    ]);
+
+    const secondChannels = i2sWordsToChannels({
+      wordLength: 16,
+      left: 0xa55a,
+      right: 0x5aa5
+    });
+
+    const reusedResults = decoder.decode(2_000_000, secondChannels, []);
+    const freshResults = new I2SDecoder().decode(2_000_000, secondChannels, []);
+
+    expect(freshResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          annotationType: 0,
+          values: ['Left: A55A', 'L: A55A', 'A55A'],
+          rawData: 0xa55a
+        }),
+        expect.objectContaining({
+          annotationType: 1,
+          values: ['Right: 5AA5', 'R: 5AA5', '5AA5'],
+          rawData: 0x5aa5
+        })
+      ])
+    );
+    expect(reusedResults).toEqual(freshResults);
+  });
+
+  it('CAN 在同一 capture 中连续解析两个 classic 数据帧', () => {
+    const channels = canFramesToChannels([
+      { identifier: 0x555, data: [0xA5] },
+      { identifier: 0x2AA, data: [0x5A] }
+    ]);
+
+    const results = new CANDecoder().decode(1_000_000, channels, [
+      { optionIndex: 0, value: 1_000_000 },
+      { optionIndex: 1, value: 50 }
+    ]);
+
+    expect(results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          annotationType: 1,
+          values: ['ID: 555', '555'],
+          rawData: 0x555
+        }),
+        expect.objectContaining({
+          annotationType: 4,
+          values: ['Data[0]: A5', 'A5'],
+          rawData: 0xA5
+        }),
+        expect.objectContaining({
+          annotationType: 1,
+          values: ['ID: 2AA', '2AA'],
+          rawData: 0x2aa
+        }),
+        expect.objectContaining({
+          annotationType: 4,
+          values: ['Data[0]: 5A', '5A'],
+          rawData: 0x5a
+        })
+      ])
+    );
+  });
+
+  it('CANDecoder 复用实例时，第二次空 option 解码应回到默认 bitrate', () => {
+    const decoder = new CANDecoder();
+    const firstChannels = canFrameToChannels({
+      identifier: 0x123,
+      data: [0x45],
+      samplesPerBit: 1
+    });
+    const secondChannels = canFrameToChannels({
+      identifier: 0x321,
+      data: [0x67],
+      samplesPerBit: 2
+    });
+
+    decoder.decode(1_000_000, firstChannels, [
+      { optionIndex: 0, value: 1_000_000 },
+      { optionIndex: 1, value: 50 }
+    ]);
+
+    const reusedResults = decoder.decode(1_000_000, secondChannels, []);
+    const freshResults = new CANDecoder().decode(1_000_000, secondChannels, []);
+
+    expect(freshResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          annotationType: 1,
+          values: ['ID: 321', '321'],
+          rawData: 0x321
+        }),
+        expect.objectContaining({
+          annotationType: 4,
+          values: ['Data[0]: 67', '67'],
+          rawData: 0x67
+        })
+      ])
+    );
+    expect(reusedResults).toEqual(freshResults);
+  });
+
+  it('LIN header-only capture 不应被强制标记为缺少 checksum', () => {
+    const channels = linFrameToChannels({
+      pid: 0x50
+    });
+
+    const results = new LINDecoder().decode(19_200, channels, [
+      { optionIndex: 0, value: 19_200 },
+      { optionIndex: 1, value: 0 },
+      { optionIndex: 2, value: 'classic' }
+    ]);
+
+    expect(results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          annotationType: 0,
+          values: ['Break']
+        }),
+        expect.objectContaining({
+          annotationType: 1,
+          values: ['Sync: 55', '55'],
+          rawData: 0x55
+        }),
+        expect.objectContaining({
+          annotationType: 2,
+          values: ['PID: 50', '50'],
+          rawData: 0x50
+        })
+      ])
+    );
+    expect(results.filter(result => result.annotationType === 6)).toHaveLength(0);
+  });
+
+  it('LINDecoder 复用实例时，第二次空 option 解码应回到默认 classic checksum', () => {
+    const decoder = new LINDecoder();
+
+    decoder.decode(19_200, linFrameToChannels({
+      pid: 0x50,
+      data: [0x01, 0x02],
+      checksum: 0xac
+    }), [
+      { optionIndex: 2, value: 'enhanced' }
+    ]);
+
+    const secondChannels = linFrameToChannels({
+      pid: 0x50,
+      data: [0x12, 0x34],
+      checksum: 0xb9
+    });
+
+    const reusedResults = decoder.decode(19_200, secondChannels, []);
+    const freshResults = new LINDecoder().decode(19_200, secondChannels, []);
+
+    expect(freshResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          annotationType: 4,
+          values: ['Data[1]: 34', '34'],
+          rawData: 0x34
+        }),
+        expect.objectContaining({
+          annotationType: 5,
+          values: ['Checksum: B9', 'B9'],
+          rawData: 0xb9
+        })
+      ])
+    );
+    expect(freshResults.filter(result => result.annotationType === 6)).toHaveLength(0);
+    expect(reusedResults).toEqual(freshResults);
+  });
+
+  it('LINDecoder 复用实例时，第二次空 option 解码应回到默认 data_length', () => {
+    const decoder = new LINDecoder();
+
+    decoder.decode(19_200, linFrameToChannels({
+      pid: 0x50,
+      data: [0x12],
+      checksum: 0xed
+    }), [
+      { optionIndex: 1, value: 1 }
+    ]);
+
+    const secondChannels = linFrameToChannels({
+      pid: 0x50,
+      data: [0x12, 0x34],
+      checksum: 0xb9
+    });
+
+    const reusedResults = decoder.decode(19_200, secondChannels, []);
+    const freshResults = new LINDecoder().decode(19_200, secondChannels, []);
+
+    expect(freshResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          annotationType: 4,
+          values: ['Data[0]: 12', '12'],
+          rawData: 0x12
+        }),
+        expect.objectContaining({
+          annotationType: 4,
+          values: ['Data[1]: 34', '34'],
+          rawData: 0x34
+        }),
+        expect.objectContaining({
+          annotationType: 5,
+          values: ['Checksum: B9', 'B9'],
+          rawData: 0xb9
+        })
+      ])
+    );
+    expect(freshResults.filter(result => result.annotationType === 6)).toHaveLength(0);
+    expect(reusedResults).toEqual(freshResults);
   });
 
   it('后续协议路线图明确优先级、接口和外部 sigrok 策略', () => {

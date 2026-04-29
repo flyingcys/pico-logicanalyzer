@@ -89,6 +89,10 @@ export class LINDecoder extends DecoderBase {
   }
 
   private processOptions(options: DecoderOptionValue[]): void {
+    this.baudrate = Number(this.options[0].default);
+    this.dataLength = Number(this.options[1].default);
+    this.checksumMode = this.options[2].default === 'enhanced' ? 'enhanced' : 'classic';
+
     for (const option of options) {
       if (option.optionIndex === 0) {
         this.baudrate = Number(option.value);
@@ -149,6 +153,9 @@ export class LINDecoder extends DecoderBase {
     for (let index = 0; index < this.dataLength; index++) {
       const byte = this.readByte(samples, cursor);
       if (!byte) {
+        if (this.hasNoResponse(samples, cursor)) {
+          return;
+        }
         this.warn(cursor, cursor + this.bitWidth, ['Missing data', 'Data']);
         return;
       }
@@ -159,6 +166,9 @@ export class LINDecoder extends DecoderBase {
 
     const checksum = this.readByte(samples, cursor);
     if (!checksum) {
+      if (this.hasNoResponse(samples, cursor)) {
+        return;
+      }
       this.warn(cursor, cursor + this.bitWidth, ['Missing checksum', 'Checksum']);
       return;
     }
@@ -214,6 +224,15 @@ export class LINDecoder extends DecoderBase {
       startSample: start,
       endSample: Math.min(samples.length, start + 10 * this.bitWidth)
     };
+  }
+
+  private hasNoResponse(samples: Uint8Array, from: number): boolean {
+    for (let index = from; index < samples.length; index++) {
+      if (samples[index] === 0) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private hasValidPidParity(pid: number): boolean {

@@ -75,19 +75,30 @@ export class CANDecoder extends DecoderBase {
 
     this.bitWidth = Math.max(1, Math.round(sampleRate / this.bitrate));
     const [{ samples }] = channels;
-    const sof = this.findStartOfFrame(samples);
-    if (sof === -1) {
-      return this.results;
+    let searchFrom = 0;
+
+    while (searchFrom < samples.length) {
+      const sof = this.findStartOfFrame(samples, searchFrom);
+      if (sof === -1) {
+        break;
+      }
+
+      this.frameStart = sof;
+      this.bits = this.sampleBits(samples, sof);
+      this.cursor = 0;
+
+      const consumedBits = this.parseFrame();
+      const nextSearch = this.frameStart + Math.max(consumedBits, 1) * this.bitWidth;
+      searchFrom = Math.max(sof + 1, nextSearch);
     }
 
-    this.frameStart = sof;
-    this.bits = this.sampleBits(samples, sof);
-    this.cursor = 0;
-    this.parseFrame();
     return this.results;
   }
 
   private processOptions(options: DecoderOptionValue[]): void {
+    this.bitrate = Number(this.options[0].default);
+    this.samplePoint = Number(this.options[1].default);
+
     for (const option of options) {
       if (option.optionIndex === 0) {
         this.bitrate = Number(option.value);
@@ -97,8 +108,8 @@ export class CANDecoder extends DecoderBase {
     }
   }
 
-  private findStartOfFrame(samples: Uint8Array): number {
-    for (let index = 0; index < samples.length; index++) {
+  private findStartOfFrame(samples: Uint8Array, from = 0): number {
+    for (let index = Math.max(0, from); index < samples.length; index++) {
       const previous = index === 0 ? 1 : samples[index - 1];
       if (previous === 1 && samples[index] === 0) {
         return index;
@@ -120,7 +131,7 @@ export class CANDecoder extends DecoderBase {
     return result;
   }
 
-  private parseFrame(): void {
+  private parseFrame(): number {
     try {
       this.expectBit(0, 'SOF expected');
       this.emit(0, 0, 1, ['SOF']);
@@ -182,6 +193,8 @@ export class CANDecoder extends DecoderBase {
     } catch (error) {
       this.warn(this.cursor, this.cursor + 1, [(error as Error).message]);
     }
+
+    return this.cursor;
   }
 
   private readBit(): number {

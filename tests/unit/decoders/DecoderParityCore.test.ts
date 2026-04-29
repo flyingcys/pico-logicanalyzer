@@ -2,6 +2,7 @@ import goldenCore from '../../fixtures/decoders/golden-core.json';
 import { DecoderBase } from '../../../src/decoders/DecoderBase';
 import { decoderManager, DecoderManager } from '../../../src/decoders/DecoderManager';
 import { getDecoderRegistryInfo, registerAllDecoders } from '../../../src/decoders/DecoderRegistry';
+import { StreamingDecoderBase } from '../../../src/decoders/StreamingDecoder';
 import { I2CDecoder } from '../../../src/decoders/protocols/I2CDecoder';
 import { SPIDecoder } from '../../../src/decoders/protocols/SPIDecoder';
 import { UARTDecoder } from '../../../src/decoders/protocols/UARTDecoder';
@@ -163,6 +164,57 @@ class ConsumerDecoder extends DecoderBase {
   }
 }
 
+class FallbackI2CDecoder extends DecoderBase {
+  readonly id = 'i2c';
+  readonly name = 'Fallback I2C';
+  readonly longname = 'Fallback I2C Decoder';
+  readonly desc = 'Marks when regular I2C execution path is used.';
+  readonly license = 'MIT';
+  readonly inputs = ['logic'];
+  readonly outputs = ['i2c'];
+  readonly tags = ['test'];
+  readonly channels: DecoderChannel[] = [
+    { id: 'scl', name: 'SCL', desc: 'Clock', required: true, index: 0 },
+    { id: 'sda', name: 'SDA', desc: 'Data', required: true, index: 1 }
+  ];
+  readonly options: DecoderOption[] = [];
+  readonly annotations: Array<[string, string, string?]> = [['path', 'Path']];
+
+  decode(): DecoderResult[] {
+    return [
+      {
+        startSample: 0,
+        endSample: 1,
+        annotationType: 0,
+        values: ['regular-path'],
+        rawData: 1
+      }
+    ];
+  }
+}
+
+class StubStreamingI2CDecoder extends StreamingDecoderBase {
+  protected async initializeDecoding(): Promise<void> {
+    return;
+  }
+
+  protected async processChunk(): Promise<DecoderResult[]> {
+    return [
+      {
+        startSample: 0,
+        endSample: 1,
+        annotationType: 0,
+        values: ['streaming-path'],
+        rawData: 2
+      }
+    ];
+  }
+
+  protected async finalizeDecoding(): Promise<void> {
+    return;
+  }
+}
+
 function toChannels(
   channels: Array<{ channelNumber: number; channelName: string; samples: number[] }>
 ): ChannelData[] {
@@ -219,7 +271,40 @@ function expectGoldenSegments(results: DecoderResult[], expected: ExpectedSegmen
   }
 }
 
+const expectedRegularDecoderIds = ['i2c', 'spi', 'uart', 'can', 'lin', 'i2s'];
+const expectedStreamingDecoderIds = ['streaming_i2c'];
+
+function expectGlobalDecoderManagerCleanState(): void {
+  const managerState = decoderManager as any;
+
+  expect(managerState.decoders.size).toBe(expectedRegularDecoderIds.length);
+  expect(managerState.streamingDecoders.size).toBe(expectedStreamingDecoderIds.length);
+  expect(managerState.decoderInstances.size).toBe(0);
+  expect(managerState.streamingDecoderInstances.size).toBe(0);
+}
+
+function restoreGlobalDecoderManagerCleanState(): void {
+  decoderManager.dispose();
+
+  const cleanManager = new DecoderManager();
+  const managerState = decoderManager as any;
+  const cleanState = cleanManager as any;
+
+  managerState.decoders = new Map(cleanState.decoders);
+  managerState.streamingDecoders = new Map(cleanState.streamingDecoders);
+  managerState.decoderInstances = new Map();
+  managerState.streamingDecoderInstances = new Map();
+  managerState.activeStreamingTasks = new Map();
+  managerState.currentInputs = null;
+  managerState.currentOutputs = null;
+}
+
 describe('解码器 parity 核心', () => {
+  afterEach(() => {
+    restoreGlobalDecoderManagerCleanState();
+    expectGlobalDecoderManagerCleanState();
+  });
+
   it('I2C golden 写事务输出与 sigrok 风格注释对齐', () => {
     const fixture = goldenCore.i2cWrite;
     const results = new I2CDecoder().decode(
@@ -345,6 +430,33 @@ describe('解码器 parity 核心', () => {
     expect(manager.getRecommendedExecutionMode('spi', 1_000_001)).toBe('regular');
   });
 
+  it('executeStreamingDecoder 在 decoderId=i2c 时应优先命中 streaming_i2c', async () => {
+    const manager = new DecoderManager();
+    const channels = i2cOperationsToChannels([
+      { type: 'start' },
+      { type: 'byte', value: 0x50 },
+      { type: 'ack' },
+      { type: 'stop' }
+    ]);
+
+    manager.registerDecoder('i2c', FallbackI2CDecoder);
+    manager.registerStreamingDecoder('streaming_i2c', StubStreamingI2CDecoder);
+
+    const result = await manager.executeStreamingDecoder('i2c', 1_000_000, channels, [], [
+      { captureIndex: 0, decoderIndex: 0 },
+      { captureIndex: 1, decoderIndex: 1 }
+    ]);
+
+    expect(result.success).toBe(true);
+    expect(result.isStreaming).toBe(true);
+    expect(result.results).toEqual([
+      expect.objectContaining({
+        values: ['streaming-path'],
+        rawData: 2
+      })
+    ]);
+  });
+
   it('DecoderRegistry 暴露常规与流式解码器清单', () => {
     expect(getDecoderRegistryInfo()).toEqual(
       expect.objectContaining({
@@ -354,19 +466,19 @@ describe('解码器 parity 核心', () => {
     );
   });
 
-  it('registerAllDecoders 会真实注册常规 i2c', () => {
-    const registerDecoderSpy = jest.spyOn(decoderManager, 'registerDecoder');
-    const registerStreamingDecoderSpy = jest.spyOn(decoderManager, 'registerStreamingDecoder');
+  it('registerAllDecoders 会真实注册 regularDecoders 清单中的全部解码器', () => {
+    decoderManager.dispose();
 
     registerAllDecoders();
 
-    expect(registerDecoderSpy).toHaveBeenCalledWith('i2c', I2CDecoder);
-    expect(registerStreamingDecoderSpy).toHaveBeenCalledWith(
-      'streaming_i2c',
-      expect.any(Function)
-    );
+    for (const decoderId of getDecoderRegistryInfo().regularDecoders) {
+      expect(decoderManager.getDecoder(decoderId)).toBeInstanceOf(DecoderBase);
+    }
 
-    registerDecoderSpy.mockRestore();
-    registerStreamingDecoderSpy.mockRestore();
+    expect(decoderManager.getDecoder('i2c')).toBeInstanceOf(I2CDecoder);
+  });
+
+  it('全局 decoderManager 在测试间应保持完整注册且未缓存实例', () => {
+    expectGlobalDecoderManagerCleanState();
   });
 });

@@ -211,6 +211,8 @@ export class I2CDecoder extends DecoderBase {
    * 处理配置选项
    */
   private processOptions(options: DecoderOptionValue[]): void {
+    this.addressFormat = 'shifted';
+
     for (const option of options) {
       if (option.optionIndex === 0) {
         // address_format
@@ -308,6 +310,8 @@ export class I2CDecoder extends DecoderBase {
     const ssByte = this.dataBits[0].startSample;
     const esByte = this.dataBits[7].endSample;
 
+    this.putBitAnnotations();
+
     // 处理地址字节
     const isAddress = this.collectsAddress();
     if (isAddress) {
@@ -402,6 +406,19 @@ export class I2CDecoder extends DecoderBase {
       ],
       rawData: dataByte
     });
+  }
+
+  /**
+   * 输出当前字节对应的 bit 注释。
+   */
+  private putBitAnnotations(): void {
+    for (const bit of this.dataBits) {
+      this.put(bit.startSample, bit.endSample, {
+        type: DecoderOutputType.ANNOTATION,
+        annotationType: 5,
+        values: [String(bit.value)]
+      });
+    }
   }
 
   /**

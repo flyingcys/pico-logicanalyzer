@@ -4,6 +4,9 @@
  */
 
 import { decoderManager } from './DecoderManager';
+import { I2CDecoder } from './protocols/I2CDecoder';
+import { SPIDecoder } from './protocols/SPIDecoder';
+import { UARTDecoder } from './protocols/UARTDecoder';
 import { StreamingI2CDecoder } from './protocols/StreamingI2CDecoder';
 import { CANDecoder } from './protocols/CANDecoder';
 import { LINDecoder } from './protocols/LINDecoder';
@@ -16,13 +19,19 @@ export function registerAllDecoders(): void {
   console.log('📋 开始注册解码器...');
 
   try {
-    // 注册流式解码器
+    // 注册常规与流式解码器
+    decoderManager.registerDecoder('i2c', I2CDecoder);
+    decoderManager.registerDecoder('spi', SPIDecoder);
+    decoderManager.registerDecoder('uart', UARTDecoder);
     decoderManager.registerDecoder('can', CANDecoder);
     decoderManager.registerDecoder('lin', LINDecoder);
     decoderManager.registerDecoder('i2s', I2SDecoder);
     decoderManager.registerStreamingDecoder('streaming_i2c', StreamingI2CDecoder);
 
     console.log('✅ 解码器注册完成:');
+    console.log('  - I²C 解码器 (i2c)');
+    console.log('  - SPI 解码器 (spi)');
+    console.log('  - UART 解码器 (uart)');
     console.log('  - CAN 解码器 (can)');
     console.log('  - LIN 解码器 (lin)');
     console.log('  - I2S 解码器 (i2s)');

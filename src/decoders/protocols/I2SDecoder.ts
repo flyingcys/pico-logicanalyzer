@@ -76,6 +76,9 @@ export class I2SDecoder extends DecoderBase {
   }
 
   private processOptions(options: DecoderOptionValue[]): void {
+    this.wordLength = Number(this.options[0].default);
+    this.justification = this.options[1].default === 'left' ? 'left' : 'i2s';
+
     for (const option of options) {
       if (option.optionIndex === 0) {
         this.wordLength = Math.max(1, Number(option.value));
@@ -132,7 +135,9 @@ export class I2SDecoder extends DecoderBase {
       return;
     }
 
-    const value = bits.slice(0, this.wordLength).reduce((total, bit) => (total << 1) | bit, 0);
+    const value = bits
+      .slice(0, this.wordLength)
+      .reduce((total, bit) => total * 2 + bit, 0);
     const width = Math.ceil(this.wordLength / 4);
     const hex = value.toString(16).toUpperCase().padStart(width, '0');
 
