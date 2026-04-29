@@ -2,13 +2,14 @@
 import { computed, watch } from 'vue';
 import { Cpu, DataAnalysis, VideoPlay } from '@element-plus/icons-vue';
 import { useHost } from '../composables/useHost';
-import { useDecoderStore } from '../../core/stores/decoderStore';
+import { useDecoderStore, type FrontendDecoderId, type UARTOptionState } from '../../core/stores/decoderStore';
 import { useSessionStore } from '../../core/stores/sessionStore';
 import { useUiStore } from '../../core/stores/uiStore';
 import { useWaveformStore } from '../../core/stores/waveformStore';
 
 type SidebarTab = 'decoder' | 'performance';
 type I2CRole = 'scl' | 'sda';
+type UARTRole = 'rx' | 'tx';
 
 const host = useHost({ fallback: 'auto' });
 const uiStore = useUiStore();
@@ -37,9 +38,13 @@ watch(
     .map(entry => `${entry.captureIndex}:${entry.channel.channelNumber}:${entry.channel.channelName}`)
     .join('|'),
   () => {
-    decoderStore.initializeI2CMapping(sessionStore.channels);
+    decoderStore.initializeChannelMappings(sessionStore.channels);
   },
   { immediate: true }
+);
+
+const selectedDecoderLabel = computed(() =>
+  decoderStore.activeDecoderConfigs.find(config => config.decoderId === decoderStore.selectedDecoderId)?.label ?? 'I2C'
 );
 
 const decoderStatusText = computed(() => {
@@ -47,19 +52,31 @@ const decoderStatusText = computed(() => {
     return '当前文件没有可解码样本';
   }
 
-  if (visibleChannels.value.length < 2) {
+  if (decoderStore.selectedDecoderId === 'i2c' && visibleChannels.value.length < 2) {
     return 'I2C 解码需要至少两个通道';
+  }
+
+  if (decoderStore.selectedDecoderId === 'uart' && visibleChannels.value.length < 1) {
+    return 'UART 解码需要至少一个 RX 或 TX 通道';
   }
 
   return `${sessionStore.totalSamples} 样本 · ${sessionStore.sampleRate} Hz`;
 });
 
-const canRunI2CDecoder = computed(() =>
-  sessionStore.hasData
-  && visibleChannels.value.length >= 2
-  && decoderStore.channelConflicts.length === 0
-  && !decoderStore.isDecoding
-);
+const canRunDecoder = computed(() => {
+  if (!sessionStore.hasData || decoderStore.channelConflicts.length > 0 || decoderStore.isDecoding) {
+    return false;
+  }
+
+  if (decoderStore.selectedDecoderId === 'i2c') {
+    return visibleChannels.value.length >= 2
+      && decoderStore.i2cMapping.sclCaptureIndex !== null
+      && decoderStore.i2cMapping.sdaCaptureIndex !== null;
+  }
+
+  return visibleChannels.value.length >= 1
+    && (decoderStore.uartMapping.rxCaptureIndex !== null || decoderStore.uartMapping.txCaptureIndex !== null);
+});
 
 const decoderSummary = computed(() => [
   {
@@ -105,8 +122,36 @@ function setMappingFromEvent(role: I2CRole, event: Event) {
   decoderStore.setI2CMapping(role, Number.isFinite(value) ? value : null);
 }
 
-async function runI2CDecoder() {
-  await decoderStore.runI2CDecoder(host, sessionStore);
+function setUARTMappingFromEvent(role: UARTRole, event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const value = select.value === '' ? null : Number(select.value);
+  decoderStore.setUARTMapping(role, Number.isFinite(value) ? value : null);
+}
+
+function setSelectedDecoderFromEvent(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  decoderStore.setSelectedDecoder(select.value as FrontendDecoderId);
+}
+
+function setUARTNumberOption(option: 'baudrate' | 'samplePoint', event: Event) {
+  const input = event.target as HTMLInputElement;
+  const fallback = option === 'baudrate' ? 115200 : 50;
+  const value = Number(input.value);
+  decoderStore.setUARTOption(option, (Number.isFinite(value) && value > 0 ? value : fallback) as UARTOptionState[typeof option]);
+}
+
+function setUARTStringOption(option: 'dataBits' | 'parity' | 'stopBits', event: Event) {
+  const select = event.target as HTMLSelectElement;
+  decoderStore.setUARTOption(option, select.value);
+}
+
+function setUARTBooleanOption(option: 'invertRx' | 'invertTx', event: Event) {
+  const input = event.target as HTMLInputElement;
+  decoderStore.setUARTOption(option, input.checked);
+}
+
+async function runDecoder() {
+  await decoderStore.runSelectedDecoder(host, sessionStore);
 }
 </script>
 
@@ -135,7 +180,7 @@ async function runI2CDecoder() {
       >
         <header class="decoder-panel__header">
           <h2 class="app-sidebar-right__title">
-            I2C 协议解码
+            {{ selectedDecoderLabel }} 协议解码
           </h2>
           <p
             v-if="visibleDecoderName"
@@ -148,8 +193,28 @@ async function runI2CDecoder() {
           </p>
         </header>
 
+        <label class="decoder-panel__field">
+          <span>协议</span>
+          <select
+            data-testid="decoder-protocol-select"
+            :value="decoderStore.selectedDecoderId"
+            @change="setSelectedDecoderFromEvent"
+          >
+            <option
+              v-for="decoder in decoderStore.activeDecoderConfigs"
+              :key="decoder.decoderId"
+              :value="decoder.decoderId"
+            >
+              {{ decoder.label }}
+            </option>
+          </select>
+        </label>
+
         <div class="decoder-panel__mapping">
-          <label class="decoder-panel__field">
+          <label
+            v-if="decoderStore.selectedDecoderId === 'i2c'"
+            class="decoder-panel__field"
+          >
             <span>SCL</span>
             <select
               :value="decoderStore.i2cMapping.sclCaptureIndex ?? ''"
@@ -165,7 +230,10 @@ async function runI2CDecoder() {
             </select>
           </label>
 
-          <label class="decoder-panel__field">
+          <label
+            v-if="decoderStore.selectedDecoderId === 'i2c'"
+            class="decoder-panel__field"
+          >
             <span>SDA</span>
             <select
               :value="decoderStore.i2cMapping.sdaCaptureIndex ?? ''"
@@ -179,6 +247,140 @@ async function runI2CDecoder() {
                 CH{{ channel.channel.channelNumber }} - {{ channel.channel.channelName }}
               </option>
             </select>
+          </label>
+
+          <label
+            v-if="decoderStore.selectedDecoderId === 'uart'"
+            class="decoder-panel__field"
+          >
+            <span>RX</span>
+            <select
+              :value="decoderStore.uartMapping.rxCaptureIndex ?? ''"
+              @change="setUARTMappingFromEvent('rx', $event)"
+            >
+              <option value="">
+                未使用
+              </option>
+              <option
+                v-for="channel in visibleChannels"
+                :key="`rx-${channel.captureIndex}`"
+                :value="channel.captureIndex"
+              >
+                CH{{ channel.channel.channelNumber }} - {{ channel.channel.channelName }}
+              </option>
+            </select>
+          </label>
+
+          <label
+            v-if="decoderStore.selectedDecoderId === 'uart'"
+            class="decoder-panel__field"
+          >
+            <span>TX</span>
+            <select
+              :value="decoderStore.uartMapping.txCaptureIndex ?? ''"
+              @change="setUARTMappingFromEvent('tx', $event)"
+            >
+              <option value="">
+                未使用
+              </option>
+              <option
+                v-for="channel in visibleChannels"
+                :key="`tx-${channel.captureIndex}`"
+                :value="channel.captureIndex"
+              >
+                CH{{ channel.channel.channelNumber }} - {{ channel.channel.channelName }}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <div
+          v-if="decoderStore.selectedDecoderId === 'uart'"
+          class="decoder-panel__options"
+        >
+          <label class="decoder-panel__field">
+            <span>Baudrate</span>
+            <input
+              data-testid="uart-baudrate-input"
+              type="number"
+              min="1"
+              step="1"
+              :value="decoderStore.uartOptions.baudrate"
+              @input="setUARTNumberOption('baudrate', $event)"
+            >
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>Data bits</span>
+            <select
+              :value="decoderStore.uartOptions.dataBits"
+              @change="setUARTStringOption('dataBits', $event)"
+            >
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="7">7</option>
+              <option value="8">8</option>
+              <option value="9">9</option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>Parity</span>
+            <select
+              :value="decoderStore.uartOptions.parity"
+              @change="setUARTStringOption('parity', $event)"
+            >
+              <option value="none">none</option>
+              <option value="odd">odd</option>
+              <option value="even">even</option>
+              <option value="zero">zero</option>
+              <option value="one">one</option>
+              <option value="ignore">ignore</option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>Stop bits</span>
+            <select
+              :value="decoderStore.uartOptions.stopBits"
+              @change="setUARTStringOption('stopBits', $event)"
+            >
+              <option value="0.0">0.0</option>
+              <option value="0.5">0.5</option>
+              <option value="1.0">1.0</option>
+              <option value="1.5">1.5</option>
+              <option value="2.0">2.0</option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__check">
+            <input
+              type="checkbox"
+              :checked="decoderStore.uartOptions.invertRx"
+              @change="setUARTBooleanOption('invertRx', $event)"
+            >
+            <span>Invert RX</span>
+          </label>
+
+          <label class="decoder-panel__check">
+            <input
+              type="checkbox"
+              :checked="decoderStore.uartOptions.invertTx"
+              @change="setUARTBooleanOption('invertTx', $event)"
+            >
+            <span>Invert TX</span>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>Sample point</span>
+            <input
+              type="number"
+              min="1"
+              max="99"
+              step="1"
+              :value="decoderStore.uartOptions.samplePoint"
+              @input="setUARTNumberOption('samplePoint', $event)"
+            >
           </label>
         </div>
 
@@ -197,14 +399,14 @@ async function runI2CDecoder() {
         <button
           type="button"
           class="decoder-panel__run"
-          :disabled="!canRunI2CDecoder"
-          data-testid="run-i2c-decoder"
-          @click="runI2CDecoder"
+          :disabled="!canRunDecoder"
+          :data-testid="`run-${decoderStore.selectedDecoderId}-decoder`"
+          @click="runDecoder"
         >
           <span class="decoder-panel__run-icon">
             <VideoPlay />
           </span>
-          <span>{{ decoderStore.isDecoding ? '解码中...' : '运行 I2C 解码' }}</span>
+          <span>{{ decoderStore.isDecoding ? '解码中...' : `运行 ${selectedDecoderLabel} 解码` }}</span>
         </button>
 
         <dl class="app-sidebar-right__summary">
@@ -397,6 +599,12 @@ async function runI2CDecoder() {
   gap: 10px;
 }
 
+.decoder-panel__options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .decoder-panel__field {
   display: grid;
   gap: 6px;
@@ -405,7 +613,8 @@ async function runI2CDecoder() {
   font-size: 12px;
 }
 
-.decoder-panel__field select {
+.decoder-panel__field select,
+.decoder-panel__field input {
   width: 100%;
   min-width: 0;
   height: 34px;
@@ -415,6 +624,15 @@ async function runI2CDecoder() {
   background: #020617;
   color: #e2e8f0;
   font-size: 13px;
+}
+
+.decoder-panel__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  color: #cbd5e1;
+  font-size: 12px;
 }
 
 .decoder-panel__run {

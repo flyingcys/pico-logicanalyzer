@@ -312,7 +312,11 @@ export class UARTDecoder extends DecoderBase {
     // 主解码循环 - 完全基于原版的wait/matched机制
     this.runMainLoop();
 
-    return this.results;
+    return this.results.sort((a, b) =>
+      a.startSample - b.startSample ||
+      a.endSample - b.endSample ||
+      a.annotationType - b.annotationType
+    );
   }
 
   /**
@@ -415,9 +419,24 @@ export class UARTDecoder extends DecoderBase {
       // 根据状态处理当前样本
       const currentSignal = this.getCurrentChannelValue(rxtx, sampleIndex);
       const nextSignal = this.getCurrentChannelValue(rxtx, sampleIndex + 1);
+      const currentLogicalSignal = this.normalizeSignal(rxtx, currentSignal);
+      const nextLogicalSignal = this.normalizeSignal(rxtx, nextSignal);
 
       // 检测起始位（从高到低的跳变）
-      if (this.state[rxtx] === 'WAIT FOR START BIT' && currentSignal === 1 && nextSignal === 0) {
+      if (
+        this.state[rxtx] === 'WAIT FOR START BIT' &&
+        currentLogicalSignal === 1 &&
+        nextLogicalSignal === 0
+      ) {
+        const lowRunStart = sampleIndex + 1;
+        const lowRunEnd = this.findLowRunEnd(rxtx, lowRunStart);
+        if (lowRunEnd - lowRunStart >= this.breakMinSampleCount) {
+          this.sampleIndex = lowRunEnd;
+          this.handleBreak(rxtx, lowRunStart, lowRunEnd);
+          sampleIndex = lowRunEnd;
+          continue;
+        }
+
         this.frameStart[rxtx] = sampleIndex + 1;
         this.state[rxtx] = 'GET START BIT';
         this.curFrameBit[rxtx] = 0;
@@ -439,6 +458,24 @@ export class UARTDecoder extends DecoderBase {
 
       sampleIndex++;
     }
+  }
+
+  private normalizeSignal(rxtx: number, signal: number): number {
+    return this.inv[rxtx] ? (signal ? 0 : 1) : signal;
+  }
+
+  private findLowRunEnd(rxtx: number, startSample: number): number {
+    const data = this.channelData[rxtx];
+    let sampleIndex = startSample;
+
+    while (
+      sampleIndex < data.length &&
+      this.normalizeSignal(rxtx, this.getCurrentChannelValue(rxtx, sampleIndex)) === 0
+    ) {
+      sampleIndex++;
+    }
+
+    return sampleIndex;
   }
 
   /**

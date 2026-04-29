@@ -237,7 +237,24 @@ async function verifyI2CDecoderSmoke(page) {
   await page.waitForExpression('document.body.innerText.includes("START")', 'START result was not rendered');
   await page.waitForExpression('document.body.innerText.includes("ACK")', 'ACK result was not rendered');
   await page.waitForExpression('document.body.innerText.includes("STOP")', 'STOP result was not rendered');
-  return 'i2c-ui: decoder-button/results';
+  await page.evaluate(`(() => {
+    const select = document.querySelector('[data-testid="decoder-protocol-select"]');
+    select.value = 'uart';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await page.waitForExpression(
+    'Array.from(document.querySelectorAll("button")).some(button => /运行 UART 解码/.test(button.textContent || ""))',
+    'run UART decoder button was not rendered'
+  );
+  await page.evaluate(`(() => {
+    const button = Array.from(document.querySelectorAll('button')).find(item => /运行 UART 解码/.test(item.textContent || ''));
+    button.click();
+    return true;
+  })()`);
+  await page.waitForExpression('document.body.innerText.includes("55")', 'UART RX result was not rendered');
+  await page.waitForExpression('document.body.innerText.includes("33")', 'UART TX result was not rendered');
+  return 'i2c-ui: decoder-button/results; uart-ui: decoder-button/results';
 }
 
 (async () => {
