@@ -835,6 +835,70 @@ describe('decoderStore I2C 解码状态', () => {
     expect(store.decoderErrors[0]).toBe('采样率无效，无法执行协议解码');
     expect(store.lastExecutionTime).toBe(1);
   });
+
+  it('runSPIDecoder 应发送 SPI 映射和核心选项', async () => {
+    const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
+    const store = useDecoderStore();
+    store.initializeSPIMapping([
+      { channelNumber: 0, channelName: 'CLK', hidden: false },
+      { channelNumber: 1, channelName: 'MISO', hidden: false },
+      { channelNumber: 2, channelName: 'MOSI', hidden: false },
+      { channelNumber: 3, channelName: 'CS', hidden: false }
+    ]);
+    store.setSPIOption('cpol', '1');
+    store.setSPIOption('cpha', '1');
+    store.setSPIOption('bitOrder', 'lsb-first');
+    store.setSPIOption('wordSize', 16);
+
+    const host = {
+      sendCommand: jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          decoderId: 'spi',
+          decoderName: 'SPI',
+          success: true,
+          executionTime: 5,
+          results: [
+            { startSample: 1, endSample: 16, annotationType: 0, values: ['A5'], rawData: 0xA5 },
+            { startSample: 1, endSample: 16, annotationType: 1, values: ['3C'], rawData: 0x3C }
+          ]
+        }
+      })
+    };
+
+    await store.runSPIDecoder(host, {
+      hasData: true,
+      sampleRate: 1000000,
+      channels: [
+        { channelNumber: 0, channelName: 'CLK', hidden: false },
+        { channelNumber: 1, channelName: 'MISO', hidden: false },
+        { channelNumber: 2, channelName: 'MOSI', hidden: false },
+        { channelNumber: 3, channelName: 'CS', hidden: false }
+      ]
+    });
+
+    expect(store.activeDecoderConfigs).toEqual(expect.arrayContaining([
+      { decoderId: 'spi', label: 'SPI' }
+    ]));
+    expect(host.sendCommand).toHaveBeenCalledWith('runDecoder', {
+      decoderId: 'spi',
+      channelMapping: [
+        { captureIndex: 0, decoderIndex: 0, name: 'CLK' },
+        { captureIndex: 1, decoderIndex: 1, name: 'MISO' },
+        { captureIndex: 2, decoderIndex: 2, name: 'MOSI' },
+        { captureIndex: 3, decoderIndex: 3, name: 'CS' }
+      ],
+      options: [
+        { optionIndex: 0, value: 'active-low' },
+        { optionIndex: 1, value: '1' },
+        { optionIndex: 2, value: '1' },
+        { optionIndex: 3, value: 'lsb-first' },
+        { optionIndex: 4, value: 16 }
+      ]
+    });
+    expect(store.decoderResults).toHaveLength(2);
+    expect(store.decoderErrors).toEqual([]);
+  });
 });
 
 describe('AppSidebarRight 协议解码面板', () => {
@@ -914,6 +978,97 @@ describe('AppSidebarRight 协议解码面板', () => {
       expect(mountPoint.textContent).toContain('ACK');
       expect(mountPoint.textContent).toContain('STOP');
       expect(mountPoint.textContent).toContain('I²C HTML 模拟');
+
+      app.unmount();
+      mountPoint.remove();
+    });
+  });
+
+  it('AppSidebarRight 应支持切换到 SPI 并运行解码', async () => {
+    if (!(globalThis as typeof globalThis & { __WEBVIEW_JEST__?: boolean }).__WEBVIEW_JEST__) {
+      return;
+    }
+
+    await jest.isolateModulesAsync(async () => {
+      jest.unmock('vue');
+      jest.unmock('pinia');
+      jest.unmock('../../../src/frontend/app/components/AppSidebarRight.vue');
+
+      const { createApp, nextTick } = await import('vue');
+      const { createPinia } = await import('pinia');
+      const { useSessionStore } = await import('../../../src/frontend/core/stores/sessionStore');
+      const AppSidebarRight = (await import('../../../src/frontend/app/components/AppSidebarRight.vue')).default;
+      const host = {
+        sendCommand: jest.fn().mockResolvedValue({
+          success: true,
+          data: {
+            decoderId: 'spi',
+            decoderName: 'SPI',
+            success: true,
+            executionTime: 6,
+            results: [
+              { startSample: 1, endSample: 16, annotationType: 0, values: ['A5'], rawData: 0xA5 },
+              { startSample: 1, endSample: 16, annotationType: 1, values: ['3C'], rawData: 0x3C }
+            ]
+          }
+        })
+      };
+      const mountPoint = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+      document.body.appendChild(mountPoint);
+
+      const app = createApp(AppSidebarRight);
+      app.use(createPinia());
+      app.provide('host', host);
+      app.mount(mountPoint);
+
+      const sessionStore = useSessionStore();
+      sessionStore.applyDocument({
+        uri: 'file:///tmp/spi.lac',
+        fileName: 'spi.lac',
+        content: JSON.stringify({
+          captureSession: {
+            sampleRate: 1000000,
+            totalSamples: 16,
+            captureChannels: [
+              { channelNumber: 0, channelName: 'CLK', samples: [0, 1, 0, 1] },
+              { channelNumber: 1, channelName: 'MISO', samples: [1, 1, 0, 0] },
+              { channelNumber: 2, channelName: 'MOSI', samples: [0, 0, 1, 1] },
+              { channelNumber: 3, channelName: 'CS', samples: [0, 0, 0, 0] }
+            ]
+          }
+        })
+      });
+
+      await nextTick();
+      await Promise.resolve();
+
+      const protocolSelect = mountPoint.querySelector('[data-testid="decoder-protocol-select"]') as HTMLSelectElement;
+      protocolSelect.value = 'spi';
+      protocolSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await nextTick();
+
+      const runButton = Array.from(mountPoint.querySelectorAll('button')).find(button =>
+        button.textContent?.includes('运行 SPI 解码')
+      ) as HTMLButtonElement | undefined;
+
+      expect(runButton).toBeTruthy();
+      expect(runButton?.disabled).toBe(false);
+
+      runButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await nextTick();
+      await Promise.resolve();
+      await nextTick();
+
+      expect(host.sendCommand).toHaveBeenCalledWith('runDecoder', expect.objectContaining({
+        decoderId: 'spi',
+        channelMapping: expect.arrayContaining([
+          { captureIndex: 0, decoderIndex: 0, name: 'CLK' },
+          { captureIndex: 2, decoderIndex: 2, name: 'MOSI' }
+        ])
+      }));
+      expect(mountPoint.textContent).toContain('A5');
+      expect(mountPoint.textContent).toContain('3C');
+      expect(mountPoint.textContent).toContain('SPI');
 
       app.unmount();
       mountPoint.remove();
@@ -1544,6 +1699,66 @@ describe('browserHost 实现', () => {
     });
   });
 
+  it('HTML host runDecoder 应返回 SPI fixture 结果', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actual = await import('../../../src/frontend/platform/host/browserHost');
+      window.__FRONTEND_BOOTSTRAP__ = {
+        host: 'html',
+        document: {
+          uri: 'memory://logic-analyzer/spi.lac',
+          fileName: 'spi.lac',
+          content: JSON.stringify({
+            Settings: {
+              Frequency: 1000000,
+              CaptureChannels: [
+                { ChannelNumber: 0, ChannelName: 'CLK', Hidden: false },
+                { ChannelNumber: 1, ChannelName: 'MISO', Hidden: false },
+                { ChannelNumber: 2, ChannelName: 'MOSI', Hidden: false },
+                { ChannelNumber: 3, ChannelName: 'CS', Hidden: false }
+              ]
+            },
+            Samples: Array.from({ length: 32 }, (_, index) => (index % 2 === 0 ? '8' : '9'))
+          })
+        },
+        capabilities: {
+          canSave: false,
+          canExport: true,
+          canStartCapture: false,
+          canConnectDevice: false
+        }
+      };
+      const host = actual.createBrowserHost();
+
+      const result: any = await host.sendCommand('runDecoder', {
+        decoderId: 'spi',
+        channelMapping: [
+          { captureIndex: 0, decoderIndex: 0, name: 'CLK' },
+          { captureIndex: 1, decoderIndex: 1, name: 'MISO' },
+          { captureIndex: 2, decoderIndex: 2, name: 'MOSI' },
+          { captureIndex: 3, decoderIndex: 3, name: 'CS' }
+        ],
+        options: []
+      });
+
+      expect(result).toEqual({
+        success: true,
+        data: expect.objectContaining({
+          decoderId: 'spi',
+          decoderName: 'SPI HTML 模拟',
+          success: true,
+          executionTime: expect.any(Number),
+          results: expect.any(Array)
+        })
+      });
+      const values = result.data.results.flatMap((item: any) => item.values);
+      expect(values).toEqual(expect.arrayContaining([
+        'MISO: A5',
+        'MOSI: 3C',
+        'CS asserted'
+      ]));
+    });
+  });
+
   it('HTML host runDecoder 应拒绝未知 decoder', async () => {
     await jest.isolateModulesAsync(async () => {
       const actual = await import('../../../src/frontend/platform/host/browserHost');
@@ -1942,6 +2157,29 @@ describe('LACEditorProvider 契约', () => {
       scl: new Uint8Array(scl),
       sda: new Uint8Array(sda)
     };
+  };
+
+  const generateSPIMode0Transfer = () => {
+    const misoBits = [1, 0, 1, 0, 0, 1, 0, 1];
+    const mosiBits = [0, 0, 1, 1, 1, 1, 0, 0];
+    const clk = new Uint8Array(misoBits.length * 2);
+    const miso = new Uint8Array(misoBits.length * 2);
+    const mosi = new Uint8Array(mosiBits.length * 2);
+    const cs = new Uint8Array(misoBits.length * 2);
+
+    for (let bitIndex = 0; bitIndex < misoBits.length; bitIndex++) {
+      const sampleIndex = bitIndex * 2;
+      clk[sampleIndex] = 0;
+      clk[sampleIndex + 1] = 1;
+      miso[sampleIndex] = misoBits[bitIndex];
+      miso[sampleIndex + 1] = misoBits[bitIndex];
+      mosi[sampleIndex] = mosiBits[bitIndex];
+      mosi[sampleIndex + 1] = mosiBits[bitIndex];
+      cs[sampleIndex] = 0;
+      cs[sampleIndex + 1] = 0;
+    }
+
+    return { clk, miso, mosi, cs };
   };
 
   const createI2CLacPayload = (channels: Array<{ ChannelNumber: number; ChannelName: string }>, samples?: string[]) => ({
@@ -2393,6 +2631,54 @@ describe('LACEditorProvider 契约', () => {
       expect(result.data.results.some((item: any) =>
         item.values.includes('START') || item.values.includes('ACK')
       )).toBe(true);
+    });
+  });
+
+  it('executeHostCommand runDecoder 应返回 SPI 解码结果', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const provider = await createProvider();
+      const spi = generateSPIMode0Transfer();
+      const document = createLacDocument(createI2CLacPayload(
+        [
+          { ChannelNumber: 0, ChannelName: 'CLK' },
+          { ChannelNumber: 1, ChannelName: 'MISO' },
+          { ChannelNumber: 2, ChannelName: 'MOSI' },
+          { ChannelNumber: 3, ChannelName: 'CS' }
+        ],
+        packDigitalSamples([spi.clk, spi.miso, spi.mosi, spi.cs])
+      ));
+
+      const result = await (provider as any).executeHostCommand(
+        document,
+        'runDecoder',
+        {
+          decoderId: 'spi',
+          channelMapping: [
+            { captureIndex: 0, decoderIndex: 0, name: 'CLK' },
+            { captureIndex: 1, decoderIndex: 1, name: 'MISO' },
+            { captureIndex: 2, decoderIndex: 2, name: 'MOSI' },
+            { captureIndex: 3, decoderIndex: 3, name: 'CS' }
+          ],
+          options: [
+            { optionIndex: 0, value: 'active-low' },
+            { optionIndex: 1, value: '0' },
+            { optionIndex: 2, value: '0' },
+            { optionIndex: 3, value: 'msb-first' },
+            { optionIndex: 4, value: 8 }
+          ]
+        }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        decoderId: 'spi',
+        success: true,
+        results: expect.any(Array)
+      });
+      expect(result.data.results).toEqual(expect.arrayContaining([
+        expect.objectContaining({ annotationType: 0, rawData: 0xA5 }),
+        expect.objectContaining({ annotationType: 1, rawData: 0x3C })
+      ]));
     });
   });
 

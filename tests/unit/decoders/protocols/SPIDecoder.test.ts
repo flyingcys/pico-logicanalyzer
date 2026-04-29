@@ -6,6 +6,7 @@
  */
 
 import { SPIDecoder } from '../../../../src/decoders/protocols/SPIDecoder';
+import { DecoderManager } from '../../../../src/decoders/DecoderManager';
 import { DecoderOptionValue, ChannelData, DecoderOutputType } from '../../../../src/decoders/types';
 
 describe('SPIDecoder', () => {
@@ -20,6 +21,16 @@ describe('SPIDecoder', () => {
 
   const createDataSamples = (bits: number[]): Uint8Array =>
     new Uint8Array(bits.flatMap(bit => [bit, bit]));
+
+  const createMode0TransferChannels = (
+    misoBits = [1, 0, 1, 0, 0, 1, 0, 1],
+    mosiBits = [0, 0, 1, 1, 1, 1, 0, 0]
+  ): ChannelData[] => [
+    { channelNumber: 0, channelName: 'CLK', samples: createClockSamples(8) },
+    { channelNumber: 1, channelName: 'MISO', samples: createDataSamples(misoBits) },
+    { channelNumber: 2, channelName: 'MOSI', samples: createDataSamples(mosiBits) },
+    { channelNumber: 3, channelName: 'CS', samples: new Uint8Array(16).fill(0) }
+  ];
 
   describe('解码器元数据验证', () => {
     it('应该具有正确的基本信息', () => {
@@ -102,7 +113,8 @@ describe('SPIDecoder', () => {
         ['mosi-bit', 'MOSI bit'],
         ['warning', 'Warning'],
         ['miso-transfer', 'MISO transfer'],
-        ['mosi-transfer', 'MOSI transfer']
+        ['mosi-transfer', 'MOSI transfer'],
+        ['cs-change', 'CS change']
       ];
       expect(spiDecoder.annotations).toEqual(expectedAnnotations);
     });
@@ -115,6 +127,7 @@ describe('SPIDecoder', () => {
         ['mosi-bits', 'MOSI bits', [3]],
         ['mosi-data-vals', 'MOSI data', [1]],
         ['mosi-transfers', 'MOSI transfers', [6]],
+        ['cs-changes', 'CS changes', [7]],
         ['other', 'Other', [4]]
       ];
       expect(spiDecoder.annotationRows).toEqual(expectedRows);
@@ -480,13 +493,92 @@ describe('SPIDecoder', () => {
 
       const results = spiDecoder.decode(1000000, channels, options);
       expect(results).toBeDefined();
-      
+
       // 应该有传输注释，因为CS信号有变化
-      const transferAnnotations = results.filter(r => 
+      const transferAnnotations = results.filter(r =>
         r.annotationType === 5 || r.annotationType === 6 // transfer annotations
       );
-      
+
       expect(transferAnnotations.length).toBeGreaterThanOrEqual(0);
+    });
+
+    it('应该输出可测的CS断言和取消断言注释', () => {
+      const channels: ChannelData[] = [
+        { channelNumber: 0, channelName: 'CLK', samples: new Uint8Array([0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0]) },
+        { channelNumber: 1, channelName: 'MISO', samples: new Uint8Array([1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1]) },
+        { channelNumber: 2, channelName: 'MOSI', samples: new Uint8Array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]) },
+        { channelNumber: 3, channelName: 'CS', samples: new Uint8Array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]) }
+      ];
+
+      const results = spiDecoder.decode(1000000, channels, [
+        { optionIndex: 0, value: 'active-low' }
+      ]);
+      const csChanges = results.filter(result => result.annotationType === 7);
+
+      expect(csChanges).toEqual([
+        expect.objectContaining({ values: ['CS asserted', 'CS active'] }),
+        expect.objectContaining({ values: ['CS deasserted', 'CS idle'] })
+      ]);
+    });
+  });
+
+  describe('DecoderManager主路径', () => {
+    it('应该按CLK/MISO/MOSI/CS映射解码乱序采集通道', async () => {
+      const manager = new DecoderManager();
+      const orderedChannels = createMode0TransferChannels();
+      const shuffledChannels: ChannelData[] = [
+        { ...orderedChannels[2], channelNumber: 10, channelName: 'CAP_MOSI' },
+        { ...orderedChannels[3], channelNumber: 11, channelName: 'CAP_CS' },
+        { ...orderedChannels[0], channelNumber: 12, channelName: 'CAP_CLK' },
+        { ...orderedChannels[1], channelNumber: 13, channelName: 'CAP_MISO' }
+      ];
+
+      const result = await manager.executeDecoder('spi', 1000000, shuffledChannels, [
+        { optionIndex: 0, value: 'active-low' },
+        { optionIndex: 1, value: '0' },
+        { optionIndex: 2, value: '0' },
+        { optionIndex: 3, value: 'msb-first' },
+        { optionIndex: 4, value: 8 }
+      ], [
+        { captureIndex: 2, decoderIndex: 0, name: 'CLK' },
+        { captureIndex: 3, decoderIndex: 1, name: 'MISO' },
+        { captureIndex: 0, decoderIndex: 2, name: 'MOSI' },
+        { captureIndex: 1, decoderIndex: 3, name: 'CS' }
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.results).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ annotationType: 0, rawData: 0xA5, values: ['A5'] }),
+          expect.objectContaining({ annotationType: 1, rawData: 0x3C, values: ['3C'] })
+        ])
+      );
+    });
+
+    it('应该在缓存实例连续执行时重置CPHA和CS极性', async () => {
+      const manager = new DecoderManager();
+      const mode1Channels: ChannelData[] = [
+        { channelNumber: 0, channelName: 'CLK', samples: new Uint8Array([0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]) },
+        { channelNumber: 1, channelName: 'MISO', samples: new Uint8Array([0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1]) },
+        { channelNumber: 2, channelName: 'MOSI', samples: new Uint8Array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0]) },
+        { channelNumber: 3, channelName: 'CS', samples: new Uint8Array(18).fill(1) }
+      ];
+      const mode0Channels = createMode0TransferChannels();
+
+      const first = await manager.executeDecoder('spi', 1000000, mode1Channels, [
+        { optionIndex: 0, value: 'active-high' },
+        { optionIndex: 2, value: '1' }
+      ]);
+      const second = await manager.executeDecoder('spi', 1000000, mode0Channels, []);
+
+      expect(first.success).toBe(true);
+      expect(second.success).toBe(true);
+      expect(second.results).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ annotationType: 0, rawData: 0xA5 }),
+          expect.objectContaining({ annotationType: 1, rawData: 0x3C })
+        ])
+      );
     });
   });
 

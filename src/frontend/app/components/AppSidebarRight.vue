@@ -6,6 +6,7 @@ import { useDecoderStore } from '../../core/stores/decoderStore';
 import { useSessionStore } from '../../core/stores/sessionStore';
 import { useUiStore } from '../../core/stores/uiStore';
 import { useWaveformStore } from '../../core/stores/waveformStore';
+import type { FrontendDecoderId, SPIOptionKey, SPIMappingRole } from '../../core/stores/decoderStore';
 
 type SidebarTab = 'decoder' | 'performance';
 type I2CRole = 'scl' | 'sda';
@@ -37,7 +38,7 @@ watch(
     .map(entry => `${entry.captureIndex}:${entry.channel.channelNumber}:${entry.channel.channelName}`)
     .join('|'),
   () => {
-    decoderStore.initializeI2CMapping(sessionStore.channels);
+    decoderStore.initializeDecoderMappings(sessionStore.channels);
   },
   { immediate: true }
 );
@@ -48,18 +49,36 @@ const decoderStatusText = computed(() => {
   }
 
   if (visibleChannels.value.length < 2) {
-    return 'I2C 解码需要至少两个通道';
+    return decoderStore.activeDecoderId === 'spi'
+      ? 'SPI 解码需要 CLK 与至少一个数据通道'
+      : 'I2C 解码需要至少两个通道';
   }
 
   return `${sessionStore.totalSamples} 样本 · ${sessionStore.sampleRate} Hz`;
 });
 
-const canRunI2CDecoder = computed(() =>
-  sessionStore.hasData
-  && visibleChannels.value.length >= 2
-  && decoderStore.channelConflicts.length === 0
-  && !decoderStore.isDecoding
+const activeDecoderLabel = computed(() =>
+  decoderStore.activeDecoderConfigs.find(config => config.decoderId === decoderStore.activeDecoderId)?.label
+    ?? 'I2C'
 );
+
+const canRunActiveDecoder = computed(() => {
+  if (!sessionStore.hasData || decoderStore.channelConflicts.length > 0 || decoderStore.isDecoding) {
+    return false;
+  }
+
+  if (decoderStore.activeDecoderId === 'spi') {
+    return decoderStore.spiMapping.clkCaptureIndex !== null
+      && (
+        decoderStore.spiMapping.misoCaptureIndex !== null
+        || decoderStore.spiMapping.mosiCaptureIndex !== null
+      );
+  }
+
+  return visibleChannels.value.length >= 2
+    && decoderStore.i2cMapping.sclCaptureIndex !== null
+    && decoderStore.i2cMapping.sdaCaptureIndex !== null;
+});
 
 const decoderSummary = computed(() => [
   {
@@ -105,8 +124,29 @@ function setMappingFromEvent(role: I2CRole, event: Event) {
   decoderStore.setI2CMapping(role, Number.isFinite(value) ? value : null);
 }
 
-async function runI2CDecoder() {
-  await decoderStore.runI2CDecoder(host, sessionStore);
+function setSPIMappingFromEvent(role: SPIMappingRole, event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const value = select.value === '' ? null : Number(select.value);
+  decoderStore.setSPIMapping(role, Number.isFinite(value) ? value : null);
+}
+
+function setActiveDecoderFromEvent(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const decoderId = select.value === 'spi' ? 'spi' : 'i2c';
+  decoderStore.setActiveDecoder(decoderId as FrontendDecoderId);
+}
+
+function setSPIOptionFromEvent(option: SPIOptionKey, event: Event) {
+  const input = event.target as HTMLInputElement | HTMLSelectElement;
+  decoderStore.setSPIOption(option, option === 'wordSize' ? Number(input.value) : input.value);
+}
+
+async function runActiveDecoder() {
+  if (decoderStore.activeDecoderId === 'spi') {
+    await decoderStore.runSPIDecoder(host, sessionStore);
+  } else {
+    await decoderStore.runI2CDecoder(host, sessionStore);
+  }
 }
 </script>
 
@@ -135,7 +175,7 @@ async function runI2CDecoder() {
       >
         <header class="decoder-panel__header">
           <h2 class="app-sidebar-right__title">
-            I2C 协议解码
+            {{ activeDecoderLabel }} 协议解码
           </h2>
           <p
             v-if="visibleDecoderName"
@@ -148,7 +188,27 @@ async function runI2CDecoder() {
           </p>
         </header>
 
-        <div class="decoder-panel__mapping">
+        <label class="decoder-panel__field decoder-panel__protocol">
+          <span>协议</span>
+          <select
+            :value="decoderStore.activeDecoderId"
+            data-testid="decoder-protocol-select"
+            @change="setActiveDecoderFromEvent"
+          >
+            <option
+              v-for="decoder in decoderStore.activeDecoderConfigs"
+              :key="decoder.decoderId"
+              :value="decoder.decoderId"
+            >
+              {{ decoder.label }}
+            </option>
+          </select>
+        </label>
+
+        <div
+          v-if="decoderStore.activeDecoderId === 'i2c'"
+          class="decoder-panel__mapping"
+        >
           <label class="decoder-panel__field">
             <span>SCL</span>
             <select
@@ -183,6 +243,164 @@ async function runI2CDecoder() {
         </div>
 
         <div
+          v-else
+          class="decoder-panel__mapping"
+        >
+          <label class="decoder-panel__field">
+            <span>CLK</span>
+            <select
+              :value="decoderStore.spiMapping.clkCaptureIndex ?? ''"
+              @change="setSPIMappingFromEvent('clk', $event)"
+            >
+              <option value="">
+                未映射
+              </option>
+              <option
+                v-for="channel in visibleChannels"
+                :key="`spi-clk-${channel.captureIndex}`"
+                :value="channel.captureIndex"
+              >
+                CH{{ channel.channel.channelNumber }} - {{ channel.channel.channelName }}
+              </option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>MISO</span>
+            <select
+              :value="decoderStore.spiMapping.misoCaptureIndex ?? ''"
+              @change="setSPIMappingFromEvent('miso', $event)"
+            >
+              <option value="">
+                未映射
+              </option>
+              <option
+                v-for="channel in visibleChannels"
+                :key="`spi-miso-${channel.captureIndex}`"
+                :value="channel.captureIndex"
+              >
+                CH{{ channel.channel.channelNumber }} - {{ channel.channel.channelName }}
+              </option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>MOSI</span>
+            <select
+              :value="decoderStore.spiMapping.mosiCaptureIndex ?? ''"
+              @change="setSPIMappingFromEvent('mosi', $event)"
+            >
+              <option value="">
+                未映射
+              </option>
+              <option
+                v-for="channel in visibleChannels"
+                :key="`spi-mosi-${channel.captureIndex}`"
+                :value="channel.captureIndex"
+              >
+                CH{{ channel.channel.channelNumber }} - {{ channel.channel.channelName }}
+              </option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>CS</span>
+            <select
+              :value="decoderStore.spiMapping.csCaptureIndex ?? ''"
+              @change="setSPIMappingFromEvent('cs', $event)"
+            >
+              <option value="">
+                未映射
+              </option>
+              <option
+                v-for="channel in visibleChannels"
+                :key="`spi-cs-${channel.captureIndex}`"
+                :value="channel.captureIndex"
+              >
+                CH{{ channel.channel.channelNumber }} - {{ channel.channel.channelName }}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <div
+          v-if="decoderStore.activeDecoderId === 'spi'"
+          class="decoder-panel__options"
+        >
+          <label class="decoder-panel__field">
+            <span>CS 极性</span>
+            <select
+              :value="decoderStore.spiOptions.csPolarity"
+              @change="setSPIOptionFromEvent('csPolarity', $event)"
+            >
+              <option value="active-low">
+                active-low
+              </option>
+              <option value="active-high">
+                active-high
+              </option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>CPOL</span>
+            <select
+              :value="decoderStore.spiOptions.cpol"
+              @change="setSPIOptionFromEvent('cpol', $event)"
+            >
+              <option value="0">
+                0
+              </option>
+              <option value="1">
+                1
+              </option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>CPHA</span>
+            <select
+              :value="decoderStore.spiOptions.cpha"
+              @change="setSPIOptionFromEvent('cpha', $event)"
+            >
+              <option value="0">
+                0
+              </option>
+              <option value="1">
+                1
+              </option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>Bit order</span>
+            <select
+              :value="decoderStore.spiOptions.bitOrder"
+              @change="setSPIOptionFromEvent('bitOrder', $event)"
+            >
+              <option value="msb-first">
+                msb-first
+              </option>
+              <option value="lsb-first">
+                lsb-first
+              </option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>Word size</span>
+            <input
+              type="number"
+              min="1"
+              max="32"
+              step="1"
+              :value="decoderStore.spiOptions.wordSize"
+              @change="setSPIOptionFromEvent('wordSize', $event)"
+            >
+          </label>
+        </div>
+
+        <div
           v-if="decoderStore.channelConflicts.length > 0"
           class="decoder-panel__errors"
         >
@@ -197,14 +415,14 @@ async function runI2CDecoder() {
         <button
           type="button"
           class="decoder-panel__run"
-          :disabled="!canRunI2CDecoder"
-          data-testid="run-i2c-decoder"
-          @click="runI2CDecoder"
+          :disabled="!canRunActiveDecoder"
+          :data-testid="decoderStore.activeDecoderId === 'spi' ? 'run-spi-decoder' : 'run-i2c-decoder'"
+          @click="runActiveDecoder"
         >
           <span class="decoder-panel__run-icon">
             <VideoPlay />
           </span>
-          <span>{{ decoderStore.isDecoding ? '解码中...' : '运行 I2C 解码' }}</span>
+          <span>{{ decoderStore.isDecoding ? '解码中...' : `运行 ${activeDecoderLabel} 解码` }}</span>
         </button>
 
         <dl class="app-sidebar-right__summary">
@@ -397,6 +615,16 @@ async function runI2CDecoder() {
   gap: 10px;
 }
 
+.decoder-panel__protocol {
+  max-width: 220px;
+}
+
+.decoder-panel__options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .decoder-panel__field {
   display: grid;
   gap: 6px;
@@ -405,7 +633,8 @@ async function runI2CDecoder() {
   font-size: 12px;
 }
 
-.decoder-panel__field select {
+.decoder-panel__field select,
+.decoder-panel__field input {
   width: 100%;
   min-width: 0;
   height: 34px;

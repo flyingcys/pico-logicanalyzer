@@ -116,7 +116,8 @@ export class SPIDecoder extends DecoderBase {
     ['mosi-bit', 'MOSI bit'],
     ['warning', 'Warning'],
     ['miso-transfer', 'MISO transfer'],
-    ['mosi-transfer', 'MOSI transfer']
+    ['mosi-transfer', 'MOSI transfer'],
+    ['cs-change', 'CS change']
   ];
 
   // 注释行定义 - 匹配原解码器的annotation_rows
@@ -127,6 +128,7 @@ export class SPIDecoder extends DecoderBase {
     ['mosi-bits', 'MOSI bits', [3]],
     ['mosi-data-vals', 'MOSI data', [1]],
     ['mosi-transfers', 'MOSI transfers', [6]],
+    ['cs-changes', 'CS changes', [7]],
     ['other', 'Other', [4]]
   ];
 
@@ -586,9 +588,24 @@ export class SPIDecoder extends DecoderBase {
    * 对应原版的 put CS-CHANGE (lines 274-275)
    */
   private putCSChange(oldCS: number | null, newCS: number | null): void {
-    // 发送CS-CHANGE Python输出（对应原版 lines 274-275）
-    // 在TypeScript版本中，我们通过注释来输出CS变化信息
-    // 这里可以添加具体的CS变化注释输出
+    if (newCS === null || oldCS === newCS || this.lastCS === newCS) {
+      return;
+    }
+
+    const asserted = this.csAsserted(newCS);
+    if (oldCS === null && !asserted) {
+      this.lastCS = newCS;
+      return;
+    }
+
+    this.put(Math.max(0, this.sampleIndex - 1), this.sampleIndex, {
+      type: DecoderOutputType.ANNOTATION,
+      annotationType: 7, // cs-change
+      values: asserted ? ['CS asserted', 'CS active'] : ['CS deasserted', 'CS idle'],
+      rawData: newCS
+    });
+
+    this.lastCS = newCS;
   }
 
   /**

@@ -70,10 +70,14 @@ interface BrowserDecoderDocument {
 
 const I2C_DECODER_ID = 'i2c';
 const I2C_DECODER_NAME = 'I²C HTML 模拟';
+const SPI_DECODER_ID = 'spi';
+const SPI_DECODER_NAME = 'SPI HTML 模拟';
 const NO_DECODABLE_SAMPLES = '当前文件没有可解码样本';
 const INVALID_SAMPLE_RATE = '采样率无效，无法执行协议解码';
 const I2C_CHANNELS_REQUIRED = 'I2C 解码需要 SCL 和 SDA 两个通道';
 const I2C_SAME_CHANNEL = 'SCL 和 SDA 不能映射到同一采集通道';
+const SPI_CHANNELS_REQUIRED = 'SPI 解码需要 CLK 和至少一个 MISO/MOSI 通道';
+const SPI_SAME_CHANNEL = 'SPI 通道映射不能重复使用同一采集通道';
 
 function cloneDocument(document?: FrontendDocumentData): FrontendDocumentData | undefined {
   return document ? { ...document } : undefined;
@@ -366,6 +370,49 @@ function createSyntheticI2CResults(sampleCount: number): BrowserDecoderResult[] 
   ];
 }
 
+function createSyntheticSPIResults(sampleCount: number): BrowserDecoderResult[] {
+  const point = (sample: number) => toStableSample(sampleCount, sample);
+  const startSample = point(1);
+  const endSample = Math.max(startSample, point(16));
+  const transferEnd = Math.max(endSample, point(20));
+
+  return [
+    {
+      startSample,
+      endSample,
+      annotationType: 0,
+      values: ['MISO: A5', 'A5'],
+      rawData: 0xA5
+    },
+    {
+      startSample,
+      endSample,
+      annotationType: 1,
+      values: ['MOSI: 3C', '3C'],
+      rawData: 0x3C
+    },
+    {
+      startSample: point(0),
+      endSample: startSample,
+      annotationType: 7,
+      values: ['CS asserted', 'CS active'],
+      rawData: 0
+    },
+    {
+      startSample,
+      endSample: transferEnd,
+      annotationType: 5,
+      values: ['A5']
+    },
+    {
+      startSample,
+      endSample: transferEnd,
+      annotationType: 6,
+      values: ['3C']
+    }
+  ];
+}
+
 function validateI2CMapping(
   document: BrowserDecoderDocument,
   channelMapping: BrowserDecoderChannelMapping[]
@@ -390,32 +437,72 @@ function validateI2CMapping(
   return null;
 }
 
+function validateSPIMapping(
+  document: BrowserDecoderDocument,
+  channelMapping: BrowserDecoderChannelMapping[]
+): string | null {
+  const clkMapping = channelMapping.find(mapping => mapping.decoderIndex === 0);
+  const misoMapping = channelMapping.find(mapping => mapping.decoderIndex === 1);
+  const mosiMapping = channelMapping.find(mapping => mapping.decoderIndex === 2);
+  const dataMappings = [misoMapping, mosiMapping].filter(
+    (mapping): mapping is BrowserDecoderChannelMapping => Boolean(mapping)
+  );
+
+  if (!clkMapping || dataMappings.length === 0) {
+    return SPI_CHANNELS_REQUIRED;
+  }
+
+  const requiredMappings = [clkMapping, ...dataMappings];
+  if (requiredMappings.some(mapping => {
+    const channel = document.channels[mapping.captureIndex];
+    return !channel || channel.sampleCount <= 0;
+  })) {
+    return SPI_CHANNELS_REQUIRED;
+  }
+
+  const selectedCaptureIndexes = channelMapping
+    .map(mapping => mapping.captureIndex)
+    .filter(index => index >= 0);
+  if (new Set(selectedCaptureIndexes).size !== selectedCaptureIndexes.length) {
+    return SPI_SAME_CHANNEL;
+  }
+
+  return null;
+}
+
 function runBrowserDecoder(documentData: FrontendDocumentData, payload: unknown): HostCommandResult<BrowserRunDecoderResponse> {
   const request = readRunDecoderRequest(payload);
   const { decoderId } = request;
 
-  if (decoderId !== I2C_DECODER_ID) {
+  if (decoderId !== I2C_DECODER_ID && decoderId !== SPI_DECODER_ID) {
     return createRunDecoderFailure(decoderId, decoderId, `Decoder not found: ${decoderId}`);
   }
 
   const decoderDocument = readBrowserDecoderDocument(documentData);
+  const decoderName = decoderId === SPI_DECODER_ID ? SPI_DECODER_NAME : I2C_DECODER_NAME;
   if (!decoderDocument.hasSamples) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, NO_DECODABLE_SAMPLES);
+    return createRunDecoderFailure(decoderId, decoderName, NO_DECODABLE_SAMPLES);
   }
 
   if (decoderDocument.sampleRate <= 0) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, INVALID_SAMPLE_RATE);
+    return createRunDecoderFailure(decoderId, decoderName, INVALID_SAMPLE_RATE);
   }
 
-  const mappingError = validateI2CMapping(decoderDocument, request.channelMapping);
+  const mappingError = decoderId === SPI_DECODER_ID
+    ? validateSPIMapping(decoderDocument, request.channelMapping)
+    : validateI2CMapping(decoderDocument, request.channelMapping);
   if (mappingError) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, mappingError);
+    return createRunDecoderFailure(decoderId, decoderName, mappingError);
   }
 
-  return createRunDecoderResponse(decoderId, I2C_DECODER_NAME, {
+  const results = decoderId === SPI_DECODER_ID
+    ? createSyntheticSPIResults(decoderDocument.sampleCount)
+    : createSyntheticI2CResults(decoderDocument.sampleCount);
+
+  return createRunDecoderResponse(decoderId, decoderName, {
     success: true,
     executionTime: 1,
-    results: createSyntheticI2CResults(decoderDocument.sampleCount).map(result => ({
+    results: results.map(result => ({
       ...result,
       rawData: result.rawData ?? { source: 'html-host-synthetic' }
     })),
