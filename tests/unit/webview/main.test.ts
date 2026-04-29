@@ -998,6 +998,56 @@ describe('decoderStore I2C 解码状态', () => {
     expect(store.decoderResults[0].values).toEqual(['55']);
     expect(store.lastDecoderName).toBe('UART');
   });
+
+  it('decoderStore 应暴露 CAN 配置并执行 CAN 解码', async () => {
+    const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
+    const store = useDecoderStore();
+    store.initializeDecoderMappings([
+      { channelNumber: 0, channelName: 'CAN_RX', hidden: false },
+      { channelNumber: 1, channelName: 'AUX', hidden: false }
+    ]);
+    const host = {
+      sendCommand: jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          decoderId: 'can',
+          decoderName: 'CAN',
+          success: true,
+          executionTime: 5,
+          results: [
+            { startSample: 1, endSample: 2, annotationType: 1, values: ['ID: 123', '123'], rawData: 0x123 },
+            { startSample: 3, endSample: 4, annotationType: 4, values: ['Data[0]: 11', '11'], rawData: 0x11 }
+          ]
+        }
+      })
+    };
+
+    await store.runCANDecoder(host, {
+      hasData: true,
+      sampleRate: 1000000,
+      channels: [
+        { channelNumber: 0, channelName: 'CAN_RX', hidden: false },
+        { channelNumber: 1, channelName: 'AUX', hidden: false }
+      ]
+    });
+
+    expect(store.activeDecoderConfigs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ decoderId: 'can', label: 'CAN' })
+    ]));
+    expect(host.sendCommand).toHaveBeenCalledWith('runDecoder', {
+      decoderId: 'can',
+      channelMapping: [
+        { captureIndex: 0, decoderIndex: 0, name: 'CAN RX' }
+      ],
+      options: [
+        { optionIndex: 0, value: 500000 },
+        { optionIndex: 1, value: 75 }
+      ]
+    });
+    expect(store.decoderResults).toHaveLength(2);
+    expect(store.lastDecoderName).toBe('CAN');
+    expect(store.decoderErrors).toEqual([]);
+  });
 });
 
 describe('AppSidebarRight 协议解码面板', () => {
@@ -1179,6 +1229,91 @@ describe('AppSidebarRight 协议解码面板', () => {
       expect(mountPoint.textContent).toContain('UART');
       expect(mountPoint.textContent).toContain('55');
       expect(mountPoint.textContent).toContain('33');
+
+      app.unmount();
+      mountPoint.remove();
+    });
+  });
+
+  it('AppSidebarRight 应能选择并运行 CAN 解码', async () => {
+    if (!(globalThis as typeof globalThis & { __WEBVIEW_JEST__?: boolean }).__WEBVIEW_JEST__) {
+      return;
+    }
+
+    await jest.isolateModulesAsync(async () => {
+      jest.unmock('vue');
+      jest.unmock('pinia');
+      jest.unmock('../../../src/frontend/app/components/AppSidebarRight.vue');
+
+      const { createApp, nextTick } = await import('vue');
+      const { createPinia } = await import('pinia');
+      const { useSessionStore } = await import('../../../src/frontend/core/stores/sessionStore');
+      const AppSidebarRight = (await import('../../../src/frontend/app/components/AppSidebarRight.vue')).default;
+      const host = {
+        sendCommand: jest.fn().mockResolvedValue({
+          success: true,
+          data: {
+            decoderId: 'can',
+            decoderName: 'CAN',
+            success: true,
+            executionTime: 6,
+            results: [
+              { startSample: 1, endSample: 2, annotationType: 1, values: ['ID: 123', '123'], rawData: 0x123 },
+              { startSample: 3, endSample: 4, annotationType: 4, values: ['Data[0]: 11', '11'], rawData: 0x11 }
+            ]
+          }
+        })
+      };
+      const mountPoint = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+      document.body.appendChild(mountPoint);
+
+      const app = createApp(AppSidebarRight);
+      app.use(createPinia());
+      app.provide('host', host);
+      app.mount(mountPoint);
+
+      const sessionStore = useSessionStore();
+      sessionStore.applyDocument({
+        uri: 'file:///tmp/can.lac',
+        fileName: 'can.lac',
+        content: JSON.stringify({
+          captureSession: {
+            sampleRate: 1000000,
+            totalSamples: 8,
+            captureChannels: [
+              { channelNumber: 0, channelName: 'CAN_RX', samples: [1, 0, 1, 0] },
+              { channelNumber: 1, channelName: 'AUX', samples: [1, 1, 1, 1] }
+            ]
+          }
+        })
+      });
+
+      await nextTick();
+      await Promise.resolve();
+
+      const protocolSelect = mountPoint.querySelector('[data-testid="decoder-protocol-select"]') as HTMLSelectElement | null;
+      expect(protocolSelect).toBeTruthy();
+      protocolSelect!.value = 'can';
+      protocolSelect!.dispatchEvent(new Event('change', { bubbles: true }));
+      await nextTick();
+
+      const runButton = Array.from(mountPoint.querySelectorAll('button')).find(button =>
+        button.textContent?.includes('运行 CAN 解码')
+      ) as HTMLButtonElement | undefined;
+
+      expect(runButton).toBeTruthy();
+      expect(runButton?.disabled).toBe(false);
+
+      runButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await nextTick();
+      await Promise.resolve();
+      await nextTick();
+
+      expect(host.sendCommand).toHaveBeenCalledWith('runDecoder', expect.objectContaining({
+        decoderId: 'can'
+      }));
+      expect(mountPoint.textContent).toContain('ID: 123');
+      expect(mountPoint.textContent).toContain('Data[0]: 11');
 
       app.unmount();
       mountPoint.remove();
@@ -1679,6 +1814,65 @@ describe('browserHost 实现', () => {
     });
   });
 
+  it('HTML host runDecoder 应返回 CAN fixture 结果', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actual = await import('../../../src/frontend/platform/host/browserHost');
+      window.__FRONTEND_BOOTSTRAP__ = {
+        host: 'html',
+        document: {
+          uri: 'memory://logic-analyzer/can.lac',
+          fileName: 'can.lac',
+          content: JSON.stringify({
+            Settings: {
+              Frequency: 1000000,
+              PreTriggerSamples: 0,
+              PostTriggerSamples: 128,
+              CaptureChannels: [
+                { ChannelNumber: 0, ChannelName: 'CAN_RX', Hidden: false }
+              ]
+            },
+            Samples: Array.from({ length: 128 }, (_, index) => (index % 2 === 0 ? '1' : '0'))
+          })
+        },
+        capabilities: {
+          canSave: false,
+          canExport: true,
+          canStartCapture: false,
+          canConnectDevice: false
+        }
+      };
+      const host = actual.createBrowserHost();
+
+      const result: any = await host.sendCommand('runDecoder', {
+        decoderId: 'can',
+        channelMapping: [
+          { captureIndex: 0, decoderIndex: 0, name: 'CAN RX' }
+        ],
+        options: [
+          { optionIndex: 0, value: 500000 },
+          { optionIndex: 1, value: 75 }
+        ]
+      });
+
+      expect(result).toEqual({
+        success: true,
+        data: expect.objectContaining({
+          decoderId: 'can',
+          decoderName: 'CAN HTML 模拟',
+          success: true,
+          executionTime: expect.any(Number),
+          results: expect.any(Array),
+          performanceStats: expect.objectContaining({
+            totalSamples: 128,
+            processingSpeed: expect.any(Number)
+          })
+        })
+      });
+      const values = result.data.results.flatMap((item: any) => item.values);
+      expect(values).toEqual(expect.arrayContaining(['ID: 123', 'Data[0]: 11']));
+    });
+  });
+
   it('HTML host runDecoder 应拒绝无样本文档', async () => {
     await jest.isolateModulesAsync(async () => {
       const actual = await import('../../../src/frontend/platform/host/browserHost');
@@ -1875,16 +2069,16 @@ describe('browserHost 实现', () => {
       const host = actual.createBrowserHost();
 
       await expect(host.sendCommand('runDecoder', {
-        decoderId: 'lin'
+        decoderId: 'spi'
       })).resolves.toEqual({
         success: true,
         data: {
-          decoderId: 'lin',
-          decoderName: 'lin',
+          decoderId: 'spi',
+          decoderName: 'spi',
           success: false,
           executionTime: 0,
           results: [],
-          error: 'Decoder not found: lin'
+          error: 'Decoder not found: spi'
         }
       });
     });
@@ -2279,6 +2473,28 @@ describe('LACEditorProvider 契约', () => {
       ...Array(idleSuffix).fill(1)
     ]);
   };
+
+  const buildCanFrameBits = (identifier: number, data: number[]) => {
+    const bits: number[] = [0];
+    const pushBits = (value: number, width: number) => {
+      for (let bit = width - 1; bit >= 0; bit--) {
+        bits.push((value >> bit) & 1);
+      }
+    };
+
+    pushBits(identifier, 11);
+    bits.push(0, 0, 0);
+    pushBits(data.length, 4);
+    for (const byte of data) {
+      pushBits(byte, 8);
+    }
+    bits.push(...Array.from({ length: 15 }, () => 0));
+    bits.push(1, 0, 1, 1, 1, 1, 1, 1, 1);
+    return bits;
+  };
+
+  const bitsToSamples = (bits: number[], samplesPerBit: number) =>
+    new Uint8Array(bits.flatMap(bit => Array.from({ length: samplesPerBit }, () => bit)));
 
   const createI2CLacPayload = (channels: Array<{ ChannelNumber: number; ChannelName: string }>, samples?: string[]) => ({
     Settings: {
@@ -2743,6 +2959,45 @@ describe('LACEditorProvider 契约', () => {
       expect(result.data.results.some((item: any) =>
         item.values.includes('START') || item.values.includes('ACK')
       )).toBe(true);
+    });
+  });
+
+  it('executeHostCommand runDecoder 应返回 CAN 解码结果', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const provider = await createProvider();
+      const canSamples = bitsToSamples([1, 1, ...buildCanFrameBits(0x123, [0x11]), 1, 1], 2);
+      const document = createLacDocument(createI2CLacPayload(
+        [
+          { ChannelNumber: 0, ChannelName: 'CAN_RX' }
+        ],
+        packDigitalSamples([canSamples])
+      ));
+
+      const result = await (provider as any).executeHostCommand(
+        document,
+        'runDecoder',
+        {
+          decoderId: 'can',
+          channelMapping: [
+            { captureIndex: 0, decoderIndex: 0, name: 'CAN RX' }
+          ],
+          options: [
+            { optionIndex: 0, value: 500000 },
+            { optionIndex: 1, value: 50 }
+          ]
+        }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        decoderId: 'can',
+        success: true,
+        results: expect.any(Array)
+      });
+      expect(result.data.results).toEqual(expect.arrayContaining([
+        expect.objectContaining({ annotationType: 1, values: ['ID: 123', '123'], rawData: 0x123 }),
+        expect.objectContaining({ annotationType: 4, values: ['Data[0]: 11', '11'], rawData: 0x11 })
+      ]));
     });
   });
 
