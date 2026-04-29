@@ -741,6 +741,22 @@ describe('decoderStore I2C 解码状态', () => {
     expect(store.channelConflicts).toEqual([]);
   });
 
+  it('decoderStore 应按通道名初始化逆序 I2C 映射', () => {
+    const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
+    const store = useDecoderStore();
+
+    store.initializeI2CMapping([
+      { channelNumber: 0, channelName: 'SDA', hidden: false },
+      { channelNumber: 1, channelName: 'SCL', hidden: false }
+    ]);
+
+    expect(store.i2cMapping).toEqual({
+      sclCaptureIndex: 1,
+      sdaCaptureIndex: 0
+    });
+    expect(store.channelConflicts).toEqual([]);
+  });
+
   it('decoderStore 应阻止 SCL 和 SDA 同通道', () => {
     const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
     const store = useDecoderStore();
@@ -841,6 +857,49 @@ describe('decoderStore I2C 解码状态', () => {
     expect(store.lastExecutionMode).toBe('streaming');
     expect(store.lastChunksProcessed).toBe(201);
     expect(store.decoderResults).toHaveLength(1);
+  });
+
+  it('runI2CDecoder 应使用按名称识别出的逆序 I2C 映射', async () => {
+    const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
+    const store = useDecoderStore();
+    store.initializeI2CMapping([
+      { channelNumber: 0, channelName: 'SDA', hidden: false },
+      { channelNumber: 1, channelName: 'SCL', hidden: false }
+    ]);
+    const host = {
+      sendCommand: jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          decoderId: 'i2c',
+          decoderName: 'I2C',
+          success: true,
+          executionTime: 3,
+          results: [
+            { startSample: 1, endSample: 2, annotationType: 0, values: ['START'] }
+          ]
+        }
+      })
+    };
+    const sessionStore = {
+      hasData: true,
+      sampleRate: 1000000,
+      channels: [
+        { channelNumber: 0, channelName: 'SDA', hidden: false },
+        { channelNumber: 1, channelName: 'SCL', hidden: false }
+      ]
+    };
+
+    await store.runI2CDecoder(host, sessionStore);
+
+    expect(host.sendCommand).toHaveBeenCalledWith('runDecoder', {
+      decoderId: 'i2c',
+      channelMapping: [
+        { captureIndex: 1, decoderIndex: 0, name: 'SCL' },
+        { captureIndex: 0, decoderIndex: 1, name: 'SDA' }
+      ],
+      options: []
+    });
+    expect(store.decoderErrors).toEqual([]);
   });
 
   it('runI2CDecoder 失败时应保存错误', async () => {

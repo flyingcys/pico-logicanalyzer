@@ -510,6 +510,45 @@ export class DecoderManager {
   }
 
   /**
+   * 没有显式映射时，优先按源通道名匹配解码器通道，最后才退回位置映射。
+   */
+  private createDefaultChannelMapping(
+    channels: ChannelData[],
+    decoder: DecoderBase
+  ): DecoderSelectedChannel[] {
+    const usedCaptureIndexes = new Set<number>();
+
+    return decoder.channels.map((decoderChannel, index) => {
+      const decoderIndex = decoderChannel.index ?? index;
+      const channelId = decoderChannel.id.toLowerCase();
+      const channelName = decoderChannel.name.toLowerCase();
+
+      const namedIndex = channels.findIndex((channel, captureIndex) => {
+        if (usedCaptureIndexes.has(captureIndex)) {
+          return false;
+        }
+
+        const sourceName = channel.channelName?.toLowerCase();
+        return !!sourceName && (sourceName.includes(channelId) || sourceName.includes(channelName));
+      });
+
+      let captureIndex = namedIndex !== -1 ? namedIndex : index;
+      if (namedIndex === -1 && usedCaptureIndexes.has(captureIndex)) {
+        const unusedIndex = channels.findIndex((_channel, channelIndex) =>
+          !usedCaptureIndexes.has(channelIndex)
+        );
+        captureIndex = unusedIndex === -1 ? index : unusedIndex;
+      }
+      usedCaptureIndexes.add(captureIndex);
+
+      return {
+        captureIndex,
+        decoderIndex
+      };
+    });
+  }
+
+  /**
    * 执行单个解码器
    * 简化的解码器执行接口
    * @param decoderId 解码器ID
@@ -543,10 +582,7 @@ export class DecoderManager {
 
       const effectiveMapping = channelMapping.length > 0
         ? channelMapping
-        : decoder.channels.map((channel, index) => ({
-          captureIndex: index,
-          decoderIndex: channel.index ?? index
-        }));
+        : this.createDefaultChannelMapping(channels, decoder);
 
       // 验证配置
       if (!decoder.validateOptions(options, effectiveMapping, channels)) {

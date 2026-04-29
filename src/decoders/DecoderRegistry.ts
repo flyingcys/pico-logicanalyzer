@@ -12,6 +12,19 @@ import { CANDecoder } from './protocols/CANDecoder';
 import { LINDecoder } from './protocols/LINDecoder';
 import { I2SDecoder } from './protocols/I2SDecoder';
 
+const regularDecoderDefinitions = [
+  { id: 'i2c', label: 'I²C 解码器', decoderClass: I2CDecoder },
+  { id: 'spi', label: 'SPI 解码器', decoderClass: SPIDecoder },
+  { id: 'uart', label: 'UART 解码器', decoderClass: UARTDecoder },
+  { id: 'can', label: 'CAN 解码器', decoderClass: CANDecoder },
+  { id: 'lin', label: 'LIN 解码器', decoderClass: LINDecoder },
+  { id: 'i2s', label: 'I2S 解码器', decoderClass: I2SDecoder }
+] as const;
+
+const streamingDecoderDefinitions = [
+  { id: 'streaming_i2c', label: 'I²C 流式解码器', decoderClass: StreamingI2CDecoder }
+] as const;
+
 /**
  * 注册所有解码器
  */
@@ -20,22 +33,17 @@ export function registerAllDecoders(): void {
 
   try {
     // 注册常规与流式解码器
-    decoderManager.registerDecoder('i2c', I2CDecoder);
-    decoderManager.registerDecoder('spi', SPIDecoder);
-    decoderManager.registerDecoder('uart', UARTDecoder);
-    decoderManager.registerDecoder('can', CANDecoder);
-    decoderManager.registerDecoder('lin', LINDecoder);
-    decoderManager.registerDecoder('i2s', I2SDecoder);
-    decoderManager.registerStreamingDecoder('streaming_i2c', StreamingI2CDecoder);
+    for (const decoder of regularDecoderDefinitions) {
+      decoderManager.registerDecoder(decoder.id, decoder.decoderClass);
+    }
+    for (const decoder of streamingDecoderDefinitions) {
+      decoderManager.registerStreamingDecoder(decoder.id, decoder.decoderClass);
+    }
 
     console.log('✅ 解码器注册完成:');
-    console.log('  - I²C 解码器 (i2c)');
-    console.log('  - SPI 解码器 (spi)');
-    console.log('  - UART 解码器 (uart)');
-    console.log('  - CAN 解码器 (can)');
-    console.log('  - LIN 解码器 (lin)');
-    console.log('  - I2S 解码器 (i2s)');
-    console.log('  - I²C 流式解码器 (streaming_i2c)');
+    for (const decoder of [...regularDecoderDefinitions, ...streamingDecoderDefinitions]) {
+      console.log(`  - ${decoder.label} (${decoder.id})`);
+    }
 
     // 获取统计信息
     const stats = decoderManager.getStatistics();
@@ -58,12 +66,13 @@ export function getDecoderRegistryInfo(): {
   streamingDecoders: string[];
   totalCount: number;
 } {
-  const stats = decoderManager.getStatistics();
+  const regularDecoders = regularDecoderDefinitions.map(decoder => decoder.id);
+  const streamingDecoders = streamingDecoderDefinitions.map(decoder => decoder.id);
 
   return {
-    regularDecoders: ['i2c', 'spi', 'uart', 'can', 'lin', 'i2s'],
-    streamingDecoders: ['streaming_i2c'],
-    totalCount: stats.registeredDecoders + stats.registeredStreamingDecoders
+    regularDecoders,
+    streamingDecoders,
+    totalCount: regularDecoders.length + streamingDecoders.length
   };
 }
 
