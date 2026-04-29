@@ -118,21 +118,23 @@ export class I2CDecoder extends DecoderBase {
       throw new Error('I2C decoder requires both SCL and SDA channels');
     }
 
-    const sclChannel = channels.find(ch => ch.channelName?.toLowerCase().includes('scl') || ch.channelNumber === 0);
-    const sdaChannel = channels.find(ch => ch.channelName?.toLowerCase().includes('sda') || ch.channelNumber === 1);
+    const { sclChannelIndex, sdaChannelIndex } = this.resolveChannelIndexes(channels);
 
-    if (!sclChannel) {
+    if (sclChannelIndex === null) {
       throw new Error('I2C decoder requires SCL channel');
     }
-    if (!sdaChannel) {
+    if (sdaChannelIndex === null) {
       throw new Error('I2C decoder requires SDA channel');
+    }
+    if (sclChannelIndex === sdaChannelIndex) {
+      throw new Error('I2C decoder requires distinct SCL and SDA channels');
     }
 
     // 初始化
     this.sampleRate = sampleRate;
     this.prepareChannelData(channels, [
-      { captureIndex: 0, decoderIndex: 0 }, // SCL
-      { captureIndex: 1, decoderIndex: 1 } // SDA
+      { captureIndex: sclChannelIndex, decoderIndex: 0 }, // SCL
+      { captureIndex: sdaChannelIndex, decoderIndex: 1 } // SDA
     ]);
 
     // 处理选项
@@ -219,6 +221,63 @@ export class I2CDecoder extends DecoderBase {
         this.addressFormat = option.value as string;
       }
     }
+  }
+
+  private resolveChannelIndexes(channels: ChannelData[]): {
+    sclChannelIndex: number | null;
+    sdaChannelIndex: number | null;
+  } {
+    let sclChannelIndex = this.findNamedChannelIndex(channels, 'scl');
+    let sdaChannelIndex = this.findNamedChannelIndex(channels, 'sda');
+    const usedIndexes = new Set<number>();
+
+    if (sclChannelIndex !== null) {
+      usedIndexes.add(sclChannelIndex);
+    }
+    if (sdaChannelIndex !== null && !usedIndexes.has(sdaChannelIndex)) {
+      usedIndexes.add(sdaChannelIndex);
+    }
+
+    if (sclChannelIndex === null) {
+      sclChannelIndex = this.findFallbackChannelIndex(channels, 0, usedIndexes);
+      if (sclChannelIndex !== null) {
+        usedIndexes.add(sclChannelIndex);
+      }
+    }
+
+    if (sdaChannelIndex === null) {
+      sdaChannelIndex = this.findFallbackChannelIndex(channels, 1, usedIndexes);
+    }
+
+    return { sclChannelIndex, sdaChannelIndex };
+  }
+
+  private findNamedChannelIndex(channels: ChannelData[], channelId: 'scl' | 'sda'): number | null {
+    const namedIndex = channels.findIndex(channel =>
+      channel.channelName?.toLowerCase().includes(channelId)
+    );
+
+    return namedIndex === -1 ? null : namedIndex;
+  }
+
+  private findFallbackChannelIndex(
+    channels: ChannelData[],
+    defaultChannelNumber: number,
+    usedIndexes: Set<number>
+  ): number | null {
+    const numberedIndex = channels.findIndex((channel, index) =>
+      !usedIndexes.has(index) && channel.channelNumber === defaultChannelNumber
+    );
+    if (numberedIndex !== -1) {
+      return numberedIndex;
+    }
+
+    if (channels[defaultChannelNumber] && !usedIndexes.has(defaultChannelNumber)) {
+      return defaultChannelNumber;
+    }
+
+    const unusedIndex = channels.findIndex((_channel, index) => !usedIndexes.has(index));
+    return unusedIndex === -1 ? null : unusedIndex;
   }
 
   /**

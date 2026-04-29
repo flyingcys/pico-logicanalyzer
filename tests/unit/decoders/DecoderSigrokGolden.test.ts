@@ -264,8 +264,16 @@ function inputToChannels(input: any): ChannelData[] {
   switch (input.kind) {
     case 'logic-channels':
       return logicChannelsToChannelData(input.channels);
-    case 'i2c-operations':
-      return i2cOperationsToChannels(input.operations);
+    case 'i2c-operations': {
+      const channels = i2cOperationsToChannels(input.operations);
+      if (input.channelOrder === 'sda-scl') {
+        return [
+          { channelNumber: 0, channelName: 'SDA', samples: channels[1].samples },
+          { channelNumber: 1, channelName: 'SCL', samples: channels[0].samples }
+        ];
+      }
+      return channels;
+    }
     case 'spi-transfer':
       return spiTransferToChannels(input);
     case 'can-frame':

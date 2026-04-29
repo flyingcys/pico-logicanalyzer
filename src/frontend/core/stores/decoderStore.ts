@@ -57,6 +57,67 @@ function getVisibleChannelEntries(channels: FrontendAnalyzerChannel[]): VisibleC
     .filter(entry => !entry.channel.hidden);
 }
 
+function findNamedI2CChannel(
+  channels: VisibleChannelEntry[],
+  role: 'scl' | 'sda',
+  usedCaptureIndexes: Set<number>
+): VisibleChannelEntry | undefined {
+  return channels.find(entry =>
+    !usedCaptureIndexes.has(entry.captureIndex) &&
+    entry.channel.channelName?.toLowerCase().includes(role)
+  );
+}
+
+function findFallbackI2CChannel(
+  channels: VisibleChannelEntry[],
+  fallbackPosition: number,
+  usedCaptureIndexes: Set<number>
+): VisibleChannelEntry | undefined {
+  const numberedChannel = channels.find(entry =>
+    !usedCaptureIndexes.has(entry.captureIndex) &&
+    entry.channel.channelNumber === fallbackPosition
+  );
+  if (numberedChannel) {
+    return numberedChannel;
+  }
+
+  const positionalChannel = channels[fallbackPosition];
+  if (positionalChannel && !usedCaptureIndexes.has(positionalChannel.captureIndex)) {
+    return positionalChannel;
+  }
+
+  return channels.find(entry => !usedCaptureIndexes.has(entry.captureIndex));
+}
+
+function resolveI2CMapping(channels: VisibleChannelEntry[]): I2CMappingState {
+  const usedCaptureIndexes = new Set<number>();
+  let sclChannel = findNamedI2CChannel(channels, 'scl', usedCaptureIndexes);
+  if (sclChannel) {
+    usedCaptureIndexes.add(sclChannel.captureIndex);
+  }
+
+  let sdaChannel = findNamedI2CChannel(channels, 'sda', usedCaptureIndexes);
+  if (sdaChannel) {
+    usedCaptureIndexes.add(sdaChannel.captureIndex);
+  }
+
+  if (!sclChannel) {
+    sclChannel = findFallbackI2CChannel(channels, 0, usedCaptureIndexes);
+    if (sclChannel) {
+      usedCaptureIndexes.add(sclChannel.captureIndex);
+    }
+  }
+
+  if (!sdaChannel) {
+    sdaChannel = findFallbackI2CChannel(channels, 1, usedCaptureIndexes);
+  }
+
+  return {
+    sclCaptureIndex: sclChannel?.captureIndex ?? null,
+    sdaCaptureIndex: sdaChannel?.captureIndex ?? null
+  };
+}
+
 function normalizeDecoderResponse(
   commandResult: HostCommandResult<RunDecoderResponse> | RunDecoderResponse
 ): RunDecoderResponse | null {
@@ -89,10 +150,7 @@ export const useDecoderStore = defineStore('frontend-decoder', {
     initializeI2CMapping(channels: FrontendAnalyzerChannel[]) {
       const visibleChannels = getVisibleChannelEntries(channels);
 
-      this.i2cMapping = {
-        sclCaptureIndex: visibleChannels[0]?.captureIndex ?? null,
-        sdaCaptureIndex: visibleChannels[1]?.captureIndex ?? null
-      };
+      this.i2cMapping = resolveI2CMapping(visibleChannels);
       this.recalculateI2CConflicts();
     },
 

@@ -316,6 +316,27 @@ describe('解码器 parity 核心', () => {
     expectGoldenSegments(results, fixture.expected);
   });
 
+  it('DecoderManager 执行 I2C 时按命名通道解码逆序输入', async () => {
+    const fixture = goldenCore.i2cWrite;
+    const orderedChannels = i2cOperationsToChannels(fixture.operations);
+    const reversedChannels: ChannelData[] = [
+      { channelNumber: 0, channelName: 'SDA', samples: orderedChannels[1].samples },
+      { channelNumber: 1, channelName: 'SCL', samples: orderedChannels[0].samples }
+    ];
+
+    const manager = new DecoderManager();
+    const result = await manager.executeDecoder(
+      'i2c',
+      fixture.sampleRate,
+      reversedChannels,
+      [{ optionIndex: 0, value: 'shifted' }]
+    );
+
+    expect(result.success).toBe(true);
+    expectGoldenSegments(result.results, fixture.expected);
+    expect(result.results.filter(segment => segment.annotationType === 5)).toHaveLength(16);
+  });
+
   it('SPI golden mode 0 输出字节与传输注释', () => {
     const fixture = goldenCore.spiMode0;
     const results = new SPIDecoder().decode(fixture.sampleRate, toChannels(fixture.channels), [
@@ -461,7 +482,8 @@ describe('解码器 parity 核心', () => {
     expect(getDecoderRegistryInfo()).toEqual(
       expect.objectContaining({
         regularDecoders: ['i2c', 'spi', 'uart', 'can', 'lin', 'i2s'],
-        streamingDecoders: ['streaming_i2c']
+        streamingDecoders: ['streaming_i2c'],
+        totalCount: 7
       })
     );
   });

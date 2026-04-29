@@ -79,6 +79,31 @@
       ]
     },
     {
+      "id": "i2c.reversed-named-channels.normal",
+      "protocol": "i2c",
+      "category": "normal",
+      "sampleRate": 1000000,
+      "input": {
+        "kind": "i2c-operations",
+        "channelOrder": "sda-scl",
+        "operations": [
+          { "type": "start" },
+          { "type": "byte", "value": 160 },
+          { "type": "ack" },
+          { "type": "byte", "value": 18 },
+          { "type": "ack" },
+          { "type": "stop" }
+        ]
+      },
+      "options": [{ "optionIndex": 0, "value": "shifted" }],
+      "expected": [
+        { "annotationType": 7, "rawData": 80, "values": ["Address write: 50", "AW: 50", "50"] },
+        { "annotationType": 3, "values": ["ACK", "A"] },
+        { "annotationType": 9, "rawData": 18, "values": ["Data write: 12", "DW: 12", "12"] },
+        { "annotationType": 2, "values": ["Stop", "P"] }
+      ]
+    },
+    {
       "id": "spi.mode0-transfer.normal",
       "protocol": "spi",
       "category": "normal",
