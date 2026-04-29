@@ -835,6 +835,66 @@ describe('decoderStore I2C 解码状态', () => {
     expect(store.decoderErrors[0]).toBe('采样率无效，无法执行协议解码');
     expect(store.lastExecutionTime).toBe(1);
   });
+
+  it('decoderStore 应根据当前通道初始化 I2S 映射并执行 I2S 解码', async () => {
+    const { useDecoderStore } = jest.requireActual('../../../src/frontend/core/stores/decoderStore');
+    const store = useDecoderStore();
+    store.initializeProtocolMappings([
+      { channelNumber: 0, channelName: 'SCK', hidden: false },
+      { channelNumber: 1, channelName: 'WS', hidden: false },
+      { channelNumber: 2, channelName: 'SD', hidden: false }
+    ]);
+    store.selectDecoder('i2s');
+    store.setI2SOption('word_length', 32);
+    store.setI2SOption('justification', 'i2s');
+
+    const host = {
+      sendCommand: jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          decoderId: 'i2s',
+          decoderName: 'I2S',
+          success: true,
+          executionTime: 5,
+          results: [
+            { startSample: 1, endSample: 65, annotationType: 0, values: ['Left: 80000000'] },
+            { startSample: 66, endSample: 130, annotationType: 1, values: ['Right: FEDCBA98'] }
+          ]
+        }
+      })
+    };
+
+    await store.runSelectedDecoder(host, {
+      hasData: true,
+      sampleRate: 2000000,
+      channels: [
+        { channelNumber: 0, channelName: 'SCK', hidden: false },
+        { channelNumber: 1, channelName: 'WS', hidden: false },
+        { channelNumber: 2, channelName: 'SD', hidden: false }
+      ]
+    });
+
+    expect(store.i2sMapping).toEqual({
+      sckCaptureIndex: 0,
+      wsCaptureIndex: 1,
+      sdCaptureIndex: 2
+    });
+    expect(host.sendCommand).toHaveBeenCalledWith('runDecoder', {
+      decoderId: 'i2s',
+      channelMapping: [
+        { captureIndex: 0, decoderIndex: 0, name: 'SCK' },
+        { captureIndex: 1, decoderIndex: 1, name: 'WS' },
+        { captureIndex: 2, decoderIndex: 2, name: 'SD' }
+      ],
+      options: [
+        { optionIndex: 0, value: 32 },
+        { optionIndex: 1, value: 'i2s' }
+      ]
+    });
+    expect(store.decoderResults).toHaveLength(2);
+    expect(store.lastDecoderName).toBe('I2S');
+    expect(store.decoderErrors).toEqual([]);
+  });
 });
 
 describe('AppSidebarRight 协议解码面板', () => {
@@ -914,6 +974,105 @@ describe('AppSidebarRight 协议解码面板', () => {
       expect(mountPoint.textContent).toContain('ACK');
       expect(mountPoint.textContent).toContain('STOP');
       expect(mountPoint.textContent).toContain('I²C HTML 模拟');
+
+      app.unmount();
+      mountPoint.remove();
+    });
+  });
+
+  it('AppSidebarRight 应支持选择 I2S 并发送 SCK/WS/SD 映射和选项', async () => {
+    if (!(globalThis as typeof globalThis & { __WEBVIEW_JEST__?: boolean }).__WEBVIEW_JEST__) {
+      return;
+    }
+
+    await jest.isolateModulesAsync(async () => {
+      jest.unmock('vue');
+      jest.unmock('pinia');
+      jest.unmock('../../../src/frontend/app/components/AppSidebarRight.vue');
+
+      const { createApp, nextTick } = await import('vue');
+      const { createPinia } = await import('pinia');
+      const { useSessionStore } = await import('../../../src/frontend/core/stores/sessionStore');
+      const AppSidebarRight = (await import('../../../src/frontend/app/components/AppSidebarRight.vue')).default;
+      const host = {
+        sendCommand: jest.fn().mockResolvedValue({
+          success: true,
+          data: {
+            decoderId: 'i2s',
+            decoderName: 'I2S',
+            success: true,
+            executionTime: 6,
+            results: [
+              { startSample: 1, endSample: 34, annotationType: 0, values: ['Left: A55A'] },
+              { startSample: 35, endSample: 68, annotationType: 1, values: ['Right: 5AA5'] }
+            ]
+          }
+        })
+      };
+      const mountPoint = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+      document.body.appendChild(mountPoint);
+
+      const app = createApp(AppSidebarRight);
+      app.use(createPinia());
+      app.provide('host', host);
+      app.mount(mountPoint);
+
+      const sessionStore = useSessionStore();
+      sessionStore.applyDocument({
+        uri: 'file:///tmp/i2s.lac',
+        fileName: 'i2s.lac',
+        content: JSON.stringify({
+          captureSession: {
+            sampleRate: 2000000,
+            totalSamples: 68,
+            captureChannels: [
+              { channelNumber: 0, channelName: 'SCK', samples: [0, 1, 0, 1] },
+              { channelNumber: 1, channelName: 'WS', samples: [0, 0, 1, 1] },
+              { channelNumber: 2, channelName: 'SD', samples: [1, 0, 1, 0] }
+            ]
+          }
+        })
+      });
+
+      await nextTick();
+      await Promise.resolve();
+
+      const protocolSelect = mountPoint.querySelector('[data-testid="decoder-select"]') as HTMLSelectElement;
+      protocolSelect.value = 'i2s';
+      protocolSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await nextTick();
+
+      const wordLengthSelect = mountPoint.querySelector('[data-testid="i2s-word-length"]') as HTMLSelectElement;
+      wordLengthSelect.value = '32';
+      wordLengthSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await nextTick();
+
+      const runButton = Array.from(mountPoint.querySelectorAll('button')).find(button =>
+        button.textContent?.includes('运行 I2S 解码')
+      ) as HTMLButtonElement | undefined;
+
+      expect(runButton).toBeTruthy();
+      expect(runButton?.disabled).toBe(false);
+
+      runButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await nextTick();
+      await Promise.resolve();
+      await nextTick();
+
+      expect(host.sendCommand).toHaveBeenCalledWith('runDecoder', {
+        decoderId: 'i2s',
+        channelMapping: [
+          { captureIndex: 0, decoderIndex: 0, name: 'SCK' },
+          { captureIndex: 1, decoderIndex: 1, name: 'WS' },
+          { captureIndex: 2, decoderIndex: 2, name: 'SD' }
+        ],
+        options: [
+          { optionIndex: 0, value: 32 },
+          { optionIndex: 1, value: 'i2s' }
+        ]
+      });
+      expect(mountPoint.textContent).toContain('Left: A55A');
+      expect(mountPoint.textContent).toContain('Right: 5AA5');
 
       app.unmount();
       mountPoint.remove();
@@ -1561,6 +1720,63 @@ describe('browserHost 实现', () => {
           results: [],
           error: 'Decoder not found: uart'
         }
+      });
+    });
+  });
+
+  it('HTML host runDecoder 应返回 I2S smoke 结果', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actual = await import('../../../src/frontend/platform/host/browserHost');
+      window.__FRONTEND_BOOTSTRAP__ = {
+        host: 'html',
+        document: {
+          uri: 'memory://logic-analyzer/i2s.lac',
+          fileName: 'i2s.lac',
+          content: JSON.stringify({
+            Settings: {
+              Frequency: 2000000,
+              CaptureChannels: [
+                { ChannelNumber: 0, ChannelName: 'SCK', Hidden: false },
+                { ChannelNumber: 1, ChannelName: 'WS', Hidden: false },
+                { ChannelNumber: 2, ChannelName: 'SD', Hidden: false }
+              ]
+            },
+            Samples: Array.from({ length: 80 }, (_, index) => (index % 2 === 0 ? '1' : '0'))
+          })
+        },
+        capabilities: {
+          canSave: false,
+          canExport: true,
+          canStartCapture: false,
+          canConnectDevice: false
+        }
+      };
+      const host = actual.createBrowserHost();
+
+      const result: any = await host.sendCommand('runDecoder', {
+        decoderId: 'i2s',
+        channelMapping: [
+          { captureIndex: 0, decoderIndex: 0, name: 'SCK' },
+          { captureIndex: 1, decoderIndex: 1, name: 'WS' },
+          { captureIndex: 2, decoderIndex: 2, name: 'SD' }
+        ],
+        options: [
+          { optionIndex: 0, value: 16 },
+          { optionIndex: 1, value: 'i2s' }
+        ]
+      });
+
+      expect(result).toEqual({
+        success: true,
+        data: expect.objectContaining({
+          decoderId: 'i2s',
+          decoderName: 'I2S HTML 模拟',
+          success: true,
+          results: expect.arrayContaining([
+            expect.objectContaining({ values: ['Left: A55A', 'L: A55A', 'A55A'] }),
+            expect.objectContaining({ values: ['Right: 5AA5', 'R: 5AA5', '5AA5'] })
+          ])
+        })
       });
     });
   });

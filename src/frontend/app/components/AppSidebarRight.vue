@@ -2,13 +2,14 @@
 import { computed, watch } from 'vue';
 import { Cpu, DataAnalysis, VideoPlay } from '@element-plus/icons-vue';
 import { useHost } from '../composables/useHost';
-import { useDecoderStore } from '../../core/stores/decoderStore';
+import { useDecoderStore, type I2SJustification } from '../../core/stores/decoderStore';
 import { useSessionStore } from '../../core/stores/sessionStore';
 import { useUiStore } from '../../core/stores/uiStore';
 import { useWaveformStore } from '../../core/stores/waveformStore';
 
 type SidebarTab = 'decoder' | 'performance';
 type I2CRole = 'scl' | 'sda';
+type I2SRole = 'sck' | 'ws' | 'sd';
 
 const host = useHost({ fallback: 'auto' });
 const uiStore = useUiStore();
@@ -37,9 +38,14 @@ watch(
     .map(entry => `${entry.captureIndex}:${entry.channel.channelNumber}:${entry.channel.channelName}`)
     .join('|'),
   () => {
-    decoderStore.initializeI2CMapping(sessionStore.channels);
+    decoderStore.initializeProtocolMappings(sessionStore.channels);
   },
   { immediate: true }
+);
+
+const selectedDecoderConfig = computed(() =>
+  decoderStore.activeDecoderConfigs.find(config => config.decoderId === decoderStore.selectedDecoderId)
+    ?? decoderStore.activeDecoderConfigs[0]
 );
 
 const decoderStatusText = computed(() => {
@@ -47,19 +53,25 @@ const decoderStatusText = computed(() => {
     return '当前文件没有可解码样本';
   }
 
-  if (visibleChannels.value.length < 2) {
+  if (decoderStore.selectedDecoderId === 'i2s' && visibleChannels.value.length < 3) {
+    return 'I2S 解码需要至少三个通道';
+  }
+
+  if (decoderStore.selectedDecoderId === 'i2c' && visibleChannels.value.length < 2) {
     return 'I2C 解码需要至少两个通道';
   }
 
   return `${sessionStore.totalSamples} 样本 · ${sessionStore.sampleRate} Hz`;
 });
 
-const canRunI2CDecoder = computed(() =>
-  sessionStore.hasData
-  && visibleChannels.value.length >= 2
-  && decoderStore.channelConflicts.length === 0
-  && !decoderStore.isDecoding
-);
+const canRunSelectedDecoder = computed(() => {
+  const requiredChannels = decoderStore.selectedDecoderId === 'i2s' ? 3 : 2;
+
+  return sessionStore.hasData
+    && visibleChannels.value.length >= requiredChannels
+    && decoderStore.channelConflicts.length === 0
+    && !decoderStore.isDecoding;
+});
 
 const decoderSummary = computed(() => [
   {
@@ -105,8 +117,28 @@ function setMappingFromEvent(role: I2CRole, event: Event) {
   decoderStore.setI2CMapping(role, Number.isFinite(value) ? value : null);
 }
 
-async function runI2CDecoder() {
-  await decoderStore.runI2CDecoder(host, sessionStore);
+function setDecoderFromEvent(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  decoderStore.selectDecoder(select.value === 'i2s' ? 'i2s' : 'i2c');
+}
+
+function setI2SMappingFromEvent(role: I2SRole, event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const value = select.value === '' ? null : Number(select.value);
+  decoderStore.setI2SMapping(role, Number.isFinite(value) ? value : null);
+}
+
+function setI2SOptionFromEvent(option: 'word_length' | 'justification', event: Event) {
+  const select = event.target as HTMLSelectElement;
+  if (option === 'word_length') {
+    decoderStore.setI2SOption(option, Number(select.value));
+  } else {
+    decoderStore.setI2SOption(option, (select.value === 'left' ? 'left' : 'i2s') as I2SJustification);
+  }
+}
+
+async function runSelectedDecoder() {
+  await decoderStore.runSelectedDecoder(host, sessionStore);
 }
 </script>
 
@@ -135,7 +167,7 @@ async function runI2CDecoder() {
       >
         <header class="decoder-panel__header">
           <h2 class="app-sidebar-right__title">
-            I2C 协议解码
+            {{ selectedDecoderConfig.label }} 协议解码
           </h2>
           <p
             v-if="visibleDecoderName"
@@ -148,7 +180,27 @@ async function runI2CDecoder() {
           </p>
         </header>
 
-        <div class="decoder-panel__mapping">
+        <label class="decoder-panel__field decoder-panel__protocol">
+          <span>协议</span>
+          <select
+            data-testid="decoder-select"
+            :value="decoderStore.selectedDecoderId"
+            @change="setDecoderFromEvent"
+          >
+            <option
+              v-for="config in decoderStore.activeDecoderConfigs"
+              :key="config.decoderId"
+              :value="config.decoderId"
+            >
+              {{ config.label }}
+            </option>
+          </select>
+        </label>
+
+        <div
+          v-if="decoderStore.selectedDecoderId === 'i2c'"
+          class="decoder-panel__mapping"
+        >
           <label class="decoder-panel__field">
             <span>SCL</span>
             <select
@@ -183,6 +235,88 @@ async function runI2CDecoder() {
         </div>
 
         <div
+          v-else
+          class="decoder-panel__mapping decoder-panel__mapping--triple"
+        >
+          <label class="decoder-panel__field">
+            <span>SCK</span>
+            <select
+              :value="decoderStore.i2sMapping.sckCaptureIndex ?? ''"
+              @change="setI2SMappingFromEvent('sck', $event)"
+            >
+              <option
+                v-for="channel in visibleChannels"
+                :key="`sck-${channel.captureIndex}`"
+                :value="channel.captureIndex"
+              >
+                CH{{ channel.channel.channelNumber }} - {{ channel.channel.channelName }}
+              </option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>WS</span>
+            <select
+              :value="decoderStore.i2sMapping.wsCaptureIndex ?? ''"
+              @change="setI2SMappingFromEvent('ws', $event)"
+            >
+              <option
+                v-for="channel in visibleChannels"
+                :key="`ws-${channel.captureIndex}`"
+                :value="channel.captureIndex"
+              >
+                CH{{ channel.channel.channelNumber }} - {{ channel.channel.channelName }}
+              </option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>SD</span>
+            <select
+              :value="decoderStore.i2sMapping.sdCaptureIndex ?? ''"
+              @change="setI2SMappingFromEvent('sd', $event)"
+            >
+              <option
+                v-for="channel in visibleChannels"
+                :key="`sd-${channel.captureIndex}`"
+                :value="channel.captureIndex"
+              >
+                CH{{ channel.channel.channelNumber }} - {{ channel.channel.channelName }}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <div
+          v-if="decoderStore.selectedDecoderId === 'i2s'"
+          class="decoder-panel__mapping"
+        >
+          <label class="decoder-panel__field">
+            <span>字长</span>
+            <select
+              data-testid="i2s-word-length"
+              :value="decoderStore.i2sOptions.wordLength"
+              @change="setI2SOptionFromEvent('word_length', $event)"
+            >
+              <option value="16">16 bit</option>
+              <option value="24">24 bit</option>
+              <option value="32">32 bit</option>
+            </select>
+          </label>
+
+          <label class="decoder-panel__field">
+            <span>对齐</span>
+            <select
+              :value="decoderStore.i2sOptions.justification"
+              @change="setI2SOptionFromEvent('justification', $event)"
+            >
+              <option value="i2s">I2S</option>
+              <option value="left">Left justified</option>
+            </select>
+          </label>
+        </div>
+
+        <div
           v-if="decoderStore.channelConflicts.length > 0"
           class="decoder-panel__errors"
         >
@@ -197,14 +331,14 @@ async function runI2CDecoder() {
         <button
           type="button"
           class="decoder-panel__run"
-          :disabled="!canRunI2CDecoder"
-          data-testid="run-i2c-decoder"
-          @click="runI2CDecoder"
+          :disabled="!canRunSelectedDecoder"
+          data-testid="run-decoder"
+          @click="runSelectedDecoder"
         >
           <span class="decoder-panel__run-icon">
             <VideoPlay />
           </span>
-          <span>{{ decoderStore.isDecoding ? '解码中...' : '运行 I2C 解码' }}</span>
+          <span>{{ decoderStore.isDecoding ? '解码中...' : `运行 ${selectedDecoderConfig.label} 解码` }}</span>
         </button>
 
         <dl class="app-sidebar-right__summary">
@@ -397,12 +531,20 @@ async function runI2CDecoder() {
   gap: 10px;
 }
 
+.decoder-panel__mapping--triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .decoder-panel__field {
   display: grid;
   gap: 6px;
   min-width: 0;
   color: #cbd5e1;
   font-size: 12px;
+}
+
+.decoder-panel__protocol {
+  width: 100%;
 }
 
 .decoder-panel__field select {

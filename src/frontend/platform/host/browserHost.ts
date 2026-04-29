@@ -70,10 +70,14 @@ interface BrowserDecoderDocument {
 
 const I2C_DECODER_ID = 'i2c';
 const I2C_DECODER_NAME = 'I²C HTML 模拟';
+const I2S_DECODER_ID = 'i2s';
+const I2S_DECODER_NAME = 'I2S HTML 模拟';
 const NO_DECODABLE_SAMPLES = '当前文件没有可解码样本';
 const INVALID_SAMPLE_RATE = '采样率无效，无法执行协议解码';
 const I2C_CHANNELS_REQUIRED = 'I2C 解码需要 SCL 和 SDA 两个通道';
 const I2C_SAME_CHANNEL = 'SCL 和 SDA 不能映射到同一采集通道';
+const I2S_CHANNELS_REQUIRED = 'I2S 解码需要 SCK、WS 和 SD 三个通道';
+const I2S_SAME_CHANNEL = 'SCK、WS 和 SD 不能映射到同一采集通道';
 
 function cloneDocument(document?: FrontendDocumentData): FrontendDocumentData | undefined {
   return document ? { ...document } : undefined;
@@ -366,6 +370,27 @@ function createSyntheticI2CResults(sampleCount: number): BrowserDecoderResult[] 
   ];
 }
 
+function createSyntheticI2SResults(sampleCount: number): BrowserDecoderResult[] {
+  const point = (sample: number) => toStableSample(sampleCount, sample);
+
+  return [
+    {
+      startSample: point(2),
+      endSample: point(34),
+      annotationType: 0,
+      values: ['Left: A55A', 'L: A55A', 'A55A'],
+      rawData: { value: 0xA55A, source: 'html-host-synthetic' }
+    },
+    {
+      startSample: point(35),
+      endSample: point(67),
+      annotationType: 1,
+      values: ['Right: 5AA5', 'R: 5AA5', '5AA5'],
+      rawData: { value: 0x5AA5, source: 'html-host-synthetic' }
+    }
+  ];
+}
+
 function validateI2CMapping(
   document: BrowserDecoderDocument,
   channelMapping: BrowserDecoderChannelMapping[]
@@ -390,29 +415,76 @@ function validateI2CMapping(
   return null;
 }
 
+function validateI2SMapping(
+  document: BrowserDecoderDocument,
+  channelMapping: BrowserDecoderChannelMapping[]
+): string | null {
+  const sckMapping = channelMapping.find(mapping => mapping.decoderIndex === 0);
+  const wsMapping = channelMapping.find(mapping => mapping.decoderIndex === 1);
+  const sdMapping = channelMapping.find(mapping => mapping.decoderIndex === 2);
+
+  if (!sckMapping || !wsMapping || !sdMapping) {
+    return I2S_CHANNELS_REQUIRED;
+  }
+
+  const sckChannel = document.channels[sckMapping.captureIndex];
+  const wsChannel = document.channels[wsMapping.captureIndex];
+  const sdChannel = document.channels[sdMapping.captureIndex];
+  if (
+    !sckChannel || !wsChannel || !sdChannel ||
+    sckChannel.sampleCount <= 0 ||
+    wsChannel.sampleCount <= 0 ||
+    sdChannel.sampleCount <= 0
+  ) {
+    return I2S_CHANNELS_REQUIRED;
+  }
+
+  const mappedIndexes = [sckMapping.captureIndex, wsMapping.captureIndex, sdMapping.captureIndex];
+  if (new Set(mappedIndexes).size < 3) {
+    return I2S_SAME_CHANNEL;
+  }
+
+  return null;
+}
+
 function runBrowserDecoder(documentData: FrontendDocumentData, payload: unknown): HostCommandResult<BrowserRunDecoderResponse> {
   const request = readRunDecoderRequest(payload);
   const { decoderId } = request;
 
-  if (decoderId !== I2C_DECODER_ID) {
+  if (decoderId !== I2C_DECODER_ID && decoderId !== I2S_DECODER_ID) {
     return createRunDecoderFailure(decoderId, decoderId, `Decoder not found: ${decoderId}`);
   }
 
   const decoderDocument = readBrowserDecoderDocument(documentData);
+  const decoderName = decoderId === I2S_DECODER_ID ? I2S_DECODER_NAME : I2C_DECODER_NAME;
   if (!decoderDocument.hasSamples) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, NO_DECODABLE_SAMPLES);
+    return createRunDecoderFailure(decoderId, decoderName, NO_DECODABLE_SAMPLES);
   }
 
   if (decoderDocument.sampleRate <= 0) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, INVALID_SAMPLE_RATE);
+    return createRunDecoderFailure(decoderId, decoderName, INVALID_SAMPLE_RATE);
   }
 
-  const mappingError = validateI2CMapping(decoderDocument, request.channelMapping);
+  const mappingError = decoderId === I2S_DECODER_ID
+    ? validateI2SMapping(decoderDocument, request.channelMapping)
+    : validateI2CMapping(decoderDocument, request.channelMapping);
   if (mappingError) {
-    return createRunDecoderFailure(decoderId, I2C_DECODER_NAME, mappingError);
+    return createRunDecoderFailure(decoderId, decoderName, mappingError);
   }
 
-  return createRunDecoderResponse(decoderId, I2C_DECODER_NAME, {
+  if (decoderId === I2S_DECODER_ID) {
+    return createRunDecoderResponse(decoderId, decoderName, {
+      success: true,
+      executionTime: 1,
+      results: createSyntheticI2SResults(decoderDocument.sampleCount),
+      performanceStats: {
+        totalSamples: decoderDocument.sampleCount,
+        processingSpeed: decoderDocument.sampleRate
+      }
+    });
+  }
+
+  return createRunDecoderResponse(decoderId, decoderName, {
     success: true,
     executionTime: 1,
     results: createSyntheticI2CResults(decoderDocument.sampleCount).map(result => ({
