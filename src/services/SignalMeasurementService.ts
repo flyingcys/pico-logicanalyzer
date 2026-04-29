@@ -115,7 +115,10 @@ export class SignalMeasurementService {
       glitchDetectionThreshold?: number; // ns
     }
   ): Promise<MeasurementResult> {
-    const startTime = Date.now();
+    const readTime = () => typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+    const startTime = readTime();
     const channelResults: ChannelMeasurementResult[] = [];
 
     // 分析每个通道
@@ -132,7 +135,7 @@ export class SignalMeasurementService {
       crossChannelAnalysis = await this.performCrossChannelAnalysis(channelResults, sampleRate);
     }
 
-    const measurementDuration = Date.now() - startTime;
+    const measurementDuration = readTime() - startTime;
 
     return {
       timestamp: new Date().toISOString(),

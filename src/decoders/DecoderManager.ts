@@ -84,7 +84,7 @@ export class DecoderManager {
   private decoders = new Map<string, new () => DecoderBase>();
 
   /** 注册的流式解码器映射 */
-  private streamingDecoders = new Map<string, new () => StreamingDecoderBase>();
+  private streamingDecoders = new Map<string, new (config?: Partial<StreamingConfig>) => StreamingDecoderBase>();
 
   /** 解码器实例缓存 */
   private decoderInstances = new Map<string, DecoderBase>();
@@ -153,7 +153,14 @@ export class DecoderManager {
    * @param id 解码器标识符
    * @param decoderClass 流式解码器类
    */
-  public registerStreamingDecoder(id: string, decoderClass: new () => StreamingDecoderBase): void {
+  public registerStreamingDecoder(
+    id: string,
+    decoderClass: new (config?: Partial<StreamingConfig>) => StreamingDecoderBase
+  ): void {
+    if (this.streamingDecoders.has(id)) {
+      this.streamingDecoderInstances.delete(id);
+    }
+
     this.streamingDecoders.set(id, decoderClass);
   }
 
@@ -283,11 +290,15 @@ export class DecoderManager {
    * @param decoderId 解码器ID
    * @returns 流式解码器实例或null
    */
-  private createStreamingDecoderInstance(decoderId: string): StreamingDecoderBase | null {
+  private createStreamingDecoderInstance(
+    decoderId: string,
+    streamingConfig: Partial<StreamingConfig> = {}
+  ): StreamingDecoderBase | null {
     const resolvedDecoderId = this.resolveStreamingDecoderId(decoderId);
+    const hasCustomConfig = Object.keys(streamingConfig).length > 0;
 
     // 检查缓存
-    if (resolvedDecoderId && this.streamingDecoderInstances.has(resolvedDecoderId)) {
+    if (!hasCustomConfig && resolvedDecoderId && this.streamingDecoderInstances.has(resolvedDecoderId)) {
       return this.streamingDecoderInstances.get(resolvedDecoderId)!;
     }
 
@@ -300,8 +311,10 @@ export class DecoderManager {
     }
 
     try {
-      const instance = new StreamingDecoderClass();
-      this.streamingDecoderInstances.set(resolvedDecoderId!, instance);
+      const instance = new StreamingDecoderClass(streamingConfig);
+      if (!hasCustomConfig) {
+        this.streamingDecoderInstances.set(resolvedDecoderId!, instance);
+      }
       return instance;
     } catch (error) {
       console.error(`Failed to create streaming decoder instance for ${decoderId}:`, error);
@@ -497,6 +510,45 @@ export class DecoderManager {
   }
 
   /**
+   * 没有显式映射时，优先按源通道名匹配解码器通道，最后才退回位置映射。
+   */
+  private createDefaultChannelMapping(
+    channels: ChannelData[],
+    decoder: DecoderBase
+  ): DecoderSelectedChannel[] {
+    const usedCaptureIndexes = new Set<number>();
+
+    return decoder.channels.map((decoderChannel, index) => {
+      const decoderIndex = decoderChannel.index ?? index;
+      const channelId = decoderChannel.id.toLowerCase();
+      const channelName = decoderChannel.name.toLowerCase();
+
+      const namedIndex = channels.findIndex((channel, captureIndex) => {
+        if (usedCaptureIndexes.has(captureIndex)) {
+          return false;
+        }
+
+        const sourceName = channel.channelName?.toLowerCase();
+        return !!sourceName && (sourceName.includes(channelId) || sourceName.includes(channelName));
+      });
+
+      let captureIndex = namedIndex !== -1 ? namedIndex : index;
+      if (namedIndex === -1 && usedCaptureIndexes.has(captureIndex)) {
+        const unusedIndex = channels.findIndex((_channel, channelIndex) =>
+          !usedCaptureIndexes.has(channelIndex)
+        );
+        captureIndex = unusedIndex === -1 ? index : unusedIndex;
+      }
+      usedCaptureIndexes.add(captureIndex);
+
+      return {
+        captureIndex,
+        decoderIndex
+      };
+    });
+  }
+
+  /**
    * 执行单个解码器
    * 简化的解码器执行接口
    * @param decoderId 解码器ID
@@ -516,6 +568,7 @@ export class DecoderManager {
     const startTime = performance.now();
 
     try {
+      const totalSamples = Math.max(...channels.map(ch => ch.samples?.length || 0), 0);
       const decoder = this.getDecoder(decoderId);
       if (!decoder) {
         return {
@@ -529,10 +582,7 @@ export class DecoderManager {
 
       const effectiveMapping = channelMapping.length > 0
         ? channelMapping
-        : decoder.channels.map((channel, index) => ({
-          captureIndex: index,
-          decoderIndex: channel.index ?? index
-        }));
+        : this.createDefaultChannelMapping(channels, decoder);
 
       // 验证配置
       if (!decoder.validateOptions(options, effectiveMapping, channels)) {
@@ -545,12 +595,21 @@ export class DecoderManager {
         };
       }
 
+      if (this.getRecommendedExecutionMode(decoderId, totalSamples) === 'streaming') {
+        return await this.executeStreamingDecoder(
+          decoderId,
+          sampleRate,
+          channels,
+          options,
+          effectiveMapping
+        );
+      }
+
       // 执行解码
       const mappedChannels = this.mapChannelsForDecoder(channels, effectiveMapping, decoder);
       const results = decoder.decode(sampleRate, mappedChannels, options);
       const endTime = performance.now();
 
-      const totalSamples = Math.max(...channels.map(ch => ch.samples?.length || 0));
       const processingTime = endTime - startTime;
       const processingSpeed = totalSamples / (processingTime / 1000);
 
@@ -606,7 +665,7 @@ export class DecoderManager {
     const startTime = performance.now();
 
     try {
-      const streamingDecoder = this.getStreamingDecoder(decoderId);
+      const streamingDecoder = this.createStreamingDecoderInstance(decoderId, _streamingConfig);
       if (!streamingDecoder) {
         // 如果没有流式版本，尝试使用常规解码器
         return await this.executeDecoder(decoderId, sampleRate, channels, options, channelMapping);

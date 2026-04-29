@@ -79,6 +79,31 @@
       ]
     },
     {
+      "id": "i2c.reversed-named-channels.normal",
+      "protocol": "i2c",
+      "category": "normal",
+      "sampleRate": 1000000,
+      "input": {
+        "kind": "i2c-operations",
+        "channelOrder": "sda-scl",
+        "operations": [
+          { "type": "start" },
+          { "type": "byte", "value": 160 },
+          { "type": "ack" },
+          { "type": "byte", "value": 18 },
+          { "type": "ack" },
+          { "type": "stop" }
+        ]
+      },
+      "options": [{ "optionIndex": 0, "value": "shifted" }],
+      "expected": [
+        { "annotationType": 7, "rawData": 80, "values": ["Address write: 50", "AW: 50", "50"] },
+        { "annotationType": 3, "values": ["ACK", "A"] },
+        { "annotationType": 9, "rawData": 18, "values": ["Data write: 12", "DW: 12", "12"] },
+        { "annotationType": 2, "values": ["Stop", "P"] }
+      ]
+    },
+    {
       "id": "spi.mode0-transfer.normal",
       "protocol": "spi",
       "category": "normal",
@@ -242,6 +267,36 @@
         { "annotationType": 4, "rawData": 34, "values": ["Data[1]: 22", "22"] },
         { "annotationType": 6, "values": ["ACK"] },
         { "annotationType": 7, "values": ["EOF"] }
+      ]
+    },
+    {
+      "id": "can.continuous-frames.normal",
+      "protocol": "can",
+      "category": "normal",
+      "sampleRate": 1000000,
+      "input": {
+        "kind": "can-frames",
+        "samplesPerBit": 2,
+        "frames": [
+          {
+            "identifier": 291,
+            "data": [17],
+            "ack": true
+          },
+          {
+            "identifier": 801,
+            "data": [34, 51],
+            "ack": true
+          }
+        ]
+      },
+      "options": [{ "optionIndex": 0, "value": 500000 }],
+      "expected": [
+        { "annotationType": 1, "rawData": 291, "values": ["ID: 123", "123"] },
+        { "annotationType": 4, "rawData": 17, "values": ["Data[0]: 11", "11"] },
+        { "annotationType": 1, "rawData": 801, "values": ["ID: 321", "321"] },
+        { "annotationType": 4, "rawData": 34, "values": ["Data[0]: 22", "22"] },
+        { "annotationType": 4, "rawData": 51, "values": ["Data[1]: 33", "33"] }
       ]
     },
     {

@@ -165,7 +165,8 @@ function canFramesToChannels(
     data: number[];
     ack?: boolean;
     crcDelimiter?: number;
-  }>
+  }>,
+  samplesPerBit = 1
 ): ChannelData[] {
   const bits = frames.flatMap((frame, index) => [
     ...(index === 0 ? [] : [1, 1, 1]),
@@ -176,7 +177,7 @@ function canFramesToChannels(
     {
       channelNumber: 0,
       channelName: 'CAN_RX',
-      samples: new Uint8Array([1, 1, ...bitsToSamples(bits), 1, 1])
+      samples: new Uint8Array([1, 1, ...bitsToSamples(bits, samplesPerBit), 1, 1])
     }
   ];
 }
@@ -264,12 +265,22 @@ function inputToChannels(input: any): ChannelData[] {
   switch (input.kind) {
     case 'logic-channels':
       return logicChannelsToChannelData(input.channels);
-    case 'i2c-operations':
-      return i2cOperationsToChannels(input.operations);
+    case 'i2c-operations': {
+      const channels = i2cOperationsToChannels(input.operations);
+      if (input.channelOrder === 'sda-scl') {
+        return [
+          { channelNumber: 0, channelName: 'SDA', samples: channels[1].samples },
+          { channelNumber: 1, channelName: 'SCL', samples: channels[0].samples }
+        ];
+      }
+      return channels;
+    }
     case 'spi-transfer':
       return spiTransferToChannels(input);
     case 'can-frame':
       return canFrameToChannels(input);
+    case 'can-frames':
+      return canFramesToChannels(input.frames, input.samplesPerBit ?? 1);
     case 'lin-frame':
       return linFrameToChannels(input);
     case 'i2s-words':

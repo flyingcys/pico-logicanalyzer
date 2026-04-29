@@ -174,43 +174,46 @@
 **当前实现**
 
 - 实现体：`src/decoders/protocols/StreamingI2CDecoder.ts`
-- ID 是独立的 `streaming_i2c`，不是 `i2c` 的透明增强
+- ID 仍注册为 `streaming_i2c`，但用户入口采用 `i2c` 大样本透明执行模式
 - `DecoderManager` 会注册它；`DecoderRegistry` 也会再次注册
 
 **已实现能力**
 
 - 已实现双线输入、基础 I2C 状态机、7 位地址加 R/W、`shifted/unshifted`
 - 已接入 `src/decoders/StreamingDecoder.ts` 的分块、进度、部分结果、停止机制
+- `DecoderManager.executeDecoder('i2c')` 会在大样本下按推荐策略透明切换到 `streaming_i2c`
+- 前端 I2C 面板继续使用 `decoderId: 'i2c'`，并显示流式模式和分块数量，不新增独立 `streaming_i2c` 协议入口
 
-**主要差距**
+**2026-04-30 `.worktree/02` 已关闭项**
 
-- `executeStreamingDecoder('i2c', ...)` 现在已经能命中 `streaming_i2c`
-- 当前未打通的是“上层调用方根据 `getRecommendedExecutionMode()` 自动选择走流式 API”的主流程
-- 当前更像仓库自定义分支，而不是基线 `i2c` 的流式执行形态
-- 缺 `BIT/BITS`、binary 输出、bitrate metadata、annotation rows 对齐、10 位地址
-- 声明了 `warning/error`，但代码里没有真正产出
-- 输出内容包含仓库自定义扩展文本，不是基线 `pd.py` 输出形态
-- 更严重的是 correctness 风险：
-  - 基类支持并发分块
-  - `StreamingI2CDecoder` 又依赖跨块 `globalState`
-  - 对顺序敏感的 I2C 来说，这会让重叠区重复处理、边界处错位或重复解码
+- 上层主流程已打通：推荐为 `streaming` 时由 `executeDecoder('i2c')` 自动调用流式实现。
+- 已强制 I2C 流式分块串行处理，避免跨块 `globalState` 并发污染。
+- 已跳过 overlap 重复区，避免边界重复解码。
+- 已对齐常规 I2C 的 annotationType、地址格式、结果文案和 rawData。
+- 已补 bit annotation 输出，并补充 annotation row。
 
 **测试可信度**
 
-- 当前只有 `DecoderParityCore.test.ts` 间接验证：
-  - 大样本 `i2c` 推荐 streaming
-  - 注册信息里有 `streaming_i2c`
-- 没有直接实例化 `StreamingI2CDecoder` 的协议行为测试
+- `tests/unit/decoders/protocols/StreamingI2CDecoder.test.ts` 直接覆盖：
+  - 跨块 Start/Stop、地址、数据、ACK/NACK 顺序稳定
+  - bit annotation 输出
+  - 显式通道映射和反序通道输入
+  - 停止请求
+  - 大样本 `executeDecoder('i2c')` 透明切换到 `streaming_i2c`
+- `tests/unit/webview/main.test.ts` 覆盖 host 到 UI 的流式元信息传递和面板展示。
+
+**剩余差距**
+
+- 缺 binary 输出、bitrate metadata、10 位地址。
+- 声明了 `warning/error`，但完整 warning/error 语义仍未作为本轮 P0 闭环。
+- 真实硬件大样本 I2C 采集仍需手工记录、截图、日志和 `.lac` hash，不能由 fixture 测试替代。
 
 **达到一致所需工作**
 
 - `P0`
-  - 打通上层主流程，让推荐为 streaming 时真正自动走流式 API
-  - 禁止并发分块或重做跨块状态传递
-  - 补基线对齐测试，尤其是跨块边界
+  - 已由 `.worktree/02` 完成：上层主流程、串行分块、跨块边界、停止请求和 UI 元信息闭环
 - `P1`
-  - 补 `BIT/BITS`、warning、10 位地址、binary、bitrate metadata
-  - 统一选项名与注释语义
+  - 补 warning、10 位地址、binary、bitrate metadata
 - `P2`
   - 扩展 stop、progress、partial result 的控制面测试
 
@@ -266,6 +269,7 @@
 
 - 主实现：`src/decoders/protocols/UARTDecoder.ts`
 - `DecoderManager`、`initializeDecoders()`、`registerAllDecoders()` 现在都能提供常规 `uart`
+- 04 worktree 已把 UART 接入右侧协议 UI，并提供 VSCode host、HTML/browser host 和 browser smoke 自动化证据
 
 **已实现能力**
 
@@ -276,6 +280,9 @@
   - `rx_packet_len`
   - `tx_packet_len`
 - 可产出 RX/TX 的起始位、数据位、数据值、校验正确/错误、停止位、帧 warning
+- 主路径可识别持续低电平 break，并避免把 break 误解成普通 `0x00` 数据帧
+- RX/TX 双向结果按采样时间排序，直接实例化和 Manager 路径结果顺序一致
+- UI 可配置 RX/TX 映射、baudrate、data bits、parity、stop bits、invert RX/TX、sample point
 - 数据格式化覆盖 `ascii/dec/hex/oct/bin`
 - 默认情况下不再硬编码“16 字节自动产出 packet”
 - 已支持最基础的 `rx_packet_len/tx_packet_len` 按长度聚合 packet
@@ -284,25 +291,27 @@
 **主要差距**
 
 - 当前 packet 行为已从“默认 16 字节自动触发”收口为“默认禁用 + 最基础长度/ASCII delimiter 触发”，但仍未达到基线的 delimiter/length 全语义
+- UI 暂不暴露 packet delimiter / packet length 配置；手工测试不能把 packet 能力记录为 UI 通过项
 - 主解码循环被简化成 `decodeChannelSimple()` 的逐通道扫描
-- `getWaitCond()`、`inspectEdge()`、`inspectIdle()`、`handleIdle()`、`handleFrame()` 等关键逻辑没有真正参与主路径
+- `getWaitCond()`、`inspectIdle()`、`handleIdle()`、`handleFrame()` 等关键逻辑没有真正参与主路径
 - 结果是：
-  - break/idle 实际未落地
+  - idle 实际未落地
   - frame/python/binary 输出缺失
-  - RX/TX 双向事件顺序也与基线不同
+  - 结果模型仍停留在 annotation 层，未达到完整 parity
 
 **测试可信度**
 
 - `UARTDecoder.test.ts`、`DecoderParityCore.test.ts`、`DecoderSigrokGolden.test.ts` 已跑通
-- 但很多断言只是“不抛异常”或“结果存在”
+- `tests/unit/webview/main.test.ts` 已覆盖 UART UI 状态、host request 和 HTML host 模拟结果
+- `tests/unit/webview/webview-browser-smoke.js` 已覆盖从 UI 选择 UART 并显示 RX/TX 结果
+- 仍有部分旧断言只是“不抛异常”或“结果存在”
 - golden 只覆盖：普通 8N1、偶校验错误、仅 TX 通道
 
 **达到一致所需工作**
 
 - `P0`
-  - 统一注册入口
-  - 把主循环改回 `wait + edge + idle`
-  - 补齐 4 个 packet 配置项
+  - 决定是否把主循环改回 `wait + edge + idle`，或在文档中长期声明当前为简化扫描主路径
+  - 若 packet 进入 UI 手工测试，需补齐 UI 配置入口和全语义测试
   - 在框架层补全 Python/Binary 输出承载
 - `P1`
   - 补 `handleFrame()`、`handleIdle()` 的真实行为
