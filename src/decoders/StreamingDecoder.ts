@@ -12,6 +12,17 @@ import type {
 } from './types';
 import { getPerformanceMemory } from './performanceMemory';
 
+export function isDecoderDebugEnabled(): boolean {
+  return process.env.PICO_DECODER_DEBUG === '1' ||
+    process.env.PICO_DECODER_DEBUG === 'true';
+}
+
+export function decoderDebugLog(...args: unknown[]): void {
+  if (isDecoderDebugEnabled()) {
+    console.log(...args);
+  }
+}
+
 /**
  * 流式处理配置
  */
@@ -150,7 +161,7 @@ export abstract class StreamingDecoderBase {
       // 将数据分块
       const chunks = this.createDataChunks(channels);
 
-      console.log(`📊 开始流式解码: ${chunks.length}个数据块, 总样本数: ${this.totalSamples}`);
+      decoderDebugLog(`📊 开始流式解码: ${chunks.length}个数据块, 总样本数: ${this.totalSamples}`);
 
       // 并发处理数据块
       const concurrentProcessor = new ConcurrentChunkProcessor(
@@ -207,7 +218,7 @@ export abstract class StreamingDecoderBase {
       statistics.totalResults = allResults.length;
       statistics.averageSpeed = this.totalSamples / (statistics.processingTime / 1000);
 
-      console.log(`✅ 流式解码完成: ${allResults.length}个结果, 耗时: ${statistics.processingTime.toFixed(2)}ms`);
+      decoderDebugLog(`✅ 流式解码完成: ${allResults.length}个结果, 耗时: ${statistics.processingTime.toFixed(2)}ms`);
 
       return {
         success: true,
@@ -216,7 +227,11 @@ export abstract class StreamingDecoderBase {
       };
 
     } catch (error) {
-      console.error('❌ 流式解码失败:', error);
+      if (error instanceof Error && error.message === '用户停止处理') {
+        decoderDebugLog('❌ 流式解码失败:', error);
+      } else {
+        console.error('❌ 流式解码失败:', error);
+      }
       return {
         success: false,
         error: error instanceof Error ? error.message : '未知错误',
@@ -234,7 +249,7 @@ export abstract class StreamingDecoderBase {
    */
   public stop(): void {
     this.shouldStop = true;
-    console.log('🛑 流式解码停止请求已发送');
+    decoderDebugLog('🛑 流式解码停止请求已发送');
   }
 
   /**

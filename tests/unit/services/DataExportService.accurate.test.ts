@@ -640,6 +640,122 @@ describe('DataExportService 精准业务逻辑测试', () => {
       expect((result.data as string).split('\n')).toHaveLength(12);
     });
 
+    it('visible 缺失显式范围时应导出可审计的全量范围', async () => {
+      const testSession = createTestCaptureSession();
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'csv', {
+        filename: 'visible-without-range.csv',
+        timeRange: 'visible'
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.processedSamples).toBe(8);
+      expect((result.data as string).split('\n')).toHaveLength(9);
+    });
+
+    it('selection 缺失显式范围时应导出可审计的全量范围', async () => {
+      const testSession = createTestCaptureSession();
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'csv', {
+        filename: 'selection-without-range.csv',
+        timeRange: 'selection'
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.processedSamples).toBe(8);
+      expect((result.data as string).split('\n')).toHaveLength(9);
+    });
+
+    it('visible 应使用外部传入的界面范围而不是后端推测范围', async () => {
+      const testSession = createTestCaptureSession();
+      dataExportServiceInstance.updateUIState(8, { startSample: 2, endSample: 5 });
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'csv', {
+        filename: 'visible-range.csv',
+        timeRange: 'visible'
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.processedSamples).toBe(3);
+      expect((result.data as string).split('\n')).toEqual([
+        'Time,CLK,DATA',
+        '0.000083,1,1',
+        '0.000125,0,1',
+        '0.000167,1,1'
+      ]);
+    });
+
+    it('selection 应使用外部传入的用户选区范围而不是触发点 fallback', async () => {
+      const testSession = createTestCaptureSession();
+      dataExportServiceInstance.updateUIState(8, undefined, { startSample: 1, endSample: 4 });
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'csv', {
+        filename: 'selection-range.csv',
+        timeRange: 'selection'
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.processedSamples).toBe(3);
+      expect((result.data as string).split('\n')).toEqual([
+        'Time,CLK,DATA',
+        '0.000042,1,0',
+        '0.000083,1,1',
+        '0.000125,0,1'
+      ]);
+    });
+
+    it('visible 空范围归一化后至少导出一个有效样本', async () => {
+      const testSession = createTestCaptureSession();
+      dataExportServiceInstance.updateUIState(8, { startSample: 2, endSample: 2 });
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'csv', {
+        filename: 'visible-empty-range.csv',
+        timeRange: 'visible'
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.processedSamples).toBe(1);
+      expect((result.data as string).split('\n')).toEqual([
+        'Time,CLK,DATA',
+        '0.000083,1,1'
+      ]);
+    });
+
+    it('selection 反向范围归一化后不会静默导出空文件', async () => {
+      const testSession = createTestCaptureSession();
+      dataExportServiceInstance.updateUIState(8, undefined, { startSample: 5, endSample: 2 });
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'csv', {
+        filename: 'selection-reversed-range.csv',
+        timeRange: 'selection'
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.processedSamples).toBe(1);
+      expect((result.data as string).split('\n')).toEqual([
+        'Time,CLK,DATA',
+        '0.000208,1,0'
+      ]);
+    });
+
+    it('custom 起点越过样本末尾时应夹到最后一个有效样本', async () => {
+      const testSession = createTestCaptureSession();
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'csv', {
+        filename: 'custom-out-of-range.csv',
+        timeRange: 'custom',
+        customStart: 10,
+        customEnd: 12
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.processedSamples).toBe(1);
+      expect((result.data as string).split('\n')).toEqual([
+        'Time,CLK,DATA',
+        '0.000292,0,1'
+      ]);
+    });
+
     it('应该支持取消操作', async () => {
       const testSession = createTestCaptureSession();
       const cancelToken = { cancelled: true }; // 立即设置为取消状态
@@ -1215,6 +1331,22 @@ describe('DataExportService 精准业务逻辑测试', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('磁盘空间不足');
+    });
+
+    it('应该优先使用非 Error 对象里的可读 message', async () => {
+      mockFs.writeFile.mockRejectedValue({ message: '磁盘不可写' });
+
+      const testSession = createTestCaptureSession();
+      const options: ExportOptions = {
+        filename: 'test.csv',
+        timeRange: 'all'
+      };
+
+      const result = await dataExportServiceInstance.exportWaveformData(testSession, 'csv', options);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('磁盘不可写');
+      expect(result.error).not.toContain('[object Object]');
     });
 
     it('应该验证导出选项', async () => {

@@ -6,24 +6,24 @@
 
 本项目已具备 VSCode 扩展入口、Vue3 Webview、硬件驱动抽象层、核心协议解码器、`.lac` 文件处理、数据导出服务和多层测试目录。当前仍处于 Beta/工程整备阶段，不应按生产就绪发布。
 
-最近一次质量基线验证结果（2026-04-28）：
+最近一次质量基线验证结果（2026-04-30）：
 
-- `npm run typecheck` 通过，是当前基础类型门禁。
-- `npm run typecheck:strict` 通过，是分阶段 strict gate；当前覆盖 `src/models/*.ts` 和 `src/decoders/*.ts`，不代表全仓库 strict 完成。
-- `npm run lint` 通过，本次未输出 warning。
-- `npm run test:webview:unit -- --runInBand` 通过，2 个测试套件、51 个测试。
-- `npm run test:ci:quick -- --skip-install` 通过，14 个 quick 核心测试文件、373 个测试，暂不阻断测试 0 个。
-- `npm run test:ci:standard -- --skip-install` 通过，18 个测试文件、383 个测试。
-- `npm run test:ci:full -- --skip-install` 通过，22 个测试文件、393 个测试，用时约 7.5 分钟。
-- `npm run package:dry` 通过，并触发 `npm run build:production`；Webview 运行时入口约 2.19 MiB，已拆出 `element-plus`、`vue-vendor`、`i18n` 等 chunk，仍需继续关注 bundle 预算。
-- `npm run test:unit -- --silent` 不作为当前发布证据；发布检查优先使用 quick/standard/full 分层命令。
-- `npm run validate:local` 用于本地快速门禁；`node scripts/ci-test-runner.js --layer=quick --dry-run` 可查看 CI 执行计划，不会安装依赖或运行长测试。
+- `rtk npm run typecheck` 通过，是当前基础类型门禁。
+- `rtk npm run typecheck:strict` 通过，是分阶段 strict gate；当前覆盖 `src/models/*.ts`、`src/decoders/*.ts`，以及少量 driver/service/frontend core 低耦合入口，不代表全仓库 strict 完成。
+- `rtk npm run lint` 通过，本次未输出 warning。
+- `rtk npm run test:webview:unit -- --runInBand` 通过，3 个测试套件、98 个测试；`ts-jest isolatedModules` 配置 warning 已迁移处理。
+- `rtk npm run test:decoders -- --runInBand` 通过，10 个测试套件、196 个测试；解码器内部进度、注册和停止日志默认由 `PICO_DECODER_DEBUG` 开关静默。
+- `rtk npm run test:ci:quick -- --skip-install` 通过，14 个 quick 核心测试文件、373 个测试，暂不阻断测试 0 个。
+- `rtk npm run test:ci:standard -- --skip-install` 通过，18 个测试文件、383 个测试。
+- `rtk npm run test:ci:full -- --skip-install` 通过，22 个测试文件、393 个测试，用时约 7.5 分钟。
+- `rtk npm run package:dry` 通过；该脚本中的 `vsce ls` 会执行 `vscode:prepublish`，因此实际触发了 `rtk npm run build:production`，这不是 `package.json` 中 `package:dry` 脚本文本直接串联构建命令。Webview 运行时入口约 2.23 MiB，已拆出 `element-plus`、`vue-vendor`、`i18n` 等 chunk，仍需继续关注 bundle 预算。
+- `rtk npm run test:unit -- --silent` 不作为当前发布证据；发布检查优先使用 quick/standard/full 分层命令。
+- `rtk npm run validate:local` 用于本地快速门禁；`rtk node scripts/ci-test-runner.js --layer=quick --dry-run` 可查看 CI 执行计划，不会安装依赖或运行长测试。
 - Quick 层暂不阻断测试数量为 0，详见 [发布门槛](docs/release-gate.md)。
-- 功能声明以 [功能状态矩阵](docs/功能状态矩阵.md) 和 [真实硬件认证矩阵](docs/真实硬件认证矩阵.md) 为准。
+- 功能声明以 [功能状态矩阵](docs/功能状态矩阵.md) 和 [硬件证据矩阵](docs/%E7%9C%9F%E5%AE%9E%E7%A1%AC%E4%BB%B6%E8%AE%A4%E8%AF%81%E7%9F%A9%E9%98%B5.md) 为准。
 - 发布检查以 [发布门槛](docs/release-gate.md) 和 [文档状态索引](docs/文档状态索引.md) 为准。
-- 当前深度 review 和后续任务总览见 [当前代码深度 Review 与后续任务总览（2026-04-28）](docs/code-review-and-next-tasks-2026-04-28.md)。
-- 当前优先实施目标是先跑通一个 I2C 硬件协议分析 UI 闭环，详见 [首个硬件协议分析 UI 闭环拆分计划（2026-04-28）](docs/first-hardware-protocol-ui-plan-2026-04-28.md)；并行执行拆分见 [I2C 协议分析 UI 闭环三 Worktree 并行计划（2026-04-28）](docs/first-i2c-ui-three-worktrees-2026-04-28.md)。
-- 详细差距见 [logicanalyzer 差距深度分析](docs/logicanalyzer-差距深度分析-2026-04-27.md)，下一阶段并行拆分见 [2026-04-28 并行 Worktree 对齐计划](docs/parallel-worktrees-2026-04-28.md)。
+- 2026-04-30 当前有效状态基线见 [当前状态复盘与下一步工作实施计划](docs/superpowers/plans/2026-04-30-current-status-review-and-next-work.md)。
+- 2026-04-28 的 review、I2C 闭环拆分和并行 worktree 计划只作为历史背景；引用时必须同时核对当前状态基线、功能矩阵和硬件矩阵。
 
 ## 🎯 项目愿景
 
@@ -42,7 +42,7 @@
 
 ### 🔧 硬件支持
 - **Pico Logic 基础驱动**: 已有协议和连接框架，真实采集闭环仍按实验性处理
-- **多品牌扩展框架**: Saleae、Rigol、Siglent、sigrok 适配仍需真实硬件认证
+- **多品牌扩展框架**: Saleae、Rigol、Siglent、sigrok 适配仍为 framework / experimental，真实设备记录为 pending
 - **统一接口**: 标准化的硬件抽象层，简化设备切换
 
 ### 📊 数据分析
@@ -53,9 +53,9 @@
 ### 🌍 跨平台
 - **跨平台目标**: Windows、macOS、Linux 均在支持范围内，发布前仍需按 release gate 验证
 - **性能优化**: 已建立性能优化方向，发布口径以实际门禁和 smoke 结果为准
-- **中文本地化**: 完整的中文界面和文档支持
+- **中文本地化**: 中文界面和文档持续维护
 
-## 🚀 快速开始
+## 本地体验 / 开发验证流程
 
 ### 环境要求
 
@@ -63,23 +63,46 @@
 - **Node.js**: 版本 16.0.0 或更高
 - **TypeScript**: 项目依赖 `^4.9.4`
 
-### 安装插件
+### 本地构建
 
-1. 打开 VSCode
-2. 前往扩展市场 (Ctrl+Shift+X)
-3. 搜索 "Logic Analyzer"
-4. 点击安装
+当前仓库仍处于 Beta/工程整备阶段。本节用于源码构建、本地调试和开发验证，不表示面向普通用户的发布流程。
 
-当前仓库仍处于 Beta/工程整备阶段。如需本地体验，请优先从源码构建 VSIX，而不是按生产发布插件使用。
+```bash
+# 安装依赖
+rtk npm install
 
-### 连接设备
+# 开发模式
+rtk npm run dev
 
-1. 将逻辑分析器通过 USB 连接到计算机
-2. 在 VSCode 中按 `Ctrl+Shift+P` 打开命令面板
-3. 输入 "Logic Analyzer: Connect Device"
-4. 选择您的设备
+# 构建项目
+rtk npm run build
 
-### 开始采集
+# 运行测试
+rtk npm test
+
+# 类型检查
+rtk npm run typecheck
+
+# 分阶段 strict gate
+rtk npm run typecheck:strict
+
+# 代码检查
+rtk npm run lint
+
+# 本地质量门禁
+rtk npm run validate
+
+# 查看 quick/standard/full 分层测试计划
+rtk node scripts/ci-test-runner.js --layer=quick --dry-run
+```
+
+### 真实设备验证
+
+真实设备连接、采集和协议解码需要按 [硬件证据矩阵](docs/%E7%9C%9F%E5%AE%9E%E7%A1%AC%E4%BB%B6%E8%AE%A4%E8%AF%81%E7%9F%A9%E9%98%B5.md) 记录设备型号、固件版本、commit、采集配置、结果文件、sha256、截图和结论。没有这些记录前，只能按 fixture、framework、experimental 或 pending 引用。
+
+### 采集路径
+
+以下仅作为待验证操作路径，不表示真实设备已经通过：
 
 1. 配置采集参数：
    - 采样频率: 1MHz - 100MHz
@@ -94,13 +117,13 @@
 
 | 厂商 | 型号 | 通道数 | 最大频率 | 状态 |
 |------|------|--------|----------|------|
-| Pico Logic | Pico / Pico W / Pico 2 系列 | 24 | 依固件能力 | 实验性，待真实硬件认证 |
-| Saleae | Logic 8 / Logic Pro 16 | 8 / 16 | 依设备能力 | 实验性适配，待认证 |
-| Rigol / Siglent | 含逻辑分析能力的示波器型号 | 依型号 | 依型号 | 实验性 SCPI 框架 |
-| sigrok | `sigrok-cli` 支持设备 | 依设备 | 依设备 | 实验性外部工具适配 |
-| Kingst / DreamSourceLab | 待定 | 待定 | 待定 | 规划中 |
+| Pico Logic | Pico / Pico W / Pico 2 系列 | 24 | 依固件能力 | fixture / experimental，真实设备记录 pending |
+| Saleae | Logic 8 / Logic Pro 16 | 8 / 16 | 依设备能力 | framework / experimental，真实设备记录 pending |
+| Rigol / Siglent | 含逻辑分析能力的示波器型号 | 依型号 | 依型号 | framework / experimental |
+| sigrok | `sigrok-cli` 支持设备 | 依设备 | 依设备 | framework / experimental |
+| Kingst / DreamSourceLab | 待定 | 待定 | 待定 | pending |
 
-完整状态见 [真实硬件认证矩阵](docs/真实硬件认证矩阵.md)。
+完整状态见 [硬件证据矩阵](docs/%E7%9C%9F%E5%AE%9E%E7%A1%AC%E4%BB%B6%E8%AE%A4%E8%AF%81%E7%9F%A9%E9%98%B5.md)。
 
 ## 🔧 协议解码器
 
@@ -110,7 +133,7 @@
 - **SPI**: 支持多种模式，可配置位序
 - **UART**: 波特率自动检测，奇偶校验支持
 - **CAN / LIN / I2S**: 已有 TypeScript 解码器和 golden 测试入口，仍需更多真实采样样本扩充
-- **更多协议**: USB、JTAG/SWD 等仍为规划中或外部工具过渡能力
+- **更多协议**: USB、JTAG/SWD 等仍为 pending 或外部工具过渡能力
 
 ### 自定义解码器
 
@@ -149,37 +172,6 @@ vscode-logicanalyzer/
 └── package.json
 ```
 
-### 构建项目
-
-```bash
-# 安装依赖
-npm install
-
-# 开发模式
-npm run dev
-
-# 构建项目
-npm run build
-
-# 运行测试
-npm test
-
-# 类型检查
-npm run typecheck
-
-# 分阶段 strict gate
-npm run typecheck:strict
-
-# 代码检查
-npm run lint
-
-# 本地质量门禁
-npm run validate
-
-# 查看 quick/standard/full 分层测试计划
-node scripts/ci-test-runner.js --layer=quick --dry-run
-```
-
 ### 添加新硬件支持
 
 1. 继承 `AnalyzerDriverBase` 基类
@@ -197,16 +189,18 @@ node scripts/ci-test-runner.js --layer=quick --dry-run
 - **启动时间目标**: < 2秒
 - **波形渲染目标**: 60fps @ 100万数据点
 - **内存目标**: 长时间运行无明显泄漏
-- **多设备同步目标**: 多设备同步能力仍需真实硬件认证
+- **多设备同步目标**: 多设备同步能力仍为 experimental，真实设备记录 pending
 
 ## 🧪 测试覆盖
 
 - **测试目录**: 当前包含单元、集成、性能、压力和端到端测试目录。
 - **迁移状态**: CI 覆盖的旧 `utest/mocks` 引用已迁移到 `tests/fixtures/mocks`；旧 `docs/utest/*` 仅作为历史资料。
-- **当前风险**: 全量 `npm run test:unit` 曾长时间无输出，发布证据应优先使用 `npm run test:ci:quick|standard|full` 分层命令；Full 层仍依赖 `--forceExit` 收口部分长耗时测试。
-- **发布门槛**: `npm run validate:local`、分层测试、`npm run build:production`、`npm run package:dry` 和 VSIX smoke test 均通过后，才可重新声明覆盖率和发布状态。
+- **当前风险**: 全量 `rtk npm run test:unit` 曾长时间无输出，发布证据应优先使用 `rtk npm run test:ci:quick|standard|full` 分层命令；Full 层仍依赖 `--forceExit` 收口部分长耗时测试。
+- **发布门槛**: `rtk npm run validate:local`、分层测试、`rtk npm run build:production`、`rtk npm run package:dry` 和 VSIX smoke test 均通过后，才可重新声明覆盖率和发布状态。
 
 ## 📈 版本历史
+
+本节条目只表示代码框架、fixture 或 Beta 层面的工程状态，不表示正式发布或真实设备通过。
 
 ### v1.0.0 (计划中，未达到发布门槛)
 - ✅ 基础硬件抽象层
@@ -214,13 +208,13 @@ node scripts/ci-test-runner.js --layer=quick --dry-run
 - ✅ Vue3 现代化界面
 - 🔄 类型错误清零
 - 🔄 测试迁移和稳定性收口
-- 🔄 发布检查和真实硬件回归验证
+- 🔄 发布检查和真实设备回归验证
 
 ### v1.0.0-beta.0 (当前)
 - ✅ VSCode 扩展、Vue3 Webview、驱动抽象和基础解码器框架已建立
 - 🔄 strict gate、CI 和本地质量门禁恢复中
 - 🔄 文档与源码状态同步中
-- 🔄 真实硬件认证矩阵待补证据
+- 🔄 真实设备记录为 pending，等待补充 fixture 之外的可追溯证据
 
 ## 🤝 贡献指南
 
@@ -231,9 +225,9 @@ node scripts/ci-test-runner.js --layer=quick --dry-run
 
 ### 提交代码
 1. Fork 本仓库
-2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
+2. 创建功能分支 (`rtk git checkout -b feature/amazing-feature`)
+3. 提交更改 (`rtk git commit -m 'Add amazing feature'`)
+4. 推送到分支 (`rtk git push origin feature/amazing-feature`)
 5. 创建 Pull Request
 
 ### 编写文档

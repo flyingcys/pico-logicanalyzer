@@ -4,7 +4,7 @@
  * 提供大数据量的流式处理能力
  */
 
-import { StreamingDecoderBase, StreamingConfig } from '../StreamingDecoder';
+import { decoderDebugLog, StreamingDecoderBase, StreamingConfig } from '../StreamingDecoder';
 import type {
   DecoderResult,
   ChannelData,
@@ -164,7 +164,7 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
     this.globalState = this.createInitialState();
     this.resultCounter = 0;
 
-    console.log(`📡 I2C流式解码器初始化: SCL=CH${this.channels.scl + 1}, SDA=CH${this.channels.sda + 1}`);
+    decoderDebugLog(`📡 I2C流式解码器初始化: SCL=CH${this.channels.scl + 1}, SDA=CH${this.channels.sda + 1}`);
   }
 
   /**
@@ -243,11 +243,11 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
    * 完成解码处理
    */
   protected async finalizeDecoding(): Promise<void> {
-    console.log(`✅ I2C流式解码完成: 共产生 ${this.resultCounter} 个结果`);
+    decoderDebugLog(`✅ I2C流式解码完成: 共产生 ${this.resultCounter} 个结果`);
 
     // 如果有未完成的事务，可以在这里处理
     if (this.globalState.state !== I2CState.IDLE) {
-      console.log(`⚠️ I2C解码结束时状态非空闲: ${this.globalState.state}`);
+      decoderDebugLog(`⚠️ I2C解码结束时状态非空闲: ${this.globalState.state}`);
     }
   }
 

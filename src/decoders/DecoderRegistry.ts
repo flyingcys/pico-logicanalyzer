@@ -4,6 +4,7 @@
  */
 
 import { decoderManager } from './DecoderManager';
+import { decoderDebugLog } from './StreamingDecoder';
 import { I2CDecoder } from './protocols/I2CDecoder';
 import { SPIDecoder } from './protocols/SPIDecoder';
 import { UARTDecoder } from './protocols/UARTDecoder';
@@ -29,7 +30,7 @@ const streamingDecoderDefinitions = [
  * 注册所有解码器
  */
 export function registerAllDecoders(): void {
-  console.log('📋 开始注册解码器...');
+  decoderDebugLog('📋 开始注册解码器...');
 
   try {
     // 注册常规与流式解码器
@@ -40,17 +41,17 @@ export function registerAllDecoders(): void {
       decoderManager.registerStreamingDecoder(decoder.id, decoder.decoderClass);
     }
 
-    console.log('✅ 解码器注册完成:');
+    decoderDebugLog('✅ 解码器注册完成:');
     for (const decoder of [...regularDecoderDefinitions, ...streamingDecoderDefinitions]) {
-      console.log(`  - ${decoder.label} (${decoder.id})`);
+      decoderDebugLog(`  - ${decoder.label} (${decoder.id})`);
     }
 
     // 获取统计信息
     const stats = decoderManager.getStatistics();
-    console.log('📊 解码器注册统计:');
-    console.log(`  - 常规解码器: ${stats.registeredDecoders}个`);
-    console.log(`  - 流式解码器: ${stats.registeredStreamingDecoders}个`);
-    console.log(`  - 可用解码器总数: ${stats.availableDecoders}个`);
+    decoderDebugLog('📊 解码器注册统计:');
+    decoderDebugLog(`  - 常规解码器: ${stats.registeredDecoders}个`);
+    decoderDebugLog(`  - 流式解码器: ${stats.registeredStreamingDecoders}个`);
+    decoderDebugLog(`  - 可用解码器总数: ${stats.availableDecoders}个`);
 
   } catch (error) {
     console.error('❌ 解码器注册失败:', error);
