@@ -8,7 +8,7 @@
 
 当前版本用于收敛 VSCode 扩展工程、Vue3 Webview、硬件抽象层、基础解码器、`.lac` 文件处理和质量门禁。它不是正式生产版本，真实硬件支持、原版 parity 和全量测试稳定性仍在推进中。
 
-## 已验证能力
+## 当前工程基线
 
 - VSCode 扩展入口和 `.lac` 自定义编辑器框架已存在。
 - Vue3 Webview、波形渲染框架和主机通信基础结构已存在。
@@ -29,7 +29,29 @@
 - `npm run build:production`
 - `npm run package:dry`
 
-正式发布前还需要执行 `npm run release:check`、`npm run test:ci:full -- --skip-install` 和 VSIX smoke test。
+`npm run package:dry` 只验证 VSIX 清单，不生成可安装 VSIX，也不是干净 VSCode 安装 smoke。正式发布前还需要执行 `npm run release:check`、`npm run test:ci:full -- --skip-install`、`npm run package` 和 VSIX smoke test。
+
+## VSIX smoke 记录
+
+本轮仅保留 Beta 候选 smoke 证据。可自动记录的 VSIX 文件、sha256 和环境信息已收集；尚未执行 VSCode GUI smoke，因此所有 GUI 项均保持 `pending`。
+
+- smoke 环境：Node.js `v22.20.0`、npm `10.9.3`、VSCode CLI `1.117.0`
+- commit：`b11f7249`（`b11f7249807fa4ad894b8e9815cb223fcbb28b0a`）
+- VSIX 文件名：`vscode-logic-analyzer-1.0.0-beta.0.vsix`
+- VSIX sha256：`4011c220d29394892ab3b2684fac0ab07f8d4bab6bfc7e9953fe29689989b384`
+- 最小 `.lac` fixture：`tests/fixtures/lac/current-lowercase-samples.lac`
+- 发布 smoke 记录：`docs/release-smoke/2026-04-30-vsix-smoke.md`
+- 截图记录：pending
+- 结论：pending，不能作为正式发布通过结论；正式发布前必须按 `docs/release-gate.md` 补齐 GUI 项。
+
+| smoke 项 | 当前状态 | 证据 |
+| --- | --- | --- |
+| 运行 `npm run package` 生成 VSIX | 已通过 | `vscode-logic-analyzer-1.0.0-beta.0.vsix`，783457 bytes，sha256 见上 |
+| 干净 VSCode 用户数据目录安装 VSIX | pending | 待桌面环境截图 |
+| 打开最小 `.lac` 文件 | pending | 待桌面环境截图 |
+| 无设备环境执行 `Logic Analyzer: Connect Device` | pending | 待桌面环境截图 |
+| 执行 `Logic Analyzer: Create Synthetic Capture` | pending | 待桌面环境截图 |
+| 卸载 VSIX 并检查残留 | pending | 待桌面环境截图或命令输出 |
 
 ## 已知限制
 

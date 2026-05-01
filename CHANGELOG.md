@@ -11,33 +11,36 @@
 - 建立 `docs/release-gate.md` 质量门禁，统一本地、CI、发布前检查和 VSIX smoke test 门槛。
 - 建立 `docs/文档状态索引.md`，区分当前有效文档、历史分析和已归档材料。
 - `scripts/ci-test-runner.js` 的 dry-run 计划输出 quick/standard/full 测试分组和时间上限。
+- 新增 `scripts/release-smoke-record.js`，用于生成 VSIX 发布 smoke 记录模板，收集环境、commit、已有 VSIX、sha256、平台信息、执行命令、自动验证项、最小 `.lac` fixture 和待补截图字段。
 
 ### 变更
 
 - `npm run test:unit` 不再内置 `--maxWorkers`，避免与调用方追加 `--runInBand` 冲突。
 - `scripts/release-check.ts` 改用当前 `tests` 目录、Quick 分层测试和 `package:dry`。
 - README、RELEASE_NOTES 和测试文档改为 Beta/工程整备口径，不再声明未验证的正式发布能力。
+- `docs/release-gate.md` 和 `RELEASE_NOTES.md` 增加 VSIX smoke 记录结构；明确 `package:dry` / VSIX 生成与干净 VSCode 安装 smoke 不是同一类证据，尚未实际执行的 GUI 项统一标为 `pending`。
 
 ### 已知限制
 
 - 全量 `npm run test:unit` 仍需继续定位长耗时或开放句柄，发布证据应使用分层测试命令。
 - 真实硬件支持状态以 `docs/真实硬件认证矩阵.md` 为准。
+- 已有 Beta 候选 VSIX sha256 记录；干净 VSCode 安装、打开最小 `.lac`、无设备错误路径、合成采集命令和卸载残留检查仍为 `pending`，需最终整合后在桌面环境执行并补齐截图。
 
-## [1.0.0] - 2024-01-XX
+## 历史 1.0.0 规划草案 - 2024-01-XX
 
-> 历史规划记录，未达到当前发布门槛。当前状态以 `[未发布]`、README、功能状态矩阵和发布门槛为准。
+> 历史规划草案，未达到当前发布门槛，不能作为正式版本记录、真实设备通过记录或当前能力声明。当前状态以 `[未发布]`、README、功能状态矩阵、硬件证据矩阵和发布门槛为准。
 
 ### 新增 ✨
 - **硬件支持**
   - 完整的硬件抽象层 (HAL) 架构
-  - 支持 Pico Logic 24通道逻辑分析器
+  - Pico Logic 24 通道适配目标，当前仍需真实设备证据
   - 统一的设备管理和连接系统
   - 多设备同步采集支持
 
 - **协议解码器**
-  - I2C 协议解码器（完整实现）
-  - SPI 协议解码器（完整实现） 
-  - UART 协议解码器（完整实现）
+  - I2C 协议解码目标
+  - SPI 协议解码目标
+  - UART 协议解码目标
   - 可扩展的解码器插件系统
 
 - **用户界面**
@@ -168,7 +171,7 @@
 
 ### 新增
 - 第三阶段通信协议实现完成
-- 与原软件完全兼容的通信协议
+- 与原软件协议对齐的历史目标；当前仍需真实样本往返证据
 - 数据包处理和错误恢复机制
 - 高速数据传输优化
 

@@ -396,20 +396,14 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
         const format = this.resolveExportFormat(data, fileUri.fsPath);
         const exportedCapture = this.parseLACFile(document.getText());
         const session = LACFileFormat.convertToCaptureSession(exportedCapture);
-        const exportOptions: ExportOptions = {
-          filename: fileUri.fsPath,
-          timeRange: this.resolveTimeRange(data),
-          customStart: this.readNumber(data, 'customStart'),
-          customEnd: this.readNumber(data, 'customEnd'),
-          selectedChannels: this.readNumberArray(data, 'selectedChannels')
-        };
+        const exportOptions = this.createExportOptions(fileUri.fsPath, data);
         const exportService = new DataExportService();
 
         await exportService.initialize();
         try {
           const result = await exportService.exportWaveformData(session, format, exportOptions);
           if (!result.success) {
-            vscode.window.showErrorMessage(`导出数据失败: ${result.error || '未知错误'}`);
+            vscode.window.showErrorMessage(`导出数据失败: ${this.formatErrorMessage(result.error)}`);
             return;
           }
         } finally {
@@ -419,20 +413,61 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
         vscode.window.showInformationMessage(`数据已导出到: ${fileUri.fsPath}`);
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`导出数据失败: ${error}`);
+      vscode.window.showErrorMessage(`导出数据失败: ${this.formatErrorMessage(error)}`);
     }
+  }
+
+  private formatErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    if (this.isRecord(error) && typeof error.message === 'string') {
+      return error.message;
+    }
+
+    return error === undefined || error === null ? '未知错误' : String(error);
   }
 
   private resolveExportFormat(data: unknown, filePath?: string): 'lac' | 'csv' | 'json' | 'vcd' {
     const payloadFormat = this.readString(data, 'format')?.toLowerCase();
-    const extension = filePath ? path.extname(filePath).replace('.', '').toLowerCase() : undefined;
+    const extension = filePath ? path.extname(filePath).replace('.', '').toLowerCase() : '';
     const format = extension || payloadFormat || 'csv';
 
     if (format === 'lac' || format === 'csv' || format === 'json' || format === 'vcd') {
       return format;
     }
 
-    return 'csv';
+    throw new Error(`不支持的导出格式: ${format}`);
+  }
+
+  private createExportOptions(filename: string, data: unknown): ExportOptions {
+    const requestedTimeRange = this.resolveTimeRange(data);
+    const selectedChannels = this.readNumberArray(data, 'selectedChannels');
+    const explicitRange = this.resolveExplicitSampleRange(data, requestedTimeRange);
+
+    if (explicitRange) {
+      return {
+        filename,
+        timeRange: 'custom',
+        customStart: explicitRange.startSample,
+        customEnd: explicitRange.endSample,
+        selectedChannels
+      };
+    }
+
+    const exportOptions: ExportOptions = {
+      filename,
+      timeRange: requestedTimeRange,
+      selectedChannels
+    };
+
+    if (requestedTimeRange === 'custom') {
+      exportOptions.customStart = this.readNumber(data, 'customStart');
+      exportOptions.customEnd = this.readNumber(data, 'customEnd');
+    }
+
+    return exportOptions;
   }
 
   private resolveTimeRange(data: unknown): ExportOptions['timeRange'] {
@@ -442,6 +477,37 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
     }
 
     return 'all';
+  }
+
+  private resolveExplicitSampleRange(
+    data: unknown,
+    timeRange: ExportOptions['timeRange']
+  ): { startSample: number; endSample: number } | undefined {
+    const customStart = this.readNumber(data, 'customStart');
+    const customEnd = this.readNumber(data, 'customEnd');
+    if (timeRange === 'custom' && customStart !== undefined && customEnd !== undefined) {
+      return { startSample: customStart, endSample: customEnd };
+    }
+
+    if (timeRange === 'selection') {
+      const selection = this.readNestedRecord(data, 'selection');
+      const startSample = this.readNumber(selection, 'startSample');
+      const endSample = this.readNumber(selection, 'endSample');
+      if (startSample !== undefined && endSample !== undefined) {
+        return { startSample, endSample: endSample + 1 };
+      }
+    }
+
+    if (timeRange === 'visible') {
+      const visibleRange = this.readNestedRecord(data, 'visibleRange');
+      const firstSample = this.readNumber(visibleRange, 'firstSample');
+      const visibleSamples = this.readNumber(visibleRange, 'visibleSamples');
+      if (firstSample !== undefined && visibleSamples !== undefined) {
+        return { startSample: firstSample, endSample: firstSample + visibleSamples };
+      }
+    }
+
+    return undefined;
   }
 
   private readNumberArray(value: unknown, key: string): number[] | undefined {

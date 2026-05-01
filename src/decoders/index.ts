@@ -41,6 +41,7 @@ import { CANDecoder } from './protocols/CANDecoder';
 import { LINDecoder } from './protocols/LINDecoder';
 import { I2SDecoder } from './protocols/I2SDecoder';
 import { decoderManager } from './DecoderManager';
+import { decoderDebugLog } from './StreamingDecoder';
 
 /**
  * 初始化解码器系统
@@ -56,7 +57,7 @@ export function initializeDecoders(): void {
   manager.registerDecoder('lin', LINDecoder);
   manager.registerDecoder('i2s', I2SDecoder);
 
-  console.log('Decoder system initialized with I2C, SPI, UART, CAN, LIN, and I2S decoders');
+  decoderDebugLog('Decoder system initialized with I2C, SPI, UART, CAN, LIN, and I2S decoders');
 }
 
 /**

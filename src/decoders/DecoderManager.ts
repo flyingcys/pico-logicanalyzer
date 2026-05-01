@@ -10,7 +10,8 @@ import {
   StreamingConfig,
   StreamingProgress,
   StreamingResult,
-  PerformanceMonitor
+  PerformanceMonitor,
+  decoderDebugLog
 } from './StreamingDecoder';
 import {
   DecoderInfo,
@@ -737,12 +738,12 @@ export class DecoderManager {
    * 停止所有活跃的流式处理任务
    */
   public stopAllStreamingTasks(): void {
-    console.log(`🛑 停止 ${this.activeStreamingTasks.size} 个活跃的流式处理任务`);
+    decoderDebugLog(`🛑 停止 ${this.activeStreamingTasks.size} 个活跃的流式处理任务`);
 
     for (const [taskId, decoder] of this.activeStreamingTasks) {
       try {
         decoder.stop();
-        console.log(`  已停止任务: ${taskId}`);
+        decoderDebugLog(`  已停止任务: ${taskId}`);
       } catch (error) {
         console.error(`  停止任务失败 ${taskId}:`, error);
       }
@@ -782,7 +783,7 @@ export class DecoderManager {
           decoder.stop();
           this.activeStreamingTasks.delete(taskId);
           stopped = true;
-          console.log(`已停止解码器任务: ${taskId}`);
+          decoderDebugLog(`已停止解码器任务: ${taskId}`);
         } catch (error) {
           console.error(`停止解码器任务失败 ${taskId}:`, error);
         }
@@ -928,7 +929,7 @@ export class DecoderManager {
     this.currentInputs = null;
     this.currentOutputs = null;
 
-    console.log('DecoderManager disposed');
+    decoderDebugLog('DecoderManager disposed');
   }
 
   /**

@@ -1,25 +1,27 @@
 # 5层测试生态系统
 
-**迁移完成**: 2025-08-13
-**架构版本**: P2.3完整版
+**历史迁移记录日期**: 2025-08-13
+**历史架构版本**: P2.3完整版
 **统一测试目录**: `/tests`
 
 ---
 
-## 当前校验状态（2026-04-28）
+## 当前校验状态（2026-04-30）
 
-旧说明中“迁移完成”“CI 正常运行”“核心测试全量迁移完成”等结论已经过期。当前可验证事实：
+旧说明中的历史完成度结论已经过期。当前可验证事实：
 
 - `tests` 目录保留 5 层测试结构：`unit`、`integration`、`performance`、`stress`、`e2e`。
 - 集成、性能、压力和端到端测试中已清理旧 `utest/mocks/simple-mocks` 引用，统一使用 `tests/fixtures/mocks/simple-mocks`。
-- `npm run typecheck` 和 `npm run typecheck:strict` 当前作为基础类型门禁。
-- `npm run test:ci:quick -- --skip-install` 当前通过，14 个 quick 核心测试文件、373 个测试。
-- `npm run test:ci:standard -- --skip-install` 当前通过，18 个测试文件、383 个测试。
-- `npm run test:ci:full -- --skip-install` 当前通过，22 个测试文件、393 个测试。
-- `npm run test:webview:unit -- --runInBand` 当前通过，2 个测试套件、51 个测试。
-- `npm run test:unit -- --silent` 曾出现长时间无输出，当前不作为发布证据；应使用 quick/standard/full 分层命令定位。
-- `npm run test:unit` 脚本不再内置 `--maxWorkers`，调用方可按场景追加 `--runInBand` 或 `--maxWorkers`。
+- `rtk npm run typecheck` 和 `rtk npm run typecheck:strict` 当前作为基础类型门禁；strict gate 已从 models/decoders 扩到少量 driver/service/frontend core 低耦合入口。
+- `rtk npm run test:decoders -- --runInBand` 当前通过，10 个测试套件、196 个测试；解码器内部进度、注册和停止日志默认由 `PICO_DECODER_DEBUG` 开关静默。
+- `rtk npm run test:ci:quick -- --skip-install` 当前通过，14 个 quick 核心测试文件、373 个测试。
+- `rtk npm run test:ci:standard -- --skip-install` 当前通过，18 个测试文件、383 个测试。
+- `rtk npm run test:ci:full -- --skip-install` 当前通过，22 个测试文件、393 个测试。
+- `rtk npm run test:webview:unit -- --runInBand` 当前通过，3 个测试套件、98 个测试；`ts-jest isolatedModules` 配置 warning 已迁移处理。
+- `rtk npm run test:unit -- --silent` 曾出现长时间无输出，当前不作为发布证据；应使用 quick/standard/full 分层命令定位。
+- `rtk npm run test:unit` 脚本不再内置 `--maxWorkers`，调用方可按场景追加 `--runInBand` 或 `--maxWorkers`。
 - Quick 层暂不阻断测试已收口为 0 个；`LogicAnalyzerDriver.core`、`CaptureModels.core`、`SessionManager.core`、`ConfigurationManager.basic` 已重新纳入 quick 阻断门禁。
+- `rtk npm run package:dry` 通过；其中 `vsce ls` 会执行 `vscode:prepublish` 并间接触发 `build:production`，不能理解为 `package:dry` 脚本文本直接串联了生产构建。
 
 下一步先处理测试基础设施：
 
@@ -71,52 +73,56 @@ tests/
 
 ---
 
-## 🚀 测试分层CI执行策略
+## 测试分层 CI 目标预算
 
-### Quick层 (2分钟)
+以下时间是分层预算，不是 2026-04-30 的实测耗时。当前是否可作为证据以上方“当前校验状态”和 release gate 为准。
+
+### Quick层（目标预算 2 分钟）
 ```bash
 # 核心单元测试和快速 CI 口径
-npm run test:ci:quick -- --skip-install
+rtk npm run test:ci:quick -- --skip-install
 ```
 
-### Standard层 (10分钟)
+### Standard层（目标预算 10 分钟）
 ```bash
 # 核心 + 集成 + 基础性能
-npm run test:ci:standard -- --skip-install
+rtk npm run test:ci:standard -- --skip-install
 ```
 
-### Full层 (30分钟)
+### Full层（目标预算 30 分钟）
 ```bash
 # 核心 + 集成 + 性能 + 端到端 + 压力
-npm run test:ci:full -- --skip-install
+rtk npm run test:ci:full -- --skip-install
 ```
 
 ---
 
-## 📊 迁移状态
+## 历史迁移记录
 
-### ✅ 已迁移内容
+以下内容来自历史迁移记录，只说明目录和文件来源，不单独作为当前测试通过、覆盖率或发布质量证据。
 
-**核心测试文件** (从@utest迁移):
-- ✅ LogicAnalyzerDriver.core.test.ts (256行, 高质量)
-- ✅ CaptureModels.core.test.ts (272行, 高质量)  
-- ✅ SessionManager.core.test.ts (278行, 高质量)
-- ✅ ConfigurationManager.basic.test.ts (161行, 基础功能)
+### 核心测试文件记录
 
-**Mock文件** (精选迁移):
-- ✅ simple-mocks.ts (75行, 简洁实用)
-- ✅ vscode.ts (37行, VSCode Mock)
+**核心测试文件**（从 @utest 迁移的历史记录）:
+- LogicAnalyzerDriver.core.test.ts（历史记录 256 行）
+- CaptureModels.core.test.ts（历史记录 272 行）
+- SessionManager.core.test.ts（历史记录 278 行）
+- ConfigurationManager.basic.test.ts（历史记录 161 行）
+
+**Fixture / stub 文件**（历史记录）:
+- simple-mocks.ts（历史记录 75 行）
+- vscode.ts（历史记录 37 行）
 
 **测试框架**:
-- ✅ UnitTestBase.ts (新建, 统一标准)
+- UnitTestBase.ts（历史迁移记录）
 
-### 🔄 架构完整性
+### 历史架构记录
 
-- ✅ **P0-P1层**: 核心单元测试 (新建完成)
-- ✅ **P2.1层**: 集成测试框架 (已存在)
-- ✅ **P2.2层**: 性能基准测试 (已存在)  
-- ✅ **P2.3层**: 压力测试+内存泄漏检测 (已存在)
-- ✅ **End-to-End**: 端到端测试 (已存在)
+- **P0-P1层**: 核心单元测试目录仍存在，当前门禁覆盖以上方命令为准。
+- **P2.1层**: 集成测试目录仍存在，当前门禁覆盖以上方命令为准。
+- **P2.2层**: 性能基准测试目录仍存在，当前门禁覆盖以上方命令为准。
+- **P2.3层**: 压力测试和内存泄漏检测目录仍存在，当前门禁覆盖以上方命令为准。
+- **End-to-End**: 端到端测试目录仍存在，当前门禁覆盖以上方命令为准。
 
 ---
 
@@ -170,10 +176,10 @@ class MyModuleTest extends UnitTestBase {
   - 2025-08-27: 归档历史内容
   - 2025-09-03: 完全删除@utest目录
 
-### 迁移完成标志
-- ✅ CI 覆盖的旧 `utest/mocks` 引用已迁移到 `tests/fixtures/mocks`。
-- ✅ 5层测试目录结构已建立。
-- ✅ Quick、Standard 和 Full 分层执行已重新验证。
+### 历史迁移标记与当前口径
+- CI 覆盖的旧 `utest/mocks` 引用已迁移到 `tests/fixtures/mocks`。
+- 5 层测试目录结构仍保留。
+- Quick、Standard 和 Full 分层执行的当前状态以上方 2026-04-30 命令证据为准。
 - ⚠️ 覆盖率报告仍需重新验证后再确认发布候选质量。
 
 ---

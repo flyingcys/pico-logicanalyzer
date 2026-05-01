@@ -1,6 +1,14 @@
 import { defineStore } from 'pinia';
 import type { HostAdapter, HostCommandResult } from '../../platform/host/types';
 import type { FrontendAnalyzerChannel } from './sessionStore';
+import {
+  findChannelByName,
+  findFallbackChannel,
+  findNamedChannel,
+  getVisibleChannelEntries,
+  resolveI2CMapping,
+  type VisibleChannelEntry
+} from './decoderMappingHelpers';
 
 export interface FrontendDecoderResult {
   startSample: number;
@@ -137,11 +145,6 @@ interface SessionLike {
   channels: FrontendAnalyzerChannel[];
 }
 
-interface VisibleChannelEntry {
-  captureIndex: number;
-  channel: FrontendAnalyzerChannel;
-}
-
 const I2C_MAPPING_CONFLICT = 'SCL 和 SDA 不能映射到同一采集通道';
 const I2C_CHANNELS_REQUIRED = 'I2C 解码需要 SCL 和 SDA 两个通道';
 const SPI_MAPPING_CONFLICT = 'SPI 通道映射不能重复使用同一采集通道';
@@ -172,73 +175,6 @@ const DEFAULT_SPI_OPTIONS: SPIOptionsState = {
   wordSize: 8
 };
 
-function getVisibleChannelEntries(channels: FrontendAnalyzerChannel[]): VisibleChannelEntry[] {
-  return channels
-    .map((channel, captureIndex) => ({ captureIndex, channel }))
-    .filter(entry => !entry.channel.hidden);
-}
-
-function findNamedChannel(
-  channels: VisibleChannelEntry[],
-  pattern: RegExp,
-  usedCaptureIndexes = new Set<number>()
-): VisibleChannelEntry | undefined {
-  return channels.find(entry =>
-    !usedCaptureIndexes.has(entry.captureIndex)
-    && pattern.test(entry.channel.channelName ?? '')
-  );
-}
-
-function findFallbackChannel(
-  channels: VisibleChannelEntry[],
-  fallbackPosition: number,
-  usedCaptureIndexes: Set<number>
-): VisibleChannelEntry | undefined {
-  const numberedChannel = channels.find(entry =>
-    !usedCaptureIndexes.has(entry.captureIndex)
-    && entry.channel.channelNumber === fallbackPosition
-  );
-  if (numberedChannel) {
-    return numberedChannel;
-  }
-
-  const positionalChannel = channels[fallbackPosition];
-  if (positionalChannel && !usedCaptureIndexes.has(positionalChannel.captureIndex)) {
-    return positionalChannel;
-  }
-
-  return channels.find(entry => !usedCaptureIndexes.has(entry.captureIndex));
-}
-
-function resolveI2CMapping(channels: VisibleChannelEntry[]): I2CMappingState {
-  const usedCaptureIndexes = new Set<number>();
-  let sclChannel = findNamedChannel(channels, /scl/i, usedCaptureIndexes);
-  if (sclChannel) {
-    usedCaptureIndexes.add(sclChannel.captureIndex);
-  }
-
-  let sdaChannel = findNamedChannel(channels, /sda/i, usedCaptureIndexes);
-  if (sdaChannel) {
-    usedCaptureIndexes.add(sdaChannel.captureIndex);
-  }
-
-  if (!sclChannel) {
-    sclChannel = findFallbackChannel(channels, 0, usedCaptureIndexes);
-    if (sclChannel) {
-      usedCaptureIndexes.add(sclChannel.captureIndex);
-    }
-  }
-
-  if (!sdaChannel) {
-    sdaChannel = findFallbackChannel(channels, 1, usedCaptureIndexes);
-  }
-
-  return {
-    sclCaptureIndex: sclChannel?.captureIndex ?? null,
-    sdaCaptureIndex: sdaChannel?.captureIndex ?? null
-  };
-}
-
 function normalizeDecoderResponse(
   commandResult: HostCommandResult<RunDecoderResponse> | RunDecoderResponse
 ): RunDecoderResponse | null {
@@ -251,17 +187,6 @@ function normalizeDecoderResponse(
   }
 
   return null;
-}
-
-function findChannelByName(
-  visibleChannels: VisibleChannelEntry[],
-  patterns: RegExp[]
-): number | null {
-  const entry = visibleChannels.find(item =>
-    patterns.some(pattern => pattern.test(item.channel.channelName))
-  );
-
-  return entry?.captureIndex ?? null;
 }
 
 function hasDuplicateMappedChannels(values: Array<number | null>): boolean {

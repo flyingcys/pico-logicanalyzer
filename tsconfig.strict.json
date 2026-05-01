@@ -26,7 +26,15 @@
     "src/models/AnalyzerTypes.ts",
     "src/decoders/types.ts",
     "src/models/*.ts",
-    "src/decoders/*.ts"
+    "src/decoders/*.ts",
+    "src/drivers/types/AnalyzerTypes.ts",
+    "src/drivers/AnalyzerDriverBase.ts",
+    "src/drivers/VersionValidator.ts",
+    "src/services/SignalDescriptionLanguage.ts",
+    "src/frontend/core/protocol/bootstrap.ts",
+    "src/frontend/core/protocol/window.ts",
+    "src/frontend/core/stores/decoderMappingHelpers.ts",
+    "src/frontend/core/stores/uiStore.ts"
   ],
   "exclude": [
     "node_modules",

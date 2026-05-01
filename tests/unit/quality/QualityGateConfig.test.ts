@@ -39,9 +39,11 @@ describe('质量门禁配置', () => {
     expect(featureMatrix).toContain('| 功能域 | 当前状态 | 证据 | 下一步 |');
     expect(featureMatrix).toContain('模拟');
     expect(featureMatrix).toContain('实验性');
-    expect(hardwareMatrix).toContain('| 硬件 | 连接方式 | 检测口径 | 适配状态 | 认证等级 | 必测项 | 证据记录 |');
+    expect(hardwareMatrix).toContain('| 硬件 | 连接方式 | 检测口径 | 适配状态 | 证据等级 | 必测项 | 证据记录 |');
     expect(hardwareMatrix).toContain('framework');
-    expect(hardwareMatrix).toContain('candidate');
+    expect(hardwareMatrix).toContain('experimental');
+    expect(hardwareMatrix).toContain('pending');
+    expect(hardwareMatrix).not.toContain('candidate');
     expect(hardwareMatrix).toContain('Pico W');
     expect(hardwareMatrix).toContain('多设备');
   });
@@ -114,8 +116,18 @@ describe('质量门禁配置', () => {
     expect(releaseCheck).toContain("'tests/unit'");
     expect(releaseCheck).toContain('npm run test:ci:quick -- --skip-install');
     expect(releaseCheck).toContain('npm run package:dry');
+    expect(releaseCheck).toContain('npm run typecheck:strict');
+    expect(releaseCheck).toContain('createRequire(import.meta.url)');
+    expect(releaseCheck).toContain('parseConfigFileTextToJson');
+    expect(releaseCheck).toContain('hasSensitiveFile');
+    expect(releaseCheck).toContain('coverage-summary.json');
+    expect(releaseCheck).toContain('npm run test:coverage');
+    expect(releaseCheck).toContain('isMainModule()');
+    expect(releaseCheck).toContain('import.meta.url');
     expect(releaseCheck).not.toContain("'test/unit'");
     expect(releaseCheck).not.toContain("execSync('npm test'");
+    expect(releaseCheck).not.toContain("execSync('npm run test -- --coverage'");
+    expect(releaseCheck).not.toContain('require.main === module');
   });
 
   it('发布和文档收敛应该有当前状态文档，不继续发布正式版话术', () => {
@@ -135,5 +147,41 @@ describe('质量门禁配置', () => {
     expect(changelog).not.toContain('github.com/your-repo');
     expect(releaseNotes).toContain('Beta');
     expect(releaseNotes).not.toContain('首个正式版本');
+  });
+
+  it('VSIX 发布 smoke 记录脚本和文档应该保持 Beta pending 口径', () => {
+    const script = readText('scripts/release-smoke-record.js');
+    const releaseGate = readText('docs/release-gate.md');
+    const releaseNotes = readText('RELEASE_NOTES.md');
+    const changelog = readText('CHANGELOG.md');
+    const smokeRecord = readText('docs/release-smoke/2026-04-30-vsix-smoke.md');
+
+    expect(script).toContain('--out');
+    expect(script).toContain('--vsix');
+    expect(script).toContain('VSIX sha256');
+    expect(script).toContain('自动可验证项');
+    expect(script).toContain('干净 VSCode 用户数据目录安装 VSIX | pending');
+    expect(script).toContain('Create Synthetic Capture');
+    expect(script).toContain('GUI smoke 尚未完成时不得改写为通过');
+
+    expect(releaseGate).toContain('package:dry');
+    expect(releaseGate).toContain('不生成可安装 VSIX');
+    expect(releaseGate).toContain('不能替代 VSCode 桌面环境中的人工确认');
+    expect(releaseGate).toContain('VSIX 产物：文件名、大小、sha256、生成命令结果');
+    expect(releaseGate).toContain('自动可验证项：commit 可解析、VSIX 存在、sha256 可计算');
+
+    expect(releaseNotes).toContain('Beta 候选 smoke 证据');
+    expect(releaseNotes).toContain('结论：pending');
+    expect(changelog).toContain('GUI 项统一标为 `pending`');
+
+    expect(smokeRecord).toContain('VSIX sha256：');
+    expect(smokeRecord).toContain('### 自动可验证项');
+    expect(smokeRecord).toContain('| VSIX sha256 可计算 | 通过 |');
+    expect(smokeRecord).toContain('| 干净 VSCode 用户数据目录安装 VSIX | pending |');
+    expect(smokeRecord).toContain('| 执行 `Logic Analyzer: Create Synthetic Capture` | pending |');
+    expect(smokeRecord).toContain('结论：pending');
+    expect(smokeRecord).not.toContain('| 干净 VSCode 用户数据目录安装 VSIX | 已通过 |');
+    expect(smokeRecord).not.toContain('| 执行 `Logic Analyzer: Create Synthetic Capture` | 已通过 |');
+    expect(smokeRecord).not.toContain('GUI smoke 已通过');
   });
 });

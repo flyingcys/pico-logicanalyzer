@@ -446,7 +446,7 @@ export abstract class AnalyzerDriverBase extends EventEmitter {
   abstract get isCapturing(): boolean;
 
   // 可选标签属性
-  public tag?: any;
+  public tag?: unknown;
 
   // 计算属性：最小频率
   get minFrequency(): number {

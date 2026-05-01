@@ -18,6 +18,21 @@ interface UIStateManager {
   getTotalSamples(): number;
 }
 
+function formatExportErrorMessage(error: unknown, fallback = '导出失败'): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.length > 0) {
+      return message;
+    }
+  }
+
+  return error === undefined || error === null ? fallback : String(error);
+}
+
 // 默认界面状态管理器实现
 class DefaultUIStateManager implements UIStateManager {
   private visibleRange: { startSample: number; endSample: number } | null = null;
@@ -453,7 +468,7 @@ export class DataExportService extends ServiceLifecycleBase {
       return {
         success: false,
         format: 'unknown',
-        error: error instanceof Error ? error.message : '数据转换失败'
+        error: formatExportErrorMessage(error, '数据转换失败')
       };
     }
   }
@@ -595,7 +610,7 @@ export class DataExportService extends ServiceLifecycleBase {
         filename: options.filename || 'export',
         mimeType: 'text/plain',
         size: 0,
-        error: error instanceof Error ? error.message : '导出失败'
+        error: formatExportErrorMessage(error)
       };
     }
   }
@@ -805,17 +820,15 @@ export class DataExportService extends ServiceLifecycleBase {
       return result;
     } catch (error) {
       let errorMessage = '导出失败';
-      if (error instanceof Error) {
-        const { message } = error;
-        if (message.includes('EACCES') || message.includes('permission denied')) {
-          errorMessage = '权限不足：无法写入文件';
-        } else if (message.includes('ENOSPC') || message.includes('no space left')) {
-          errorMessage = '磁盘空间不足';
-        } else if (message.includes('EMFILE') || message.includes('too many open files')) {
-          errorMessage = '系统文件句柄不足';
-        } else {
-          errorMessage = message;
-        }
+      const message = formatExportErrorMessage(error);
+      if (message.includes('EACCES') || message.includes('permission denied')) {
+        errorMessage = '权限不足：无法写入文件';
+      } else if (message.includes('ENOSPC') || message.includes('no space left')) {
+        errorMessage = '磁盘空间不足';
+      } else if (message.includes('EMFILE') || message.includes('too many open files')) {
+        errorMessage = '系统文件句柄不足';
+      } else {
+        errorMessage = message;
       }
 
       return {
@@ -853,7 +866,7 @@ export class DataExportService extends ServiceLifecycleBase {
         filename: options.filename,
         mimeType: 'text/plain',
         size: 0,
-        error: error instanceof Error ? error.message : '导出失败'
+        error: formatExportErrorMessage(error)
       };
     }
   }
@@ -884,7 +897,7 @@ export class DataExportService extends ServiceLifecycleBase {
         filename: options.filename,
         mimeType: 'text/plain',
         size: 0,
-        error: error instanceof Error ? error.message : '导出失败'
+        error: formatExportErrorMessage(error)
       };
     }
   }
@@ -924,7 +937,7 @@ export class DataExportService extends ServiceLifecycleBase {
         filename: options?.filename || 'project',
         mimeType: 'application/octet-stream',
         size: 0,
-        error: error instanceof Error ? error.message : '导出失败'
+        error: formatExportErrorMessage(error)
       };
     }
   }
@@ -1675,48 +1688,45 @@ export class DataExportService extends ServiceLifecycleBase {
     switch (options.timeRange) {
       case 'custom':
         {
-          const start = Math.max(0, options.customStart || 0);
-          const end = Math.min(options.customEnd || maxSamples, maxSamples);
-          return { startSample: start, endSample: Math.max(start + 1, end) };
+          return this.normalizeSampleRange(
+            options.customStart ?? 0,
+            options.customEnd ?? maxSamples,
+            maxSamples
+          );
         }
       case 'visible':
         {
           // 从界面组件获取当前可见的时间范围
           const visibleRange = this.uiStateManager.getVisibleTimeRange();
           if (visibleRange) {
-            return {
-              startSample: Math.max(0, visibleRange.startSample),
-              endSample: Math.min(maxSamples, visibleRange.endSample)
-            };
+            return this.normalizeSampleRange(visibleRange.startSample, visibleRange.endSample, maxSamples);
           }
-          // 如果没有设置可见范围，返回全部范围的中间部分（50%到100%）
-          return {
-            startSample: Math.floor(maxSamples * 0.5),
-            endSample: maxSamples
-          };
+          return { startSample: 0, endSample: maxSamples };
         }
       case 'selection':
         {
           // 从界面组件获取用户选中的区域
           const userSelection = this.uiStateManager.getUserSelection();
           if (userSelection) {
-            return {
-              startSample: Math.max(0, userSelection.startSample),
-              endSample: Math.min(maxSamples, userSelection.endSample)
-            };
+            return this.normalizeSampleRange(userSelection.startSample, userSelection.endSample, maxSamples);
           }
-          // 如果没有用户选择，返回触发点附近的数据（前后10%）
-          const triggerPos = session.preTriggerSamples;
-          const windowSize = Math.floor(maxSamples * 0.2);
-          return {
-            startSample: Math.max(0, triggerPos - windowSize / 2),
-            endSample: Math.min(maxSamples, triggerPos + windowSize / 2)
-          };
+          return { startSample: 0, endSample: maxSamples };
         }
       case 'all':
       default:
         return { startSample: 0, endSample: maxSamples };
     }
+  }
+
+  private normalizeSampleRange(startSample: number, endSample: number, maxSamples: number): { startSample: number; endSample: number } {
+    if (maxSamples <= 0) {
+      return { startSample: 0, endSample: 0 };
+    }
+
+    const start = Math.max(0, Math.min(maxSamples - 1, Math.floor(startSample)));
+    const clampedEnd = Math.max(0, Math.min(maxSamples, Math.floor(endSample)));
+    const end = Math.max(start + 1, clampedEnd);
+    return { startSample: start, endSample: end };
   }
 
   /**
@@ -2292,7 +2302,7 @@ export async function batchExport(
         filename,
         mimeType: 'text/plain',
         size: 0,
-        error: error instanceof Error ? error.message : '导出失败'
+        error: formatExportErrorMessage(error)
       });
     }
   }

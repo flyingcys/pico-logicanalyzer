@@ -36,7 +36,7 @@ export abstract class AnalyzerDriverBase extends EventEmitter {
   }
 
   // 可选属性
-  public tag?: any;
+  public tag?: unknown;
 
   // 抽象方法 - 子类必须实现
   abstract startCapture(
@@ -164,7 +164,7 @@ export class OutputPacket {
     }
   }
 
-  addStruct(struct: any): void {
+  addStruct(struct: SerializableStruct): void {
     // TypeScript中的结构体序列化
     try {
       const buffer = this.serializeStruct(struct);
@@ -210,7 +210,7 @@ export class OutputPacket {
    * 结构体序列化辅助方法
    * 基于C# Marshal.StructureToPtr的精确行为
    */
-  private serializeStruct(struct: any): Uint8Array {
+  private serializeStruct(struct: SerializableStruct): Uint8Array {
     if (!struct) {
       throw new Error('结构体不能为null或undefined');
     }
@@ -231,6 +231,10 @@ export class OutputPacket {
 
     throw new Error('结构体必须实现serialize方法');
   }
+}
+
+interface SerializableStruct {
+  serialize(): Uint8Array;
 }
 
 /**
