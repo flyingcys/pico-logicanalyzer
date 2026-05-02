@@ -192,8 +192,8 @@ describe('I2CDecoder 修复版测试', () => {
 
             expect(bitAnnotations).toHaveLength(16);
             expect(bitAnnotations.map(result => result.values[0])).toEqual([
-                '1', '0', '1', '0', '0', '0', '0', '0',
-                '0', '0', '0', '1', '0', '0', '1', '0'
+                '0', '0', '0', '0', '0', '1', '0', '1',
+                '0', '1', '0', '0', '1', '0', '0', '0'
             ]);
         });
 
@@ -213,7 +213,45 @@ describe('I2CDecoder 修复版测试', () => {
 
             expect(bitAnnotations).toHaveLength(8);
             expect(bitAnnotations.map(result => result.values[0])).toEqual([
-                '1', '0', '1', '0', '0', '0', '0', '0'
+                '0', '0', '0', '0', '0', '1', '0', '1'
+            ]);
+        });
+
+        it('应该在 10-bit 地址事务中用第二个地址字节收敛完整地址，并在其后输出数据字节', () => {
+            const tenBitTransaction = generateI2CSequence([
+                { type: 'start' },
+                { type: 'byte', value: 0xF6 },
+                { type: 'ack' },
+                { type: 'byte', value: 0x05 },
+                { type: 'ack' },
+                { type: 'byte', value: 0xA5 },
+                { type: 'ack' },
+                { type: 'stop' }
+            ]);
+
+            const channels: ChannelData[] = [
+                { channelNumber: 0, channelName: 'SCL', samples: tenBitTransaction.scl },
+                { channelNumber: 1, channelName: 'SDA', samples: tenBitTransaction.sda }
+            ];
+
+            const results = decoder.decode(1000000, channels, options);
+            const addressWrites = results.filter(result => result.annotationType === 7);
+            const dataWrites = results.filter(result => result.annotationType === 9);
+
+            expect(addressWrites).toHaveLength(2);
+            expect(addressWrites[0]).toEqual(expect.objectContaining({
+                rawData: 0x300,
+                values: ['Address write: 300', 'AW: 300', '300']
+            }));
+            expect(addressWrites[1]).toEqual(expect.objectContaining({
+                rawData: 0x305,
+                values: ['Address write: 305', 'AW: 305', '305']
+            }));
+            expect(dataWrites).toEqual([
+                expect.objectContaining({
+                    rawData: 0xA5,
+                    values: ['Data write: A5', 'DW: A5', 'A5']
+                })
             ]);
         });
 
@@ -242,6 +280,32 @@ describe('I2CDecoder 修复版测试', () => {
             ]));
 
             expect(results.filter(result => result.annotationType === 5)).toHaveLength(16);
+        });
+
+        it('完整事务结束时应该产出 I2C bitrate 的 META 输出', () => {
+            const transaction = generateI2CSequence([
+                { type: 'start' },
+                { type: 'byte', value: 0xA0 },
+                { type: 'ack' },
+                { type: 'byte', value: 0x12 },
+                { type: 'ack' },
+                { type: 'stop' }
+            ]);
+
+            const channels: ChannelData[] = [
+                { channelNumber: 0, channelName: 'SCL', samples: transaction.scl },
+                { channelNumber: 1, channelName: 'SDA', samples: transaction.sda }
+            ];
+
+            const results = decoder.decode(1000000, channels, options);
+            const metaResults = results.filter(result => result.type === DecoderOutputType.META);
+
+            expect(metaResults).toHaveLength(1);
+            expect(metaResults[0]).toEqual(expect.objectContaining({
+                rawData: {
+                    bitrate: 207792
+                }
+            }));
         });
 
         it('应该处理地址格式选项', () => {

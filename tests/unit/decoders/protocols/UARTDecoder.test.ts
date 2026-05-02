@@ -5,7 +5,7 @@
 
 import { UARTDecoder } from '../../../../src/decoders/protocols/UARTDecoder';
 import { DecoderManager } from '../../../../src/decoders/DecoderManager';
-import { DecoderOptionValue, ChannelData } from '../../../../src/decoders/types';
+import { DecoderOptionValue, ChannelData, DecoderOutputType } from '../../../../src/decoders/types';
 
 describe('UARTDecoder', () => {
   let uartDecoder: UARTDecoder;
@@ -42,6 +42,26 @@ describe('UARTDecoder', () => {
         samples: new Uint8Array(frames)
       }
     ];
+  };
+
+  const createConcatenated8n1Samples = (
+    values: number[],
+    interFrameIdle = 0,
+    idlePrefix = 3,
+    idleSuffix = 3
+  ): Uint8Array => {
+    const samples: number[] = Array(idlePrefix).fill(1);
+
+    values.forEach((value, index) => {
+      const frame = Array.from(create8n1Samples(value, 0, 0));
+      samples.push(...frame);
+      if (index < values.length - 1) {
+        samples.push(...Array(interFrameIdle).fill(1));
+      }
+    });
+
+    samples.push(...Array(idleSuffix).fill(1));
+    return new Uint8Array(samples);
   };
 
   beforeEach(() => {
@@ -1223,6 +1243,29 @@ describe('UARTDecoder', () => {
       expect(packetAnnotations[0].values).toEqual(['A']);
     });
 
+    it('配置十进制rx_packet_delim后应该按字节值命中delimiter并包含该字节', () => {
+      const channels: ChannelData[] = [
+        {
+          channelNumber: 0,
+          channelName: 'RX',
+          samples: createConcatenated8n1Samples([0x41, 0x0A], 0)
+        }
+      ];
+      const options: DecoderOptionValue[] = [
+        { optionIndex: 5, value: 'ascii' },
+        { optionIndex: 9, value: '10' }
+      ];
+
+      const results = uartDecoder.decode(115200, channels, options);
+
+      const packetAnnotations = results.filter(r =>
+        r.annotationType === 16 // rx-packet
+      );
+
+      expect(packetAnnotations).toHaveLength(1);
+      expect(packetAnnotations[0].values).toEqual(['A[0A]']);
+    });
+
     it('配置rx_packet_len后应该按长度产出RX packet注释', () => {
       const channels = createRxFrames(4);
       const options: DecoderOptionValue[] = [
@@ -1237,6 +1280,61 @@ describe('UARTDecoder', () => {
 
       expect(packetAnnotations).toHaveLength(1);
       expect(packetAnnotations[0].values).toEqual(['00 01 02 03']);
+    });
+  });
+
+  describe('主路径参考语义收敛', () => {
+    it('完整8N1帧应该产出一个RX FRAME事件并携带字节值', () => {
+      const channels: ChannelData[] = [
+        {
+          channelNumber: 0,
+          channelName: 'RX',
+          samples: create8n1Samples(0x55, 3, 3)
+        }
+      ];
+
+      const results = uartDecoder.decode(115200, channels, []);
+
+      const frameEvents = results.filter(r =>
+        (r as any).type === DecoderOutputType.PYTHON &&
+        r.values[0] === 'FRAME'
+      );
+
+      expect(frameEvents).toHaveLength(1);
+      expect(frameEvents[0]).toEqual(
+        expect.objectContaining({
+          rawData: expect.objectContaining({
+            direction: 'rx',
+            data: 0x55
+          })
+        })
+      );
+    });
+
+    it('完整帧后的持续空闲应该产出一个RX idle事件', () => {
+      const channels: ChannelData[] = [
+        {
+          channelNumber: 0,
+          channelName: 'RX',
+          samples: create8n1Samples(0x55, 3, 16)
+        }
+      ];
+
+      const results = uartDecoder.decode(115200, channels, []);
+
+      const idleEvents = results.filter(r =>
+        (r as any).type === DecoderOutputType.PYTHON &&
+        r.values[0] === 'IDLE'
+      );
+
+      expect(idleEvents).toHaveLength(1);
+      expect(idleEvents[0]).toEqual(
+        expect.objectContaining({
+          rawData: expect.objectContaining({
+            direction: 'rx'
+          })
+        })
+      );
     });
   });
 

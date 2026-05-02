@@ -25,6 +25,20 @@ function pushBits(bits: number[], value: number, width: number): void {
   }
 }
 
+function computeCanCrc(bits: number[]): number[] {
+  let crc = 0;
+
+  for (const bit of bits) {
+    const msb = (crc >> 14) & 1;
+    crc = ((crc << 1) & 0x7fff) | bit;
+    if (msb) {
+      crc ^= 0x4599;
+    }
+  }
+
+  return Array.from({ length: 15 }, (_, index) => (crc >> (14 - index)) & 1);
+}
+
 function buildClassicCanPrefix(frame: CanFrameInput): number[] {
   const bits: number[] = [0];
 
@@ -36,7 +50,7 @@ function buildClassicCanPrefix(frame: CanFrameInput): number[] {
     pushBits(bits, byte, 8);
   }
 
-  bits.push(...(frame.crcBits ?? Array.from({ length: 15 }, () => 0)));
+  bits.push(...(frame.crcBits ?? computeCanCrc(bits)));
   return bits;
 }
 
@@ -219,7 +233,11 @@ describe('CANDecoder classic CAN 闭环', () => {
       identifier: 0x7ff,
       data: [0x80],
       stuff: 'valid',
-      crcBits: Array.from({ length: 15 }, (_, index) => index % 2)
+      crcBits: computeCanCrc(buildClassicCanPrefix({
+        identifier: 0x7ff,
+        data: [0x80],
+        stuff: 'valid'
+      }).slice(0, -15))
     }));
 
     expect(results).toEqual(
@@ -227,6 +245,28 @@ describe('CANDecoder classic CAN 闭环', () => {
         expect.objectContaining({ annotationType: 1, values: ['ID: 7FF', '7FF'], rawData: 0x7ff }),
         expect.objectContaining({ annotationType: 4, values: ['Data[0]: 80', '80'], rawData: 0x80 }),
         expect.objectContaining({ annotationType: 7, values: ['EOF'] })
+      ])
+    );
+  });
+
+  it('在 classic CAN 帧上输出 CRC 数值并对 mismatch 给出 warning', () => {
+    const results = decode(framesToChannels([
+      {
+        identifier: 0x123,
+        data: [0x11, 0x22],
+        stuff: 'valid',
+        crcBits: Array.from({ length: 15 }, () => 0)
+      }
+    ]));
+
+    expect(results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ annotationType: 5, values: ['CRC: 0000', '0000'], rawData: 0x0000 }),
+        expect.objectContaining({
+          annotationType: 8,
+          values: ['CRC mismatch', 'CRC'],
+          rawData: expect.objectContaining({ expected: expect.any(Number), actual: 0x0000 })
+        })
       ])
     );
   });

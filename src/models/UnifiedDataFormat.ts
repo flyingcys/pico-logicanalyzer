@@ -1,7 +1,7 @@
 /**
  * 统一数据格式定义
  * 基于 plan.md 中的设计，用于多硬件数据适配
- * 必须与原 @logicanalyzer/Software 的 .lac 格式 100% 兼容
+ * 目标是与原 @logicanalyzer/Software 的 .lac 结构对齐，仍需真实样本验证兼容性
  */
 
 import { DeviceInfo } from './AnalyzerTypes';

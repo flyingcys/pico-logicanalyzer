@@ -139,12 +139,14 @@ export interface DecoderOutput {
  * 对应原软件的 SigrokAnnotationSegment
  */
 export interface DecoderResult {
+  /** 输出类型 */
+  type?: DecoderOutputType;
   /** 开始样本 */
   startSample: number;
   /** 结束样本 */
   endSample: number;
   /** 注释类型 */
-  annotationType: number;
+  annotationType?: number;
   /** 显示值数组（从详细到简化） */
   values: string[];
   /** 原始数据 */

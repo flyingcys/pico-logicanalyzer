@@ -1,7 +1,7 @@
 /**
  * .lac 文件格式读写处理器
  * 基于原版 C# ExportedCapture 的精确实现
- * 与原软件 100% 兼容
+ * 按原版 C# ExportedCapture 结构对齐，真实兼容性仍需原版样本往返证据
  */
 
 import * as fs from 'fs';
@@ -50,7 +50,7 @@ export interface LACFileResult {
 }
 
 /**
- * .lac 文件格式处理器 - 简化版，与C#原版兼容
+ * .lac 文件格式处理器 - 简化版，结构对齐 C# 原版
  */
 export class LACFileFormat {
   /**

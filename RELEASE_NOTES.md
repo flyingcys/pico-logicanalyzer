@@ -15,6 +15,7 @@
 - Pico、Saleae、Rigol/Siglent、sigrok 等硬件方向已有适配框架，但真实支持状态必须以 `docs/真实硬件认证矩阵.md` 为准。
 - I2C、SPI、UART 基础解码器已存在，后续需要 sigrok golden 对齐。
 - `typecheck`、分阶段 `typecheck:strict`、webview 单元测试、生产构建已有当前基线记录。
+- 2026-05-02 已 fresh 通过 `quick/standard/full` 分层门禁、`release:check`，并继续收口 `.lac` 导出 `SelectedRegions` 主链路与 frontend strict gate。
 - Driver SDK 模板用于脚手架和协议接入参考，生成包默认质量等级为 `experimental`。
 
 ## 质量门禁
@@ -33,7 +34,7 @@
 
 ## VSIX smoke 记录
 
-本轮仅保留 Beta 候选 smoke 证据。可自动记录的 VSIX 文件、sha256 和环境信息已收集；尚未执行 VSCode GUI smoke，因此所有 GUI 项均保持 `pending`。
+本轮仅保留 Beta 候选 smoke 证据。可自动记录的 VSIX 文件、sha256 和环境信息已收集；2026-05-02 已尝试 `code` CLI 自动 smoke，但当前环境缺少可连接的 VS Code IPC server，因此安装/打开/卸载链路记为环境阻断，不能写成通过。
 
 - smoke 环境：Node.js `v22.20.0`、npm `10.9.3`、VSCode CLI `1.117.0`
 - commit：`b11f7249`（`b11f7249807fa4ad894b8e9815cb223fcbb28b0a`）
@@ -47,11 +48,11 @@
 | smoke 项 | 当前状态 | 证据 |
 | --- | --- | --- |
 | 运行 `npm run package` 生成 VSIX | 已通过 | `vscode-logic-analyzer-1.0.0-beta.0.vsix`，783457 bytes，sha256 见上 |
-| 干净 VSCode 用户数据目录安装 VSIX | pending | 待桌面环境截图 |
-| 打开最小 `.lac` 文件 | pending | 待桌面环境截图 |
-| 无设备环境执行 `Logic Analyzer: Connect Device` | pending | 待桌面环境截图 |
-| 执行 `Logic Analyzer: Create Synthetic Capture` | pending | 待桌面环境截图 |
-| 卸载 VSIX 并检查残留 | pending | 待桌面环境截图或命令输出 |
+| 干净 VSCode 用户数据目录安装 VSIX | blocked | 当前环境 `code` CLI 返回 `ENOENT`，缺少可连接的 VS Code IPC server |
+| 打开最小 `.lac` 文件 | blocked | 当前环境 `code` CLI 返回 `ENOENT`，缺少可连接的 VS Code IPC server |
+| 无设备环境执行 `Logic Analyzer: Connect Device` | blocked | 依赖可连接的 VS Code GUI / IPC 环境 |
+| 执行 `Logic Analyzer: Create Synthetic Capture` | blocked | 依赖可连接的 VS Code GUI / IPC 环境 |
+| 卸载 VSIX 并检查残留 | blocked | 当前环境 `code` CLI 返回 `ENOENT`，缺少可连接的 VS Code IPC server |
 
 ## 已知限制
 

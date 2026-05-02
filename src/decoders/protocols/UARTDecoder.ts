@@ -260,6 +260,7 @@ export class UARTDecoder extends DecoderBase {
   private format = 'hex';
   private samplePoint = 50;
   private packetDelim = ['', ''];
+  private packetDelimValue = [-1, -1];
   private packetLength = [0, 0];
 
   /**
@@ -315,7 +316,7 @@ export class UARTDecoder extends DecoderBase {
     return this.results.sort((a, b) =>
       a.startSample - b.startSample ||
       a.endSample - b.endSample ||
-      a.annotationType - b.annotationType
+      (a.annotationType ?? -1) - (b.annotationType ?? -1)
     );
   }
 
@@ -332,6 +333,7 @@ export class UARTDecoder extends DecoderBase {
     this.inv = [false, false];
     this.samplePoint = 50;
     this.packetDelim = ['', ''];
+    this.packetDelimValue = [-1, -1];
     this.packetLength = [0, 0];
 
     for (const option of options) {
@@ -365,9 +367,11 @@ export class UARTDecoder extends DecoderBase {
           break;
         case 9: // rx_packet_delim
           this.packetDelim[RX] = option.value as string;
+          this.packetDelimValue[RX] = this.parsePacketDelimiter(option.value);
           break;
         case 10: // tx_packet_delim
           this.packetDelim[TX] = option.value as string;
+          this.packetDelimValue[TX] = this.parsePacketDelimiter(option.value);
           break;
         case 11: // rx_packet_len
           this.packetLength[RX] = Math.max(0, Number(option.value) || 0);
@@ -417,18 +421,24 @@ export class UARTDecoder extends DecoderBase {
       this.sampleIndex = sampleIndex;
 
       // 根据状态处理当前样本
+      const previousSignal = sampleIndex > 0
+        ? this.getCurrentChannelValue(rxtx, sampleIndex - 1)
+        : 1;
       const currentSignal = this.getCurrentChannelValue(rxtx, sampleIndex);
       const nextSignal = this.getCurrentChannelValue(rxtx, sampleIndex + 1);
+      const previousLogicalSignal = this.normalizeSignal(rxtx, previousSignal);
       const currentLogicalSignal = this.normalizeSignal(rxtx, currentSignal);
       const nextLogicalSignal = this.normalizeSignal(rxtx, nextSignal);
 
       // 检测起始位（从高到低的跳变）
       if (
         this.state[rxtx] === 'WAIT FOR START BIT' &&
-        currentLogicalSignal === 1 &&
-        nextLogicalSignal === 0
+        (
+          (currentLogicalSignal === 1 && nextLogicalSignal === 0) ||
+          (previousLogicalSignal === 1 && currentLogicalSignal === 0)
+        )
       ) {
-        const lowRunStart = sampleIndex + 1;
+        const lowRunStart = currentLogicalSignal === 0 ? sampleIndex : sampleIndex + 1;
         const lowRunEnd = this.findLowRunEnd(rxtx, lowRunStart);
         if (lowRunEnd - lowRunStart >= this.breakMinSampleCount) {
           this.sampleIndex = lowRunEnd;
@@ -437,7 +447,7 @@ export class UARTDecoder extends DecoderBase {
           continue;
         }
 
-        this.frameStart[rxtx] = sampleIndex + 1;
+        this.frameStart[rxtx] = lowRunStart;
         this.state[rxtx] = 'GET START BIT';
         this.curFrameBit[rxtx] = 0;
         this.frameValid[rxtx] = true;
@@ -456,8 +466,20 @@ export class UARTDecoder extends DecoderBase {
         }
       }
 
+      if (this.state[rxtx] === 'WAIT FOR START BIT') {
+        this.inspectIdle(rxtx, currentSignal, this.inv[rxtx]);
+      }
+
       sampleIndex++;
     }
+  }
+
+  private parsePacketDelimiter(value: unknown): number {
+    if (typeof value === 'string' && value.length === 1) {
+      return value.charCodeAt(0);
+    }
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : -1;
   }
 
   private normalizeSignal(rxtx: number, signal: number): number {
@@ -610,8 +632,15 @@ export class UARTDecoder extends DecoderBase {
    * 对应原解码器的 handle_idle()
    */
   private handleIdle(_rxtx: number, _ss: number, _es: number): void {
-    // 空闲状态不需要特殊显示，只记录状态
-    // UART空闲状态检测
+    this.put(_ss, _es, {
+      type: DecoderOutputType.PYTHON,
+      annotationType: 0,
+      values: ['IDLE'],
+      rawData: {
+        direction: _rxtx === RX ? 'rx' : 'tx',
+        sampleRange: [_ss, _es]
+      }
+    });
   }
 
   /**
@@ -785,8 +814,8 @@ export class UARTDecoder extends DecoderBase {
    */
   private handlePacket(rxtx: number): void {
     const targetLength = this.packetLength[rxtx];
-    const delimiter = this.packetDelim[rxtx];
-    const delimiterEnabled = this.format === 'ascii' && delimiter !== '';
+    const delimiter = this.packetDelimValue[rxtx];
+    const delimiterEnabled = delimiter >= 0;
     const lengthEnabled = targetLength > 0;
 
     if (!lengthEnabled && !delimiterEnabled) {
@@ -798,8 +827,7 @@ export class UARTDecoder extends DecoderBase {
     }
     this.packetCache[rxtx].push(this.dataValue[rxtx]);
 
-    const formattedValue = this.formatValue(this.dataValue[rxtx]);
-    const delimiterMatched = delimiterEnabled && formattedValue === delimiter;
+    const delimiterMatched = delimiterEnabled && this.dataValue[rxtx] === delimiter;
     const lengthReached = lengthEnabled && this.packetCache[rxtx].length >= targetLength;
 
     if (lengthReached || delimiterMatched) {
@@ -955,8 +983,16 @@ export class UARTDecoder extends DecoderBase {
    * 对应原解码器的 handle_frame()
    */
   private handleFrame(_rxtx: number, _ss: number, _es: number): void {
-    // 输出完整帧信息
-    // UART帧处理完成
+    this.put(_ss, _es, {
+      type: DecoderOutputType.PYTHON,
+      annotationType: 0,
+      values: ['FRAME'],
+      rawData: {
+        direction: _rxtx === RX ? 'rx' : 'tx',
+        data: this.dataValue[_rxtx],
+        sampleRange: [_ss, _es]
+      }
+    });
   }
 
   /**

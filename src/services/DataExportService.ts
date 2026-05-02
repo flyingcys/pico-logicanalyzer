@@ -944,7 +944,7 @@ export class DataExportService extends ServiceLifecycleBase {
 
   /**
    * 导出为LAC格式（原生格式）
-   * 基于原版 mnuSave_Click 方法实现，完全兼容原版格式
+   * 基于原版 mnuSave_Click 路径对齐导出结构，真实兼容性仍需原版样本往返验证
    */
   private async exportToLAC(session: CaptureSession, options: ExportOptions): Promise<ExportResult> {
     const startTime = Date.now();

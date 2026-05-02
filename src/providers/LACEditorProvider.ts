@@ -18,6 +18,7 @@ import { WiFiDeviceDiscovery, type WiFiDeviceInfo } from '../services/WiFiDevice
 import {
   WEBVIEW_ASSET_MANIFEST_FILE,
   WEBVIEW_VSCODE_SCRIPT_KEY,
+  WEBVIEW_VSCODE_SCRIPT_LIST_PREFIX,
   type WebviewAssetManifest
 } from '../frontend/platform/bootstrap/assetManifest';
 
@@ -258,18 +259,23 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
    */
   private getHtmlForWebview(webview: vscode.Webview, document: vscode.TextDocument): string {
     const assetManifest = this.readWebviewAssetManifest();
-    const scriptName = assetManifest[WEBVIEW_VSCODE_SCRIPT_KEY];
-    if (!scriptName) {
+    const scriptNames = this.readVsCodeWebviewScripts(assetManifest);
+    if (scriptNames.length === 0) {
       this.failWebviewAsset(`Webview 资源清单缺失 ${WEBVIEW_VSCODE_SCRIPT_KEY}`);
     }
 
-    // 获取webview资源的URI
-    const webviewUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', scriptName)
-    );
-
     // 生成随机nonce用于CSP
     const nonce = getNonce();
+    const webviewScriptTags = scriptNames
+      .map(scriptName => {
+        const webviewUri = webview.asWebviewUri(
+          vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', scriptName)
+        );
+
+        return `    <script nonce="${nonce}" src="${webviewUri}"></script>`;
+      })
+      .join('\n');
+
     const documentData = {
       uri: document.uri.toString(),
       fileName: path.basename(document.uri.fsPath),
@@ -310,9 +316,23 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
         window.vscode = acquireVsCodeApi();
         window.__FRONTEND_BOOTSTRAP__ = ${bootstrap};
     </script>
-    <script nonce="${nonce}" src="${webviewUri}"></script>
+${webviewScriptTags}
 </body>
 </html>`;
+  }
+
+  private readVsCodeWebviewScripts(assetManifest: WebviewAssetManifest): string[] {
+    const prefixedScripts = Object.entries(assetManifest)
+      .filter(([key, value]) => key.startsWith(WEBVIEW_VSCODE_SCRIPT_LIST_PREFIX) && typeof value === 'string')
+      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey, undefined, { numeric: true }))
+      .map(([, value]) => value as string);
+
+    if (prefixedScripts.length > 0) {
+      return prefixedScripts;
+    }
+
+    const scriptName = assetManifest[WEBVIEW_VSCODE_SCRIPT_KEY];
+    return scriptName ? [scriptName] : [];
   }
 
   /**
@@ -406,6 +426,8 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
             vscode.window.showErrorMessage(`导出数据失败: ${this.formatErrorMessage(result.error)}`);
             return;
           }
+
+          await this.persistLacSelectedRegionsIfNeeded(fileUri.fsPath, format, data, exportOptions, result);
         } finally {
           await exportService.dispose();
         }
@@ -508,6 +530,188 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
     }
 
     return undefined;
+  }
+
+  private async persistLacSelectedRegionsIfNeeded(
+    filePath: string,
+    format: 'lac' | 'csv' | 'json' | 'vcd',
+    data: unknown,
+    exportOptions: ExportOptions,
+    exportResult: { data?: string | Uint8Array }
+  ): Promise<void> {
+    if (format !== 'lac') {
+      return;
+    }
+
+    const selectedRegions = this.readSelectedRegions(data, exportOptions);
+    if (!selectedRegions || selectedRegions.length === 0) {
+      return;
+    }
+
+    if (typeof exportResult.data !== 'string') {
+      return;
+    }
+
+    await fs.promises.writeFile(
+      filePath,
+      this.mergeSelectedRegionsIntoLacContent(exportResult.data, selectedRegions),
+      'utf-8'
+    );
+  }
+
+  private readSelectedRegions(
+    data: unknown,
+    exportOptions: ExportOptions
+  ): Array<{
+    firstSample: number;
+    lastSample: number;
+    regionName: string;
+    color: { r: number; g: number; b: number; a: number };
+  }> | undefined {
+    if (!this.isRecord(data) || !Array.isArray(data.selectedRegions)) {
+      return undefined;
+    }
+
+    const sampleRange = this.resolveSelectedRegionSampleRange(exportOptions);
+    const normalizedRegions = data.selectedRegions
+      .map(region => this.normalizeSelectedRegion(region, sampleRange))
+      .filter(
+        (
+          region
+        ): region is {
+          firstSample: number;
+          lastSample: number;
+          regionName: string;
+          color: { r: number; g: number; b: number; a: number };
+        } => region !== undefined
+      );
+
+    return normalizedRegions.length > 0 ? normalizedRegions : undefined;
+  }
+
+  private resolveSelectedRegionSampleRange(
+    exportOptions: ExportOptions
+  ): { startSample: number; endSample: number } | undefined {
+    if (exportOptions.timeRange !== 'custom') {
+      return undefined;
+    }
+
+    if (
+      exportOptions.customStart === undefined ||
+      exportOptions.customEnd === undefined ||
+      exportOptions.customEnd <= exportOptions.customStart
+    ) {
+      return undefined;
+    }
+
+    return {
+      startSample: exportOptions.customStart,
+      endSample: exportOptions.customEnd
+    };
+  }
+
+  private normalizeSelectedRegion(
+    region: unknown,
+    sampleRange?: { startSample: number; endSample: number }
+  ):
+    | {
+        firstSample: number;
+        lastSample: number;
+        regionName: string;
+        color: { r: number; g: number; b: number; a: number };
+      }
+    | undefined {
+    if (!this.isRecord(region)) {
+      return undefined;
+    }
+
+    const firstSample = this.readNumber(region, 'firstSample');
+    const lastSample = this.readNumber(region, 'lastSample');
+    const regionName = this.readString(region, 'regionName');
+    const color = this.parseSelectedRegionColor(this.readString(region, 'color'));
+
+    if (firstSample === undefined || lastSample === undefined || !regionName || !color) {
+      return undefined;
+    }
+
+    let normalizedFirst = Math.min(firstSample, lastSample);
+    let normalizedLast = Math.max(firstSample, lastSample);
+
+    if (sampleRange) {
+      const clippedFirst = Math.max(normalizedFirst, sampleRange.startSample);
+      const clippedLast = Math.min(normalizedLast, sampleRange.endSample - 1);
+
+      if (clippedFirst > clippedLast) {
+        return undefined;
+      }
+
+      normalizedFirst = clippedFirst - sampleRange.startSample;
+      normalizedLast = clippedLast - sampleRange.startSample;
+    }
+
+    return {
+      firstSample: normalizedFirst,
+      lastSample: normalizedLast,
+      regionName,
+      color
+    };
+  }
+
+  private parseSelectedRegionColor(
+    color: string | undefined
+  ): { r: number; g: number; b: number; a: number } | undefined {
+    if (!color) {
+      return undefined;
+    }
+
+    const rgbaMatch = color.match(
+      /rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)(?:\s*,\s*(\d*(?:\.\d+)?))?\s*\)/i
+    );
+
+    if (!rgbaMatch) {
+      return undefined;
+    }
+
+    const [, red, green, blue, alpha] = rgbaMatch;
+    const normalizedAlpha = alpha === undefined || alpha === '' ? 1 : Number(alpha);
+
+    return {
+      r: this.clampColorChannel(Number(red)),
+      g: this.clampColorChannel(Number(green)),
+      b: this.clampColorChannel(Number(blue)),
+      a: this.clampColorChannel(Math.round(normalizedAlpha * 255))
+    };
+  }
+
+  private clampColorChannel(value: number): number {
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+
+    return Math.max(0, Math.min(255, Math.round(value)));
+  }
+
+  private mergeSelectedRegionsIntoLacContent(
+    documentContent: string,
+    selectedRegions: Array<{
+      firstSample: number;
+      lastSample: number;
+      regionName: string;
+      color: { r: number; g: number; b: number; a: number };
+    }>
+  ): string {
+    const exportedCapture = LACFileFormat.parse(documentContent);
+    const mergedContent = LACFileFormat.createFromCaptureSession(
+      exportedCapture.Settings,
+      selectedRegions,
+      Array.isArray(exportedCapture.Samples) && exportedCapture.Samples.length > 0
+    );
+
+    if (exportedCapture.Samples) {
+      mergedContent.Samples = exportedCapture.Samples;
+    }
+
+    return LACFileFormat.serialize(mergedContent);
   }
 
   private readNumberArray(value: unknown, key: string): number[] | undefined {

@@ -33,7 +33,10 @@
     "src/services/SignalDescriptionLanguage.ts",
     "src/frontend/core/protocol/bootstrap.ts",
     "src/frontend/core/protocol/window.ts",
+    "src/frontend/core/services/exportRequestService.ts",
     "src/frontend/core/stores/decoderMappingHelpers.ts",
+    "src/frontend/core/stores/sessionStore.ts",
+    "src/frontend/core/stores/waveformStore.ts",
     "src/frontend/core/stores/uiStore.ts"
   ],
   "exclude": [

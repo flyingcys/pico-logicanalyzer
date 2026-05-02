@@ -533,7 +533,7 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
   private createBitAnnotations(
     bits: Array<{ value: number; startSample: number; endSample: number }>
   ): DecoderResult[] {
-    return bits.map(bit => ({
+    return [...bits].reverse().map(bit => ({
       startSample: bit.startSample,
       endSample: bit.endSample,
       annotationType: 5,

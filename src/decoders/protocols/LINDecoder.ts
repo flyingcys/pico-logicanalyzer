@@ -187,6 +187,10 @@ export class LINDecoder extends DecoderBase {
         }
       }
 
+      if (this.countCompleteBytesBeforeBreak(samples, cursor) === 1) {
+        break;
+      }
+
       const byte = this.readByte(samples, cursor);
       if (!byte) {
         this.warn(cursor, cursor + this.bitWidth, ['Missing data', 'Data']);
@@ -230,7 +234,7 @@ export class LINDecoder extends DecoderBase {
     return null;
   }
 
-  private readByte(samples: Uint8Array, from: number): LINByte | null {
+  private readByte(samples: Uint8Array, from: number, warnOnStopBit: boolean = true): LINByte | null {
     let start = from;
     while (start < samples.length && samples[start] === 1) {
       start++;
@@ -249,7 +253,7 @@ export class LINDecoder extends DecoderBase {
     }
 
     const stopIndex = start + 9 * this.bitWidth;
-    if (stopIndex >= samples.length || samples[stopIndex] !== 1) {
+    if (warnOnStopBit && (stopIndex >= samples.length || samples[stopIndex] !== 1)) {
       this.warn(stopIndex, stopIndex + this.bitWidth, ['Stop bit error', 'Stop']);
     }
 
@@ -277,6 +281,24 @@ export class LINDecoder extends DecoderBase {
     return end;
   }
 
+  private countCompleteBytesBeforeBreak(samples: Uint8Array, from: number): number {
+    const nextBreak = this.findBreak(samples, from);
+    const end = nextBreak?.start ?? samples.length;
+    let count = 0;
+    let cursor = from;
+
+    while (cursor < end) {
+      const byte = this.readByte(samples, cursor, false);
+      if (!byte || byte.endSample > end) {
+        break;
+      }
+      count++;
+      cursor = byte.endSample;
+    }
+
+    return count;
+  }
+
   private hasValidPidParity(pid: number): boolean {
     const id = pid & 0x3f;
     const p0 = ((id >> 0) ^ (id >> 1) ^ (id >> 2) ^ (id >> 4)) & 1;
@@ -294,10 +316,7 @@ export class LINDecoder extends DecoderBase {
   }
 
   private shouldIncludePidInChecksum(pid: number): boolean {
-    if (this.checksumMode === 'enhanced') {
-      return true;
-    }
-    if (this.checksumMode !== 'lin2.x') {
+    if (this.checksumMode !== 'enhanced' && this.checksumMode !== 'lin2.x') {
       return false;
     }
 

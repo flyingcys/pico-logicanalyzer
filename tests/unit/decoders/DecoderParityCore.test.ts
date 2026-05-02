@@ -66,6 +66,15 @@ class ProbeDecoder extends DecoderBase {
     });
     return this.results;
   }
+
+  emitTyped(type: DecoderOutputType, payload: unknown): DecoderResult[] {
+    this.put(2, 5, {
+      type,
+      values: [],
+      rawData: payload
+    });
+    return this.results;
+  }
 }
 
 class MappingDecoder extends DecoderBase {
@@ -161,6 +170,39 @@ class ConsumerDecoder extends DecoderBase {
         rawData: input?.[0]?.value
       }
     ];
+  }
+}
+
+class TypedBranchDecoder extends DecoderBase {
+  readonly id = 'typed-branch';
+  readonly name = 'Typed Branch';
+  readonly longname = 'Typed Branch Decoder';
+  readonly desc = 'Emits non-annotation outputs through the shared result path.';
+  readonly license = 'MIT';
+  readonly inputs = ['logic'];
+  readonly outputs = ['typed-branch'];
+  readonly tags = ['test'];
+  readonly channels: DecoderChannel[] = [];
+  readonly options: DecoderOption[] = [];
+  readonly annotations: Array<[string, string, string?]> = [];
+
+  decode(): DecoderResult[] {
+    this.put(10, 12, {
+      type: DecoderOutputType.PYTHON,
+      values: [],
+      rawData: { opcode: 'frame', value: 0x33 }
+    });
+    this.put(12, 14, {
+      type: DecoderOutputType.BINARY,
+      values: [],
+      rawData: new Uint8Array([0x33, 0x44])
+    });
+    this.put(14, 16, {
+      type: DecoderOutputType.META,
+      values: [],
+      rawData: { sampleRate: 1_000_000 }
+    });
+    return this.results;
   }
 }
 
@@ -388,6 +430,41 @@ describe('解码器 parity 核心', () => {
     );
   });
 
+  it('put 为非 annotation 输出保留 type 和载荷，且不伪造 annotationType', () => {
+    const decoder = new ProbeDecoder();
+
+    const pythonResult = decoder.emitTyped(DecoderOutputType.PYTHON, { frame: 0x12 })[0];
+    const binaryResult = decoder.emitTyped(DecoderOutputType.BINARY, new Uint8Array([0xaa]))[1];
+    const metaResult = decoder.emitTyped(DecoderOutputType.META, { baudrate: 115200 })[2];
+
+    expect(pythonResult).toEqual(
+      expect.objectContaining({
+        type: DecoderOutputType.PYTHON,
+        rawData: { frame: 0x12 },
+        values: []
+      })
+    );
+    expect(pythonResult.annotationType).toBeUndefined();
+
+    expect(binaryResult).toEqual(
+      expect.objectContaining({
+        type: DecoderOutputType.BINARY,
+        rawData: new Uint8Array([0xaa]),
+        values: []
+      })
+    );
+    expect(binaryResult.annotationType).toBeUndefined();
+
+    expect(metaResult).toEqual(
+      expect.objectContaining({
+        type: DecoderOutputType.META,
+        rawData: { baudrate: 115200 },
+        values: []
+      })
+    );
+    expect(metaResult.annotationType).toBeUndefined();
+  });
+
   it('DecoderManager 执行解码树时按 selectedChannels 重映射输入通道', () => {
     const manager = new DecoderManager();
     const channels: ChannelData[] = [
@@ -441,6 +518,45 @@ describe('解码器 parity 核心', () => {
     expect(results?.get('consumer')?.segments[0]).toEqual(
       expect.objectContaining({ rawData: 0x5a, values: ['5A'] })
     );
+  });
+
+  it('DecoderManager 执行解码树时保留非 annotation segment 的 type 与载荷', () => {
+    const manager = new DecoderManager();
+    const channels: ChannelData[] = [
+      { channelNumber: 0, channelName: 'DATA', samples: new Uint8Array([1]) }
+    ];
+
+    const results = manager.execute(1000000, channels, {
+      branches: [
+        {
+          name: 'typed',
+          decoder: new TypedBranchDecoder(),
+          options: [],
+          channels: [],
+          children: []
+        }
+      ]
+    });
+
+    const segments = results?.get('typed')?.segments ?? [];
+
+    expect(segments).toEqual([
+      expect.objectContaining({
+        type: DecoderOutputType.PYTHON,
+        rawData: { opcode: 'frame', value: 0x33 }
+      }),
+      expect.objectContaining({
+        type: DecoderOutputType.BINARY,
+        rawData: new Uint8Array([0x33, 0x44])
+      }),
+      expect.objectContaining({
+        type: DecoderOutputType.META,
+        rawData: { sampleRate: 1_000_000 }
+      })
+    ]);
+    expect(segments[0]).not.toHaveProperty('annotationType');
+    expect(segments[1]).not.toHaveProperty('annotationType');
+    expect(segments[2]).not.toHaveProperty('annotationType');
   });
 
   it('I2C 大样本默认推荐流式解码，小样本保持常规解码', () => {

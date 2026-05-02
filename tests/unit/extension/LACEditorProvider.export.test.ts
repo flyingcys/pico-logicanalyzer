@@ -3,9 +3,21 @@ import * as vscode from 'vscode';
 const exportWaveformData = jest.fn();
 const initialize = jest.fn();
 const dispose = jest.fn();
+const overwriteExportedLacFile = jest.fn();
 const showSaveDialog = jest.fn();
 const showInformationMessage = jest.fn();
 const showErrorMessage = jest.fn();
+
+jest.mock('fs', () => {
+  const actualFs = jest.requireActual('fs') as typeof import('fs');
+  return {
+    ...actualFs,
+    promises: {
+      ...actualFs.promises,
+      writeFile: overwriteExportedLacFile
+    }
+  };
+});
 
 jest.mock('vscode', () => ({
   commands: { executeCommand: jest.fn() },
@@ -97,6 +109,7 @@ describe('LACEditorProvider exportData 用户路径补强', () => {
     jest.clearAllMocks();
     initialize.mockResolvedValue(true);
     dispose.mockResolvedValue(true);
+    overwriteExportedLacFile.mockResolvedValue(undefined);
     exportWaveformData.mockResolvedValue({
       success: true,
       filename: '/tmp/export.csv',
@@ -301,5 +314,99 @@ describe('LACEditorProvider exportData 用户路径补强', () => {
     }));
     expect(exportOptions.customStart).toBeUndefined();
     expect(exportOptions.customEnd).toBeUndefined();
+  });
+
+  it('webview lac 导出应把 selectedRegions 写入导出内容', async () => {
+    showSaveDialog.mockResolvedValue({ fsPath: '/tmp/export.lac' });
+    exportWaveformData.mockResolvedValue({
+      success: true,
+      filename: '/tmp/export.lac',
+      mimeType: 'application/octet-stream',
+      size: 256,
+      data: JSON.stringify({
+        Settings: {
+          Frequency: 1000,
+          PreTriggerSamples: 0,
+          PostTriggerSamples: 3,
+          CaptureChannels: [{ ChannelNumber: 0, ChannelName: 'D0', Hidden: false }]
+        },
+        Samples: [
+          '00000000000000000000000000000001',
+          '00000000000000000000000000000000',
+          '00000000000000000000000000000001'
+        ]
+      })
+    });
+
+    await (createProvider() as any).exportData(createDocument(), {
+      source: 'webview',
+      format: 'lac',
+      timeRange: 'custom',
+      customStart: 1,
+      customEnd: 4,
+      selectedChannels: [0],
+      selectedRegions: [
+        {
+          firstSample: 0,
+          lastSample: 2,
+          regionName: '保留区域',
+          color: 'rgba(255, 0, 0, 0.5)'
+        },
+        {
+          firstSample: 2,
+          lastSample: 5,
+          regionName: '截断区域',
+          color: 'rgba(0, 128, 255, 1)'
+        },
+        {
+          firstSample: 5,
+          lastSample: 6,
+          regionName: '越界区域',
+          color: 'rgba(0, 0, 0, 1)'
+        }
+      ]
+    });
+
+    expect(exportWaveformData).toHaveBeenCalledWith(
+      expect.any(Object),
+      'lac',
+      expect.objectContaining({
+        filename: '/tmp/export.lac',
+        timeRange: 'custom',
+        customStart: 1,
+        customEnd: 4,
+        selectedChannels: [0]
+      })
+    );
+    expect(showInformationMessage).toHaveBeenCalledWith('数据已导出到: /tmp/export.lac');
+
+    expect(overwriteExportedLacFile).toHaveBeenCalledWith(
+      '/tmp/export.lac',
+      expect.any(String),
+      'utf-8'
+    );
+
+    expect(JSON.parse(overwriteExportedLacFile.mock.calls[0][1])).toMatchObject({
+      SelectedRegions: [
+        {
+          FirstSample: 0,
+          LastSample: 1,
+          RegionName: '保留区域',
+          R: 255,
+          G: 0,
+          B: 0,
+          A: 128
+        },
+        {
+          FirstSample: 1,
+          LastSample: 2,
+          RegionName: '截断区域',
+          R: 0,
+          G: 128,
+          B: 255,
+          A: 255
+        }
+      ]
+    });
   });
 });

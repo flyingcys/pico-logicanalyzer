@@ -50,7 +50,23 @@ const i2sOptions = (wordLength: number): DecoderOptionValue[] => [
 const sampleAnnotations = (results: DecoderResult[]): DecoderResult[] =>
   results.filter(result => result.annotationType === 0 || result.annotationType === 1);
 
+const bitAnnotations = (results: DecoderResult[]): DecoderResult[] =>
+  results.filter(result => result.annotationType === 2);
+
 describe('I2SDecoder', () => {
+  it('annotations 与 annotationRows 对 bit 输出保持一致', () => {
+    const decoder = new I2SDecoder();
+
+    expect(decoder.annotations[2]).toEqual(['bit', 'Data bit']);
+    expect(decoder.annotationRows).toEqual(
+      expect.arrayContaining([
+        ['samples', 'Samples', [0, 1]],
+        ['bits', 'Bits', [2]],
+        ['warnings', 'Warnings', [3]]
+      ])
+    );
+  });
+
   it('32 bit sample values keep unsigned semantics when the high bit is set', () => {
     const channels = createI2SChannels([
       { ws: 0, bits: bitsFromNumber(0x80000000, 32) },
@@ -106,6 +122,26 @@ describe('I2SDecoder', () => {
         })
       ])
     );
+  });
+
+  it('为每个被采样的数据位输出 bit annotation', () => {
+    const channels = createI2SChannels([
+      { ws: 0, bits: bitsFromNumber(0xa55a, 16) },
+      { ws: 1, bits: bitsFromNumber(0x5aa5, 16) }
+    ]);
+
+    const results = new I2SDecoder().decode(2_000_000, channels, i2sOptions(16));
+    const bits = bitAnnotations(results);
+
+    expect(bits).toHaveLength(32);
+    expect(bits.slice(0, 6)).toEqual([
+      expect.objectContaining({ annotationType: 2, values: ['1'] }),
+      expect.objectContaining({ annotationType: 2, values: ['0'] }),
+      expect.objectContaining({ annotationType: 2, values: ['1'] }),
+      expect.objectContaining({ annotationType: 2, values: ['0'] }),
+      expect.objectContaining({ annotationType: 2, values: ['0'] }),
+      expect.objectContaining({ annotationType: 2, values: ['1'] })
+    ]);
   });
 
   it('drops an unsynchronized leading fragment before the first complete WS-bounded word', () => {

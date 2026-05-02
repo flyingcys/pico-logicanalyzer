@@ -44,6 +44,7 @@ export class I2SDecoder extends DecoderBase {
 
   readonly annotationRows: Array<[string, string, number[]]> = [
     ['samples', 'Samples', [0, 1]],
+    ['bits', 'Bits', [2]],
     ['warnings', 'Warnings', [3]]
   ];
 
@@ -122,6 +123,7 @@ export class I2SDecoder extends DecoderBase {
       }
 
       bits.push(bit);
+      this.emit(2, index - 1, index + 1, [String(bit)], bit);
     }
 
     if (activeWs !== null) {

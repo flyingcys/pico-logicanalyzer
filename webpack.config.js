@@ -9,6 +9,8 @@ const WEBVIEW_BUNDLE_BUDGET = {
   maxEntrypointSize: 3000000
 };
 
+const WEBVIEW_VSCODE_SCRIPT_LIST_PREFIX = 'main-vscode.scripts.';
+
 class WebviewAssetManifestPlugin {
   apply(compiler) {
     compiler.hooks.thisCompilation.tap('WebviewAssetManifestPlugin', compilation => {
@@ -29,12 +31,28 @@ class WebviewAssetManifestPlugin {
             const hashedEntryPattern = new RegExp(`^${entryName}(\\.[a-f0-9]{8})?\\.js$`);
             return entrypoint.getFiles().find(file => hashedEntryPattern.test(file));
           };
+          const getEntryScripts = entrypoint => {
+            if (!entrypoint) {
+              return [];
+            }
+
+            return entrypoint.getFiles().filter(file => file.endsWith('.js'));
+          };
 
           const vscodeScript = getEntryScript(vscodeEntrypoint, 'main-vscode');
           if (vscodeScript) {
             manifest['main-vscode.js'] = vscodeScript;
           } else {
             compilation.errors.push(new Error('Webview manifest 缺少 main-vscode.js 产物'));
+          }
+
+          const vscodeScripts = getEntryScripts(vscodeEntrypoint);
+          if (vscodeScripts.length > 0) {
+            vscodeScripts.forEach((script, index) => {
+              manifest[`${WEBVIEW_VSCODE_SCRIPT_LIST_PREFIX}${index}`] = script;
+            });
+          } else {
+            compilation.errors.push(new Error('Webview manifest 缺少 main-vscode 依赖脚本列表'));
           }
 
           const htmlScript = getEntryScript(htmlEntrypoint, 'main-html');
@@ -357,7 +375,7 @@ const webviewConfig = {
       return /\.(js|css)$/.test(assetFilename);
     }
   },
-  devtool: isDevelopment ? 'eval-cheap-module-source-map' : 'source-map'
+  devtool: isDevelopment ? 'inline-source-map' : 'source-map'
 };
 
 // 开发服务器配置（如果需要）

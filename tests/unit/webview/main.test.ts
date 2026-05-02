@@ -3262,7 +3262,9 @@ describe('LACEditorProvider 契约', () => {
           onDidChangeTextDocument: jest.fn(() => ({ dispose: jest.fn() }))
         },
         Uri: {
-          joinPath: jest.fn((...segments: string[]) => segments.join('/')),
+          joinPath: jest.fn((...segments: Array<string | { fsPath?: string }>) =>
+            segments.map(segment => typeof segment === 'string' ? segment : (segment.fsPath ?? String(segment))).join('/')
+          ),
           file: jest.fn()
         },
         Range: jest.fn(),
@@ -3287,6 +3289,124 @@ describe('LACEditorProvider 契约', () => {
         getText: () => '{}'
       })).toThrow('Webview 资源清单缺失 main-vscode.js');
       expect(showErrorMessage).toHaveBeenCalledWith('Webview 资源清单缺失 main-vscode.js');
+    });
+  });
+
+  it('应按 manifest 顺序注入 VSCode webview 依赖脚本', async () => {
+    await jest.isolateModulesAsync(async () => {
+      mockProviderDependencies();
+      jest.doMock('fs', () => ({
+        existsSync: jest.fn(() => true),
+        readFileSync: jest.fn(() =>
+          JSON.stringify({
+            'main-vscode.js': 'main-vscode.js',
+            'main-vscode.scripts.0': 'element-plus.js',
+            'main-vscode.scripts.1': 'vue-vendor.js',
+            'main-vscode.scripts.2': 'main-vscode.js'
+          })
+        )
+      }));
+      jest.doMock('vscode', () => ({
+        commands: { executeCommand: jest.fn() },
+        window: {
+          registerCustomEditorProvider: jest.fn(),
+          showInformationMessage: jest.fn(),
+          showErrorMessage: jest.fn(),
+          showSaveDialog: jest.fn()
+        },
+        workspace: {
+          applyEdit: jest.fn(),
+          onDidChangeTextDocument: jest.fn(() => ({ dispose: jest.fn() }))
+        },
+        Uri: {
+          joinPath: jest.fn((...segments: Array<string | { fsPath?: string }>) =>
+            segments.map(segment => typeof segment === 'string' ? segment : (segment.fsPath ?? String(segment))).join('/')
+          ),
+          file: jest.fn()
+        },
+        Range: jest.fn(),
+        WorkspaceEdit: jest.fn()
+      }), { virtual: true });
+
+      const { LACEditorProvider } = await import('../../../src/providers/LACEditorProvider');
+      const provider = new LACEditorProvider({
+        extensionUri: {
+          fsPath: '/tmp/extension'
+        }
+      } as any);
+
+      const html = (provider as any).getHtmlForWebview({
+        asWebviewUri: (value: string) => `webview:${value}`,
+        cspSource: 'vscode-webview://test'
+      }, {
+        uri: {
+          toString: () => 'file:///tmp/test.lac',
+          fsPath: '/tmp/test.lac'
+        },
+        getText: () => '{}'
+      });
+
+      expect(html).toContain('src="webview:/tmp/extension/out/webview/element-plus.js"');
+      expect(html).toContain('src="webview:/tmp/extension/out/webview/vue-vendor.js"');
+      expect(html).toContain('src="webview:/tmp/extension/out/webview/main-vscode.js"');
+      expect(html.indexOf('element-plus.js')).toBeLessThan(html.indexOf('vue-vendor.js'));
+      expect(html.indexOf('vue-vendor.js')).toBeLessThan(html.indexOf('main-vscode.js'));
+    });
+  });
+
+  it('旧版 manifest 仅包含 main-vscode.js 时仍应回退注入单脚本', async () => {
+    await jest.isolateModulesAsync(async () => {
+      mockProviderDependencies();
+      jest.doMock('fs', () => ({
+        existsSync: jest.fn(() => true),
+        readFileSync: jest.fn(() =>
+          JSON.stringify({
+            'main-vscode.js': 'main-vscode.js'
+          })
+        )
+      }));
+      jest.doMock('vscode', () => ({
+        commands: { executeCommand: jest.fn() },
+        window: {
+          registerCustomEditorProvider: jest.fn(),
+          showInformationMessage: jest.fn(),
+          showErrorMessage: jest.fn(),
+          showSaveDialog: jest.fn()
+        },
+        workspace: {
+          applyEdit: jest.fn(),
+          onDidChangeTextDocument: jest.fn(() => ({ dispose: jest.fn() }))
+        },
+        Uri: {
+          joinPath: jest.fn((...segments: Array<string | { fsPath?: string }>) =>
+            segments.map(segment => typeof segment === 'string' ? segment : (segment.fsPath ?? String(segment))).join('/')
+          ),
+          file: jest.fn()
+        },
+        Range: jest.fn(),
+        WorkspaceEdit: jest.fn()
+      }), { virtual: true });
+
+      const { LACEditorProvider } = await import('../../../src/providers/LACEditorProvider');
+      const provider = new LACEditorProvider({
+        extensionUri: {
+          fsPath: '/tmp/extension'
+        }
+      } as any);
+
+      const html = (provider as any).getHtmlForWebview({
+        asWebviewUri: (value: string) => `webview:${value}`,
+        cspSource: 'vscode-webview://test'
+      }, {
+        uri: {
+          toString: () => 'file:///tmp/test.lac',
+          fsPath: '/tmp/test.lac'
+        },
+        getText: () => '{}'
+      });
+
+      expect(html.match(/<script nonce=/g)?.length).toBe(2);
+      expect(html).toContain('src="webview:/tmp/extension/out/webview/main-vscode.js"');
     });
   });
 

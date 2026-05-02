@@ -4,6 +4,7 @@ import type { ChannelData, DecoderResult, DecoderSelectedChannel } from '../../.
 
 type I2COperation =
   | { type: 'start' }
+  | { type: 'restart' }
   | { type: 'stop' }
   | { type: 'byte'; value: number }
   | { type: 'ack' }
@@ -21,6 +22,8 @@ function generateI2CSequence(operations: I2COperation[]): { scl: Uint8Array; sda
   for (const operation of operations) {
     if (operation.type === 'start') {
       push([1, 1, 1, 1], [1, 1, 0, 0]);
+    } else if (operation.type === 'restart') {
+      push([0, 0, 1, 1, 1, 1], [0, 1, 1, 1, 0, 0]);
     } else if (operation.type === 'stop') {
       push([0, 1, 1, 1], [0, 0, 1, 1]);
     } else if (operation.type === 'byte') {
@@ -131,9 +134,57 @@ describe('StreamingI2CDecoder', () => {
     expect(result.success).toBe(true);
     expect(bitAnnotations).toHaveLength(16);
     expect(bitAnnotations.map(item => item.values[0])).toEqual([
-      '1', '0', '1', '0', '0', '0', '0', '0',
-      '0', '0', '0', '1', '0', '0', '1', '0'
+      '0', '0', '0', '0', '0', '1', '0', '1',
+      '0', '1', '0', '0', '1', '0', '0', '0'
     ]);
+  });
+
+  it('跨块 repeated-start read 事务应输出重复起始、读地址、读数据、NACK 与 Stop', async () => {
+    const decoder = new StreamingI2CDecoder({
+      chunkSize: 24,
+      processingInterval: 0,
+      maxConcurrentChunks: 4
+    });
+    const repeatedStartRead: I2COperation[] = [
+      { type: 'start' },
+      { type: 'byte', value: 0xa0 },
+      { type: 'ack' },
+      { type: 'byte', value: 0x00 },
+      { type: 'ack' },
+      { type: 'restart' },
+      { type: 'byte', value: 0xa1 },
+      { type: 'ack' },
+      { type: 'byte', value: 0x5a },
+      { type: 'nack' },
+      { type: 'stop' }
+    ];
+
+    const result = await decoder.streamingDecode(
+      1_000_000,
+      createChannels(repeatedStartRead),
+      [{ optionIndex: 0, value: 'shifted' }],
+      [
+        { captureIndex: 0, decoderIndex: 0 },
+        { captureIndex: 1, decoderIndex: 1 }
+      ]
+    );
+
+    expect(result.success).toBe(true);
+    expect(semanticResults(result.results)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ annotationType: 1, values: ['Start repeat', 'Sr'] }),
+      expect.objectContaining({
+        annotationType: 6,
+        values: ['Address read: 50', 'AR: 50', '50'],
+        rawData: 0x50
+      }),
+      expect.objectContaining({
+        annotationType: 8,
+        values: ['Data read: 5A', 'DR: 5A', '5A'],
+        rawData: 0x5A
+      }),
+      expect.objectContaining({ annotationType: 4, values: ['NACK', 'N'] }),
+      expect.objectContaining({ annotationType: 2, values: ['Stop', 'P'] })
+    ]));
   });
 
   it('按 captureIndex/decoderIndex 使用显式通道映射', async () => {

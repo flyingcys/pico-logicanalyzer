@@ -213,7 +213,7 @@ export class SPIDecoder extends DecoderBase {
 
     // 如果没有CS信号，发送初始CS状态（对应原版 lines 327-328）
     if (!this.haveCS) {
-      this.putCSChange(null, null);
+      this.putCSChange(null, this.csPolarity === 'active-low' ? 0 : 1);
     }
 
     // 构造等待条件（对应原版 lines 333-336）
@@ -469,6 +469,12 @@ export class SPIDecoder extends DecoderBase {
         rawData: this.mosiData
       });
     }
+
+    this.put(ss, es, {
+      type: DecoderOutputType.PYTHON,
+      values: ['DATA', si, so] as unknown as string[],
+      rawData: { si, so, siBits, soBits }
+    });
   }
 
   /**
@@ -598,7 +604,8 @@ export class SPIDecoder extends DecoderBase {
       return;
     }
 
-    this.put(Math.max(0, this.sampleIndex - 1), this.sampleIndex, {
+    const startSample = oldCS === null ? this.sampleIndex : Math.max(0, this.sampleIndex - 1);
+    this.put(startSample, this.sampleIndex, {
       type: DecoderOutputType.ANNOTATION,
       annotationType: 7, // cs-change
       values: asserted ? ['CS asserted', 'CS active'] : ['CS deasserted', 'CS idle'],

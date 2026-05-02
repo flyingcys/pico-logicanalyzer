@@ -6,18 +6,22 @@
 
 ---
 
-## 当前校验状态（2026-04-30）
+## 当前校验状态（2026-05-02）
 
 旧说明中的历史完成度结论已经过期。当前可验证事实：
 
 - `tests` 目录保留 5 层测试结构：`unit`、`integration`、`performance`、`stress`、`e2e`。
 - 集成、性能、压力和端到端测试中已清理旧 `utest/mocks/simple-mocks` 引用，统一使用 `tests/fixtures/mocks/simple-mocks`。
-- `rtk npm run typecheck` 和 `rtk npm run typecheck:strict` 当前作为基础类型门禁；strict gate 已从 models/decoders 扩到少量 driver/service/frontend core 低耦合入口。
+- `rtk npm run typecheck` 和 `rtk npm run typecheck:strict` 当前作为基础类型门禁；strict gate 已从 models/decoders 扩到少量 driver/service/frontend core 低耦合入口，并于 2026-05-02 新增 `exportRequestService.ts`、`sessionStore.ts`、`waveformStore.ts`。
 - `rtk npm run test:decoders -- --runInBand` 当前通过，10 个测试套件、196 个测试；解码器内部进度、注册和停止日志默认由 `PICO_DECODER_DEBUG` 开关静默。
 - `rtk npm run test:ci:quick -- --skip-install` 当前通过，14 个 quick 核心测试文件、373 个测试。
 - `rtk npm run test:ci:standard -- --skip-install` 当前通过，18 个测试文件、383 个测试。
-- `rtk npm run test:ci:full -- --skip-install` 当前通过，22 个测试文件、393 个测试。
+- `rtk npm run test:ci:full -- --skip-install` 当前通过，22 个测试文件、393 个测试，用时约 7.6 分钟。
 - `rtk npm run test:webview:unit -- --runInBand` 当前通过，3 个测试套件、98 个测试；`ts-jest isolatedModules` 配置 warning 已迁移处理。
+- `rtk npm exec -- jest tests/unit/extension/LACEditorProvider.export.test.ts --runInBand` 当前通过，11 个测试，覆盖导出取消、失败、Webview 显式范围转换，以及 `.lac` 导出时 `SelectedRegions` 回填。
+- `rtk npm exec -- jest tests/unit/services/DataExportService.accurate.test.ts --runInBand` 当前通过，75 个测试，覆盖 LAC/CSV/JSON/VCD 导出、样本范围归一化和高编号通道导出。
+- `rtk npm exec -- jest tests/unit/webview/decoderMappingHelpers.test.ts --runInBand` 当前通过，9 个测试，覆盖 I2C 自动映射与 fallback 逻辑。
+- `rtk npm exec -- jest tests/unit/quality/QualityGateConfig.test.ts --runInBand` 当前通过，9 个测试，覆盖门禁与文档约束。
 - `rtk npm run test:unit -- --silent` 曾出现长时间无输出，当前不作为发布证据；应使用 quick/standard/full 分层命令定位。
 - `rtk npm run test:unit` 脚本不再内置 `--maxWorkers`，调用方可按场景追加 `--runInBand` 或 `--maxWorkers`。
 - Quick 层暂不阻断测试已收口为 0 个；`LogicAnalyzerDriver.core`、`CaptureModels.core`、`SessionManager.core`、`ConfigurationManager.basic` 已重新纳入 quick 阻断门禁。
@@ -179,7 +183,7 @@ class MyModuleTest extends UnitTestBase {
 ### 历史迁移标记与当前口径
 - CI 覆盖的旧 `utest/mocks` 引用已迁移到 `tests/fixtures/mocks`。
 - 5 层测试目录结构仍保留。
-- Quick、Standard 和 Full 分层执行的当前状态以上方 2026-04-30 命令证据为准。
+- Quick、Standard 和 Full 的当前状态以上方 2026-05-02 fresh 命令证据为准。
 - ⚠️ 覆盖率报告仍需重新验证后再确认发布候选质量。
 
 ---

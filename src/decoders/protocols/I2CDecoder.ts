@@ -471,7 +471,7 @@ export class I2CDecoder extends DecoderBase {
    * 输出当前字节对应的 bit 注释。
    */
   private putBitAnnotations(): void {
-    for (const bit of this.dataBits) {
+    for (const bit of [...this.dataBits].reverse()) {
       this.put(bit.startSample, bit.endSample, {
         type: DecoderOutputType.ANNOTATION,
         annotationType: 5,
@@ -512,6 +512,19 @@ export class I2CDecoder extends DecoderBase {
       annotationType: 2, // stop
       values: ['Stop', 'P']
     });
+
+    if (this.pduStart !== null && this.pduBits > 0 && this.sampleRate > 0 && ss >= this.pduStart) {
+      const elapsedSamples = ss - this.pduStart + 1;
+      const bitrate = Math.floor((this.pduBits / elapsedSamples) * this.sampleRate);
+
+      this.put(this.pduStart, es, {
+        type: DecoderOutputType.META,
+        values: ['BITRATE'],
+        rawData: {
+          bitrate
+        }
+      });
+    }
 
     // 重置状态
     this.isRepeatStart = false;

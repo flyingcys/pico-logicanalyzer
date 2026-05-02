@@ -137,6 +137,17 @@ describe('LINDecoder raw logic main path', () => {
     expect(warningValues(results)).toHaveLength(0);
   });
 
+  it('treats diagnostic identifiers as classic checksum even in enhanced mode', () => {
+    const results = decode([
+      { pid: 0x3c, data: [0x01, 0x02], checksum: 0xfc }
+    ], [
+      { optionIndex: 2, value: 'enhanced' }
+    ]);
+
+    expectSegment(results, 5, ['Checksum: FC', 'FC'], 0xfc);
+    expect(warningValues(results)).toHaveLength(0);
+  });
+
   it('reports checksum errors in a dedicated LIN unit test', () => {
     const results = decode([
       { pid: 0x50, data: [0x12, 0x34], checksum: 0x00 }
@@ -146,6 +157,22 @@ describe('LINDecoder raw logic main path', () => {
       'Checksum error: expected B9',
       'Checksum error'
     ]);
+  });
+
+  it('uses the final byte before the next break as checksum when data_length is larger than the actual response', () => {
+    const results = decode([
+      { pid: 0x50, data: [0x12], checksum: 0xed },
+      { pid: 0x11, data: [0x34], checksum: 0xcb }
+    ], [
+      { optionIndex: 1, value: 2 }
+    ]);
+
+    expectSegment(results, 4, ['Data[0]: 12', '12'], 0x12);
+    expectSegment(results, 5, ['Checksum: ED', 'ED'], 0xed);
+    expectSegment(results, 2, ['PID: 11', '11'], 0x11);
+    expectSegment(results, 4, ['Data[0]: 34', '34'], 0x34);
+    expectSegment(results, 5, ['Checksum: CB', 'CB'], 0xcb);
+    expect(warningValues(results)).toHaveLength(0);
   });
 
   it('runs through DecoderManager with explicit LIN channel mapping', async () => {

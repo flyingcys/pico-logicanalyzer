@@ -149,7 +149,7 @@ describe('质量门禁配置', () => {
     expect(releaseNotes).not.toContain('首个正式版本');
   });
 
-  it('VSIX 发布 smoke 记录脚本和文档应该保持 Beta pending 口径', () => {
+  it('VSIX 发布 smoke 记录脚本和文档应该保持 Beta 环境阻断口径', () => {
     const script = readText('scripts/release-smoke-record.js');
     const releaseGate = readText('docs/release-gate.md');
     const releaseNotes = readText('RELEASE_NOTES.md');
@@ -162,24 +162,28 @@ describe('质量门禁配置', () => {
     expect(script).toContain('自动可验证项');
     expect(script).toContain('干净 VSCode 用户数据目录安装 VSIX | pending');
     expect(script).toContain('Create Synthetic Capture');
-    expect(script).toContain('GUI smoke 尚未完成时不得改写为通过');
+    expect(script).toContain('pending | 需要真实 VSCode CLI/桌面环境');
 
     expect(releaseGate).toContain('package:dry');
     expect(releaseGate).toContain('不生成可安装 VSIX');
     expect(releaseGate).toContain('不能替代 VSCode 桌面环境中的人工确认');
     expect(releaseGate).toContain('VSIX 产物：文件名、大小、sha256、生成命令结果');
     expect(releaseGate).toContain('自动可验证项：commit 可解析、VSIX 存在、sha256 可计算');
+    expect(releaseGate).toContain('环境阻断');
+    expect(releaseGate).toContain('ENOENT');
 
     expect(releaseNotes).toContain('Beta 候选 smoke 证据');
-    expect(releaseNotes).toContain('结论：pending');
-    expect(changelog).toContain('GUI 项统一标为 `pending`');
+    expect(releaseNotes).toContain('blocked');
+    expect(releaseNotes).toContain('ENOENT');
+    expect(changelog).toContain('GUI 项');
 
     expect(smokeRecord).toContain('VSIX sha256：');
     expect(smokeRecord).toContain('### 自动可验证项');
     expect(smokeRecord).toContain('| VSIX sha256 可计算 | 通过 |');
-    expect(smokeRecord).toContain('| 干净 VSCode 用户数据目录安装 VSIX | pending |');
-    expect(smokeRecord).toContain('| 执行 `Logic Analyzer: Create Synthetic Capture` | pending |');
-    expect(smokeRecord).toContain('结论：pending');
+    expect(smokeRecord).toContain('| 干净 VSCode 用户数据目录安装 VSIX | blocked |');
+    expect(smokeRecord).toContain('| 执行 `Logic Analyzer: Create Synthetic Capture` | blocked |');
+    expect(smokeRecord).toContain('结论：blocked');
+    expect(smokeRecord).toContain('ENOENT');
     expect(smokeRecord).not.toContain('| 干净 VSCode 用户数据目录安装 VSIX | 已通过 |');
     expect(smokeRecord).not.toContain('| 执行 `Logic Analyzer: Create Synthetic Capture` | 已通过 |');
     expect(smokeRecord).not.toContain('GUI smoke 已通过');

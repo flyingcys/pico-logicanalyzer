@@ -676,12 +676,13 @@ export const useWaveformStore = defineStore('frontend-waveform', {
       this.pan(Math.floor(deltaSamples));
     },
 
-    zoomAt(centerSample: number, scale: number, totalSamples = this.totalSamples) {
+    zoomAt(centerSample: number, scale: number, totalSamples?: number) {
+      const resolvedTotalSamples = totalSamples ?? this.totalSamples;
       const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
       const nextVisibleSamples = Math.max(
         1,
         Math.min(
-          totalSamples || Number.MAX_SAFE_INTEGER,
+          resolvedTotalSamples || Number.MAX_SAFE_INTEGER,
           Math.round(this.viewRange.visibleSamples / safeScale)
         )
       );
@@ -693,8 +694,12 @@ export const useWaveformStore = defineStore('frontend-waveform', {
       this.setViewRange(nextFirstSample, nextVisibleSamples);
     },
 
-    jumpToTrigger(preTriggerSamples: number, totalSamples = this.totalSamples) {
-      const visibleSamples = Math.min(this.viewRange.visibleSamples, Math.max(1, totalSamples));
+    jumpToTrigger(preTriggerSamples: number, totalSamples?: number) {
+      const resolvedTotalSamples = totalSamples ?? this.totalSamples;
+      const visibleSamples = Math.min(
+        this.viewRange.visibleSamples,
+        Math.max(1, resolvedTotalSamples)
+      );
       const firstSample = Math.max(0, preTriggerSamples - Math.floor(visibleSamples / 2));
       this.setViewRange(firstSample, visibleSamples);
     }

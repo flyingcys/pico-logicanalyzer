@@ -2,42 +2,18 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "type": "npm",
-            "script": "compile",
-            "group": "build",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "silent"
+            "label": "compile-extension",
+            "type": "shell",
+            "command": "rtk npm run compile",
+            "options": {
+                "cwd": "${workspaceFolder}"
             },
-            "problemMatcher": [
-                "$tsc"
-            ]
-        },
-        {
-            "type": "npm",
-            "script": "watch",
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "presentation": {
-                "panel": "shared",
-                "reveal": "never"
-            },
             "problemMatcher": [
-                "$tsc-watch"
-            ]
-        },
-        {
-            "type": "npm",
-            "script": "lint",
-            "group": "test",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "silent"
-            },
-            "problemMatcher": [
-                "$eslint-stylish"
+                "$tsc"
             ]
         }
     ]

@@ -6,23 +6,30 @@
 
 本项目已具备 VSCode 扩展入口、Vue3 Webview、硬件驱动抽象层、核心协议解码器、`.lac` 文件处理、数据导出服务和多层测试目录。当前仍处于 Beta/工程整备阶段，不应按生产就绪发布。
 
-最近一次质量基线验证结果（2026-04-30）：
+最近一次质量基线验证结果（2026-05-02）：
 
 - `rtk npm run typecheck` 通过，是当前基础类型门禁。
-- `rtk npm run typecheck:strict` 通过，是分阶段 strict gate；当前覆盖 `src/models/*.ts`、`src/decoders/*.ts`，以及少量 driver/service/frontend core 低耦合入口，不代表全仓库 strict 完成。
+- `rtk npm run typecheck:strict` 通过，是分阶段 strict gate；当前覆盖 `src/models/*.ts`、`src/decoders/*.ts`，以及少量 driver/service/frontend core 低耦合入口；2026-05-02 已新增 `src/frontend/core/services/exportRequestService.ts`、`src/frontend/core/stores/sessionStore.ts`、`src/frontend/core/stores/waveformStore.ts`。
 - `rtk npm run lint` 通过，本次未输出 warning。
 - `rtk npm run test:webview:unit -- --runInBand` 通过，3 个测试套件、98 个测试；`ts-jest isolatedModules` 配置 warning 已迁移处理。
 - `rtk npm run test:decoders -- --runInBand` 通过，10 个测试套件、196 个测试；解码器内部进度、注册和停止日志默认由 `PICO_DECODER_DEBUG` 开关静默。
 - `rtk npm run test:ci:quick -- --skip-install` 通过，14 个 quick 核心测试文件、373 个测试，暂不阻断测试 0 个。
 - `rtk npm run test:ci:standard -- --skip-install` 通过，18 个测试文件、383 个测试。
-- `rtk npm run test:ci:full -- --skip-install` 通过，22 个测试文件、393 个测试，用时约 7.5 分钟。
-- `rtk npm run package:dry` 通过；该脚本中的 `vsce ls` 会执行 `vscode:prepublish`，因此实际触发了 `rtk npm run build:production`，这不是 `package.json` 中 `package:dry` 脚本文本直接串联构建命令。Webview 运行时入口约 2.23 MiB，已拆出 `element-plus`、`vue-vendor`、`i18n` 等 chunk，仍需继续关注 bundle 预算。
+- `rtk npm run test:ci:full -- --skip-install` 通过，22 个测试文件、393 个测试，用时约 7.6 分钟。
+- `rtk npm exec -- jest tests/unit/extension/LACEditorProvider.export.test.ts --runInBand` 通过，导出取消、失败、selection/visible/custom 显式范围转换，以及 `.lac` 导出时 `selectedRegions` 回填路径已覆盖。
+- `rtk npm exec -- jest tests/unit/services/DataExportService.accurate.test.ts --runInBand` 通过，LAC/CSV/JSON/VCD 导出、样本范围归一化、真实 `channelNumber` 校验和错误路径已覆盖。
+- `rtk npm exec -- jest tests/unit/webview/decoderMappingHelpers.test.ts --runInBand` 通过，I2C 通道自动映射与 fallback 逻辑已收口。
+- `rtk npm exec -- jest tests/unit/quality/QualityGateConfig.test.ts --runInBand` 通过，当前门禁、文档和清单约束仍有效。
+- `rtk npm run package:dry` 通过，确认 VSIX 清单链路仍有效；该命令只验证清单，不替代 GUI smoke。
+- `rtk npm run release:check` 通过；当前仅保留 Prettier、覆盖率摘要和跨平台静态检查 3 个 warning。
 - `rtk npm run test:unit -- --silent` 不作为当前发布证据；发布检查优先使用 quick/standard/full 分层命令。
 - `rtk npm run validate:local` 用于本地快速门禁；`rtk node scripts/ci-test-runner.js --layer=quick --dry-run` 可查看 CI 执行计划，不会安装依赖或运行长测试。
 - Quick 层暂不阻断测试数量为 0，详见 [发布门槛](docs/release-gate.md)。
 - 功能声明以 [功能状态矩阵](docs/功能状态矩阵.md) 和 [硬件证据矩阵](docs/%E7%9C%9F%E5%AE%9E%E7%A1%AC%E4%BB%B6%E8%AE%A4%E8%AF%81%E7%9F%A9%E9%98%B5.md) 为准。
 - 发布检查以 [发布门槛](docs/release-gate.md) 和 [文档状态索引](docs/文档状态索引.md) 为准。
 - 2026-04-30 当前有效状态基线见 [当前状态复盘与下一步工作实施计划](docs/superpowers/plans/2026-04-30-current-status-review-and-next-work.md)。
+- 2026-05-02 的专项审计和“已开发但未完成对齐”清单见 [当前实现与文档对齐审计](docs/%E5%BD%93%E5%89%8D%E5%AE%9E%E7%8E%B0%E4%B8%8E%E6%96%87%E6%A1%A3%E5%AF%B9%E9%BD%90%E5%AE%A1%E8%AE%A1-2026-05-02.md)。
+- 本轮已尝试 `code` CLI 的 VSIX 安装/打开 smoke，但当前环境缺少可连接的 VS Code IPC server，命令返回 `ENOENT`；详见发布 smoke 记录。
 - 2026-04-28 的 review、I2C 闭环拆分和并行 worktree 计划只作为历史背景；引用时必须同时核对当前状态基线、功能矩阵和硬件矩阵。
 
 ## 🎯 项目愿景

@@ -169,13 +169,17 @@ export abstract class DecoderBase {
    */
   protected put(startSample: number, endSample: number, data: DecoderOutput): void {
     const result: DecoderResult = {
+      type: data.type,
       startSample,
       endSample,
-      annotationType: data.annotationType ?? 0,
       values: data.values,
-      rawData: data.rawData,
-      shape: 'hexagon' // 默认形状
+      rawData: data.rawData
     };
+
+    if (data.type === DecoderOutputType.ANNOTATION) {
+      result.annotationType = data.annotationType ?? 0;
+      result.shape = 'hexagon'; // 默认注释形状
+    }
 
     this.results.push(result);
   }

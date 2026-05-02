@@ -57,6 +57,7 @@ export class CANDecoder extends DecoderBase {
   private cursor = 0;
   private rawCursor = 0;
   private logicalToRaw: number[] = [];
+  private stuffedSectionBits: number[] = [];
   private stuffedLastBit: number | undefined;
   private stuffedRunLength = 0;
   private destuffEnabled = true;
@@ -162,6 +163,7 @@ export class CANDecoder extends DecoderBase {
     this.cursor = 0;
     this.rawCursor = 0;
     this.logicalToRaw = [];
+    this.stuffedSectionBits = [];
     this.resetStuffState();
   }
 
@@ -238,8 +240,15 @@ export class CANDecoder extends DecoderBase {
       }
 
       const crcStart = this.cursor;
-      this.readNumber(15);
-      this.emit(5, crcStart, this.cursor, ['CRC']);
+      const crcValue = this.readNumber(15);
+      this.emit(5, crcStart, this.cursor, [`CRC: ${this.hex(crcValue, 4)}`, this.hex(crcValue, 4)], crcValue);
+      const expectedCrc = this.computeCrc15(this.stuffedSectionBits.slice(0, -15));
+      if (crcValue !== expectedCrc) {
+        this.warn(crcStart, this.cursor, ['CRC mismatch', 'CRC'], {
+          expected: expectedCrc,
+          actual: crcValue
+        });
+      }
 
       this.finishStuffedSection();
 
@@ -296,6 +305,7 @@ export class CANDecoder extends DecoderBase {
     }
 
     this.logicalToRaw[this.cursor++] = rawIndex;
+    this.stuffedSectionBits.push(bit);
     this.updateStuffState(bit);
     return bit;
   }
@@ -376,7 +386,7 @@ export class CANDecoder extends DecoderBase {
     startBit: number,
     endBit: number,
     values: string[],
-    rawData?: number
+    rawData?: any
   ): void {
     this.put(this.sampleForBit(startBit), this.sampleForBit(endBit), {
       type: DecoderOutputType.ANNOTATION,
@@ -386,8 +396,8 @@ export class CANDecoder extends DecoderBase {
     });
   }
 
-  private warn(startBit: number, endBit: number, values: string[]): void {
-    this.emit(8, startBit, endBit, values);
+  private warn(startBit: number, endBit: number, values: string[], rawData?: any): void {
+    this.emit(8, startBit, endBit, values, rawData);
   }
 
   private sampleForBit(bit: number): number {
@@ -420,5 +430,19 @@ export class CANDecoder extends DecoderBase {
 
   private hex(value: number, width: number): string {
     return value.toString(16).toUpperCase().padStart(width, '0');
+  }
+
+  private computeCrc15(bits: number[]): number {
+    let crc = 0;
+
+    for (const bit of bits) {
+      const msb = (crc >> 14) & 1;
+      crc = ((crc << 1) & 0x7fff) | bit;
+      if (msb) {
+        crc ^= 0x4599;
+      }
+    }
+
+    return crc;
   }
 }

@@ -435,7 +435,7 @@ export class PerformanceOptimizer {
     return (
       result.startSample >= 0 &&
       result.endSample >= result.startSample &&
-      result.annotationType >= 0 &&
+      (result.annotationType === undefined || result.annotationType >= 0) &&
       result.values.length > 0 &&
       result.values.every(value => typeof value === 'string' && value.length > 0)
     );

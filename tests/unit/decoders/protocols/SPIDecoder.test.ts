@@ -444,6 +444,27 @@ describe('SPIDecoder', () => {
   });
 
   describe('片选信号处理', () => {
+    it('没有 CS 通道时应该输出初始等价的 CS asserted 注释', () => {
+      const channels: ChannelData[] = [
+        { channelNumber: 0, channelName: 'CLK', samples: createClockSamples(8) },
+        { channelNumber: 1, channelName: 'MISO', samples: createDataSamples([1, 0, 1, 0, 0, 1, 0, 1]) },
+        { channelNumber: 2, channelName: 'MOSI', samples: createDataSamples([0, 0, 1, 1, 1, 1, 0, 0]) }
+      ];
+
+      const results = spiDecoder.decode(1000000, channels, [
+        { optionIndex: 0, value: 'active-low' }
+      ]);
+      const csChanges = results.filter(result => result.annotationType === 7);
+
+      expect(csChanges).toEqual([
+        expect.objectContaining({
+          startSample: 0,
+          endSample: 0,
+          values: ['CS asserted', 'CS active']
+        })
+      ]);
+    });
+
     it('应该处理active-low CS信号', () => {
       const channels: ChannelData[] = [
         { channelNumber: 0, channelName: 'CLK', samples: new Uint8Array([0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]) },
@@ -518,6 +539,31 @@ describe('SPIDecoder', () => {
       expect(csChanges).toEqual([
         expect.objectContaining({ values: ['CS asserted', 'CS active'] }),
         expect.objectContaining({ values: ['CS deasserted', 'CS idle'] })
+      ]);
+    });
+
+    it('有 CS 且初始为 deasserted 时不应先输出 idle，而应从首个 asserted 变化开始', () => {
+      const channels: ChannelData[] = [
+        { channelNumber: 0, channelName: 'CLK', samples: new Uint8Array([0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0]) },
+        { channelNumber: 1, channelName: 'MISO', samples: new Uint8Array([1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1]) },
+        { channelNumber: 2, channelName: 'MOSI', samples: new Uint8Array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]) },
+        { channelNumber: 3, channelName: 'CS', samples: new Uint8Array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]) }
+      ];
+
+      const results = spiDecoder.decode(1000000, channels, [
+        { optionIndex: 0, value: 'active-low' }
+      ]);
+      const csChanges = results.filter(result => result.annotationType === 7);
+
+      expect(csChanges).toEqual([
+        expect.objectContaining({
+          startSample: 0,
+          endSample: 1,
+          values: ['CS asserted', 'CS active']
+        }),
+        expect.objectContaining({
+          values: ['CS deasserted', 'CS idle']
+        })
       ]);
     });
   });
@@ -680,6 +726,28 @@ describe('SPIDecoder', () => {
         expect(annotation.values.length).toBeGreaterThan(0);
         expect(annotation.rawData).toBeDefined();
       }
+    });
+  });
+
+  describe('typed output 最小落地', () => {
+    it('完整字传输应该产出一个 DATA python typed output', () => {
+      const results = spiDecoder.decode(1000000, createMode0TransferChannels(), []);
+
+      const dataEvents = results.filter(r =>
+        (r as any).type === DecoderOutputType.PYTHON &&
+        r.values[0] === 'DATA'
+      );
+
+      expect(dataEvents).toHaveLength(1);
+      expect(dataEvents[0]).toEqual(
+        expect.objectContaining({
+          rawData: expect.objectContaining({
+            si: 0x3c,
+            so: 0xa5
+          }),
+          values: ['DATA', 0x3c, 0xa5]
+        })
+      );
     });
   });
 
