@@ -4,7 +4,7 @@ import vue from '@vitejs/plugin-vue';
 import { fileURLToPath, URL } from 'node:url';
 
 const frontend = (rel: string) =>
-  fileURLToPath(new URL(`../src/frontend/${rel}`, import.meta.url));
+  fileURLToPath(new URL(`../frontend/${rel}`, import.meta.url));
 
 // https://vitejs.dev/config/
 export default defineConfig({

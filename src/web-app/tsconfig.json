@@ -51,11 +51,11 @@
       // (vite 已通过 dedupe 在运行时去重,此处补齐类型层去重)
       "vue": ["./node_modules/vue/dist/vue.d.ts"],
       "vue/*": ["./node_modules/vue/*"],
-      "@frontend-app/*": ["../src/frontend/app/*"],
-      "@frontend-core/*": ["../src/frontend/core/*"],
-      "@frontend-platform/*": ["../src/frontend/platform/*"],
-      "@frontend-shared/*": ["../src/frontend/shared/*"],
-      "@frontend/*": ["../src/frontend/*"]
+      "@frontend-app/*": ["../frontend/app/*"],
+      "@frontend-core/*": ["../frontend/core/*"],
+      "@frontend-platform/*": ["../frontend/platform/*"],
+      "@frontend-shared/*": ["../frontend/shared/*"],
+      "@frontend/*": ["../frontend/*"]
     },
 
     // 实验性功能(与根对齐,前端未使用装饰器但保留无害)
@@ -67,7 +67,7 @@
     "jsxFactory": "h",
     "jsxFragmentFactory": "Fragment"
   },
-  "include": ["src", "../src/frontend"],
+  "include": ["src", "../frontend"],
   // 与根 tsconfig 的测试排除策略对齐:生产构建类型检查不含测试文件
   // (测试文件的 @vue/test-utils/jsdom 类型噪音不应阻塞 build)
   "exclude": [

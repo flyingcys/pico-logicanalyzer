@@ -84,6 +84,7 @@
     "node_modules",
     "out",
     "dist",
+    "src/web-app",
     "**/*.test.ts",
     "**/*.spec.ts",
     "**/test/**/*",
