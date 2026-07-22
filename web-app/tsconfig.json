@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@frontend-app/*": ["../src/frontend/app/*"],
+      "@frontend-core/*": ["../src/frontend/core/*"],
+      "@frontend-platform/*": ["../src/frontend/platform/*"],
+      "@frontend-shared/*": ["../src/frontend/shared/*"],
+      "@frontend/*": ["../src/frontend/*"]
+    }
+  },
+  "include": ["src", "../src/frontend"]
+}
