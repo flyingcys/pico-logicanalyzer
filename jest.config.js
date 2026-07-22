@@ -32,5 +32,41 @@ module.exports = {
   },
   modulePathIgnorePatterns: ['<rootDir>/.worktree/'],
   testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/out/', '<rootDir>/.worktree/'],
-  watchPathIgnorePatterns: ['<rootDir>/.worktree/']
+  watchPathIgnorePatterns: ['<rootDir>/.worktree/'],
+
+  // 覆盖率采集范围：剔除非产品代码（自检脚本/模板/示例/测试工具/纯类型声明）
+  // 详见 docs/覆盖率门禁配置建议.md
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/**/*-self-test.ts',
+    '!src/**/test-*-integration.ts',
+    '!src/driver-sdk/templates/**',
+    '!src/driver-sdk/examples/**',
+    '!src/driver-sdk/testing/**',
+    '!src/**/*.test.ts',
+    '!src/**/__tests__/**',
+    '!src/types/**',
+    '!src/**/*.d.ts'
+  ],
+
+  // 覆盖率门禁：核心层防退化（仅在 --coverage 时生效，不影响普通测试运行）
+  coverageThreshold: {
+    global: {
+      branches: 50,
+      functions: 55,
+      lines: 55,
+      statements: 55
+    },
+    './src/models/': {
+      lines: 80,
+      functions: 80
+    },
+    './src/services/': {
+      lines: 80
+    },
+    './src/decoders/protocols/': {
+      lines: 85,
+      branches: 80
+    }
+  }
 };

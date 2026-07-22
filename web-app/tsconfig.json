@@ -1,0 +1,81 @@
+{
+  "compilerOptions": {
+    // 编译目标和模块系统(独立配置,不 extends 根 tsconfig,
+    // 以避免继承根的 rootDir=src 导致 TS6059,
+    // 以及 TS5 已移除的 suppressImplicitAnyIndexErrors 导致 TS5102)
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable", "WebWorker"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+
+    // 仅做类型检查,产出由 vite 负责
+    "noEmit": true,
+
+    // 严格类型检查(与根 tsconfig 保持一致的宽松策略)
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "strictBindCallApply": false,
+    "strictPropertyInitialization": false,
+    "noImplicitThis": false,
+    "noImplicitReturns": false,
+    "noFallthroughCasesInSwitch": false,
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false,
+    "noImplicitOverride": false,
+    "noPropertyAccessFromIndexSignature": false,
+    "alwaysStrict": false,
+
+    // 代码质量检查
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "allowUnreachableCode": true,
+    "allowUnusedLabels": true,
+
+    // 模块解析
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": false,
+
+    // 性能优化
+    "skipLibCheck": true,
+
+    // 路径映射 - web-app 本地别名指向共享 frontend
+    "baseUrl": ".",
+    "paths": {
+      // 强制 vue 类型单一来源(web-app 自己的 3.5.x),消除根 node_modules/vue
+      // 与 web-app/node_modules/vue 双副本导致的 Plugin/App<any> 结构不匹配
+      // (vite 已通过 dedupe 在运行时去重,此处补齐类型层去重)
+      "vue": ["./node_modules/vue/dist/vue.d.ts"],
+      "vue/*": ["./node_modules/vue/*"],
+      "@frontend-app/*": ["../src/frontend/app/*"],
+      "@frontend-core/*": ["../src/frontend/core/*"],
+      "@frontend-platform/*": ["../src/frontend/platform/*"],
+      "@frontend-shared/*": ["../src/frontend/shared/*"],
+      "@frontend/*": ["../src/frontend/*"]
+    },
+
+    // 实验性功能(与根对齐,前端未使用装饰器但保留无害)
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    // JSX 支持(为 Vue SFC 准备)
+    "jsx": "preserve",
+    "jsxFactory": "h",
+    "jsxFragmentFactory": "Fragment"
+  },
+  "include": ["src", "../src/frontend"],
+  // 与根 tsconfig 的测试排除策略对齐:生产构建类型检查不含测试文件
+  // (测试文件的 @vue/test-utils/jsdom 类型噪音不应阻塞 build)
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/test/**/*",
+    "**/tests/**/*"
+  ]
+}
