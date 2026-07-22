@@ -4,7 +4,7 @@
 -->
 
 <script setup lang="ts">
-  import { ref, computed, watch } from 'vue';
+  import { ref, computed, watch, type Component } from 'vue';
   import { Search, InfoFilled, Monitor, Connection, VideoPlay, Document, Grid, Cpu, Setting, QuestionFilled } from '@element-plus/icons-vue';
   import { ElMessage } from 'element-plus';
   import { keyboardShortcutManager, type ShortcutCategory } from '../../core/utils/KeyboardShortcutManager';
@@ -55,7 +55,7 @@
   };
 
   const getCategoryIcon = (categoryName: string) => {
-    const iconMap: Record<string, any> = {
+    const iconMap: Record<string, Component> = {
       '设备操作': Connection,
       '采集控制': VideoPlay,
       '文件操作': Document,

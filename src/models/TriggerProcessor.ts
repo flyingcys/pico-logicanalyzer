@@ -7,7 +7,8 @@
 import {
   TriggerType,
   CaptureMode,
-  TriggerDelays
+  TriggerDelays,
+  CaptureLimits
 } from './AnalyzerTypes';
 import {
   CaptureSession
@@ -91,13 +92,7 @@ export class TriggerProcessor {
   public validateTriggerSettings(
     session: CaptureSession,
     requestedSamples: number,
-    captureLimits: {
-      minPreSamples: number;
-      maxPreSamples: number;
-      minPostSamples: number;
-      maxPostSamples: number;
-      maxTotalSamples: number;
-    }
+    captureLimits: CaptureLimits
   ): TriggerValidationResult {
 
     const channelNumbers = session.captureChannels.map(ch => ch.channelNumber);
@@ -221,7 +216,7 @@ export class TriggerProcessor {
   private validateEdgeOrFastTrigger(
     session: CaptureSession,
     requestedSamples: number,
-    captureLimits: any
+    captureLimits: CaptureLimits
   ): TriggerValidationResult {
 
     // 基本验证
@@ -274,7 +269,7 @@ export class TriggerProcessor {
   private validateBlastTrigger(
     session: CaptureSession,
     requestedSamples: number,
-    captureLimits: any
+    captureLimits: CaptureLimits
   ): TriggerValidationResult {
 
     // 突发触发的特殊限制
@@ -327,7 +322,7 @@ export class TriggerProcessor {
   private validateComplexTrigger(
     session: CaptureSession,
     requestedSamples: number,
-    captureLimits: any
+    captureLimits: CaptureLimits
   ): TriggerValidationResult {
 
     // 复杂触发的特殊验证

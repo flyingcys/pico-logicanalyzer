@@ -94,7 +94,7 @@ export interface ProjectFile {
   description?: string;
   tags: string[];
   metadata?: {
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
@@ -142,7 +142,7 @@ export class WorkspaceManager extends ServiceLifecycleBase {
   private currentProject?: ProjectConfiguration;
   private projectRoot?: string;
   private fileWatchers: Map<string, vscode.FileSystemWatcher> = new Map();
-  private backupTimer?: NodeJS.Timeout;
+  private backupTimer?: ReturnType<typeof setInterval>;
 
   constructor() {
     super('WorkspaceManager');
@@ -173,11 +173,9 @@ export class WorkspaceManager extends ServiceLifecycleBase {
     }
     this.fileWatchers.clear();
 
-    // 清理备份定时器
-    if (this.backupTimer) {
-      clearTimeout(this.backupTimer);
-      this.backupTimer = undefined;
-    }
+    // 清理备份定时器（stopAutoBackup 内部用 clearInterval 正确清理 setInterval 定时器，
+    // 避免之前误用 clearTimeout 导致的真实 Node 环境下定时器泄漏）
+    this.stopAutoBackup();
 
     // 清理事件监听器
     this.eventEmitter.removeAllListeners();
@@ -188,16 +186,16 @@ export class WorkspaceManager extends ServiceLifecycleBase {
   }
 
   // EventEmitter 代理方法
-  on(event: string | symbol, listener: (...args: any[]) => void): this {
+  on(event: string | symbol, listener: (...args: unknown[]) => void): this {
     this.eventEmitter.on(event, listener);
     return this;
   }
 
-  emit(event: string | symbol, ...args: any[]): boolean {
+  emit(event: string | symbol, ...args: unknown[]): boolean {
     return this.eventEmitter.emit(event, ...args);
   }
 
-  off(event: string | symbol, listener: (...args: any[]) => void): this {
+  off(event: string | symbol, listener: (...args: unknown[]) => void): this {
     this.eventEmitter.off(event, listener);
     return this;
   }
@@ -213,7 +211,7 @@ export class WorkspaceManager extends ServiceLifecycleBase {
   async createWorkspace(workspaceDir: string, config: {
     name: string;
     description?: string;
-    settings?: any;
+    settings?: Record<string, unknown>;
   }): Promise<string> {
     const workspaceId = `workspace-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -604,7 +602,7 @@ export class WorkspaceManager extends ServiceLifecycleBase {
     filePath: string,
     type: FileType,
     targetPath?: string,
-    metadata?: any
+    metadata?: Record<string, unknown>
   ): Promise<string> {
     if (!this.projectRoot) {
       throw new Error('没有打开的项目');
@@ -732,8 +730,9 @@ export class WorkspaceManager extends ServiceLifecycleBase {
 
       vscode.window.showInformationMessage('项目备份恢复成功');
 
-    } catch (error: any) {
-      if (error.code === 'ENOENT') {
+    } catch (error: unknown) {
+      if (typeof error === 'object' && error !== null && 'code' in error &&
+          (error as { code?: unknown }).code === 'ENOENT') {
         throw new Error('备份文件不存在');
       }
       throw new Error(`恢复备份失败: ${error}`);

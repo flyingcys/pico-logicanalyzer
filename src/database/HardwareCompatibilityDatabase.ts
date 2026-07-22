@@ -83,7 +83,7 @@ export interface DeviceCompatibilityEntry {
   connectionOptions: {
     defaultConnectionString: string;
     alternativeConnections: string[];
-    connectionParameters: Record<string, any>;
+    connectionParameters: Record<string, unknown>;
   };
 
   // 测试状态
@@ -200,7 +200,7 @@ export class HardwareCompatibilityDatabase {
       }
     } catch (error) {
       // 文件不存在时是正常的，创建空数据库
-      if ((error as any).code !== 'ENOENT') {
+      if ((error as { code?: string }).code !== 'ENOENT') {
         throw error;
       }
     }

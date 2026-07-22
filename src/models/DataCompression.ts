@@ -41,6 +41,43 @@ export interface CompressionConfig {
 }
 
 /**
+ * RLE 压缩元数据
+ */
+export interface RLEMetadata {
+  runs: number;
+  maxRun: number;
+  [key: string]: unknown;
+}
+
+/**
+ * 差分压缩元数据
+ */
+export interface DeltaMetadata {
+  changes: number;
+  maxDelta: number;
+  [key: string]: unknown;
+}
+
+/**
+ * 字典压缩元数据
+ */
+export interface DictionaryMetadata {
+  dictSize: number;
+  patterns: number;
+  [key: string]: unknown;
+}
+
+/**
+ * 霍夫曼压缩元数据
+ */
+export interface HuffmanMetadata {
+  codes: [number, string][];
+  originalLength: number;
+  encodedBits: number;
+  [key: string]: unknown;
+}
+
+/**
  * 压缩结果
  */
 export interface CompressionResult {
@@ -51,9 +88,7 @@ export interface CompressionResult {
   compressionRatio: number;
   compressionTime: number; // 毫秒
   data: Uint8Array | string;
-  metadata?: {
-    [key: string]: any;
-  };
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -125,7 +160,7 @@ export class DataCompressor {
       }
 
       let compressedData: Uint8Array | string;
-      let metadata: any = {};
+      let metadata: Record<string, unknown> = {};
 
       // 根据算法选择压缩方法
       switch (useAlgorithm) {
@@ -192,7 +227,7 @@ export class DataCompressor {
     compressedData: Uint8Array | string,
     algorithm: CompressionAlgorithm,
     originalSize: number,
-    metadata?: any
+    metadata?: Record<string, unknown>
   ): Promise<DecompressionResult> {
 
     const startTime = performance.now();
@@ -253,9 +288,9 @@ export class DataCompressor {
   /**
    * RLE压缩 - 针对逻辑信号优化
    */
-  private compressRLE(data: Uint8Array): { data: Uint8Array; metadata: any } {
+  private compressRLE(data: Uint8Array): { data: Uint8Array; metadata: RLEMetadata } {
     const compressed: number[] = [];
-    const metadata = { runs: 0, maxRun: 0 };
+    const metadata: RLEMetadata = { runs: 0, maxRun: 0 };
 
     if (data.length === 0) {
       return { data: new Uint8Array(), metadata };
@@ -292,7 +327,7 @@ export class DataCompressor {
   /**
    * RLE解压
    */
-  private decompressRLE(compressedData: Uint8Array | string, metadata?: any): Uint8Array {
+  private decompressRLE(compressedData: Uint8Array | string, metadata?: unknown): Uint8Array {
     const data = compressedData instanceof Uint8Array ?
       compressedData :
       new TextEncoder().encode(compressedData);
@@ -316,13 +351,13 @@ export class DataCompressor {
   /**
    * 差分压缩 - 适合缓慢变化的信号
    */
-  private compressDelta(data: Uint8Array): { data: Uint8Array; metadata: any } {
+  private compressDelta(data: Uint8Array): { data: Uint8Array; metadata: DeltaMetadata } {
     if (data.length === 0) {
-      return { data: new Uint8Array(), metadata: {} };
+      return { data: new Uint8Array(), metadata: { changes: 0, maxDelta: 0 } };
     }
 
     const compressed: number[] = [];
-    const metadata = { changes: 0, maxDelta: 0 };
+    const metadata: DeltaMetadata = { changes: 0, maxDelta: 0 };
 
     // 第一个值直接存储
     compressed.push(data[0]);
@@ -351,7 +386,7 @@ export class DataCompressor {
   /**
    * 差分解压
    */
-  private decompressDelta(compressedData: Uint8Array | string, metadata?: any): Uint8Array {
+  private decompressDelta(compressedData: Uint8Array | string, metadata?: unknown): Uint8Array {
     const data = compressedData instanceof Uint8Array ?
       compressedData :
       new TextEncoder().encode(compressedData);
@@ -376,11 +411,11 @@ export class DataCompressor {
   /**
    * 字典压缩 - 适合重复模式
    */
-  private compressDictionary(data: Uint8Array): { data: Uint8Array; metadata: any } {
+  private compressDictionary(data: Uint8Array): { data: Uint8Array; metadata: DictionaryMetadata } {
     const patternMap = new Map<string, number>();
     const patterns: string[] = [];
     const compressed: number[] = [];
-    const metadata = { dictSize: 0, patterns: 0 };
+    const metadata: DictionaryMetadata = { dictSize: 0, patterns: 0 };
 
     // 构建字典 - 使用固定长度模式
     const patternLength = 4;
@@ -436,7 +471,7 @@ export class DataCompressor {
   /**
    * 字典解压
    */
-  private decompressDictionary(compressedData: Uint8Array | string, metadata?: any): Uint8Array {
+  private decompressDictionary(compressedData: Uint8Array | string, metadata?: unknown): Uint8Array {
     const data = compressedData instanceof Uint8Array ?
       compressedData :
       new TextEncoder().encode(compressedData);
@@ -487,7 +522,7 @@ export class DataCompressor {
   /**
    * 简单的霍夫曼压缩实现
    */
-  private compressHuffman(data: Uint8Array): { data: Uint8Array; metadata: any } {
+  private compressHuffman(data: Uint8Array): { data: Uint8Array; metadata: HuffmanMetadata } {
     // 统计频率
     const frequency = new Map<number, number>();
     for (const byte of data) {
@@ -539,14 +574,24 @@ export class DataCompressor {
   /**
    * 霍夫曼解压
    */
-  private decompressHuffman(compressedData: Uint8Array | string, metadata: any): Uint8Array {
+  private decompressHuffman(compressedData: Uint8Array | string, metadata?: Record<string, unknown>): Uint8Array {
     const data = compressedData instanceof Uint8Array ?
       compressedData :
       new TextEncoder().encode(compressedData);
 
+    const rawCodes = metadata?.codes;
+    // 容错：损坏/缺失的 metadata（无有效编码表）不应导致解压崩溃，返回空数据
+    if (!metadata || !Array.isArray(rawCodes) || rawCodes.length === 0) {
+      const originalLength = typeof metadata?.originalLength === 'number' ? metadata.originalLength : 0;
+      return new Uint8Array(originalLength);
+    }
+
+    // 守卫通过后断言为霍夫曼元数据，运行时逻辑保持不变
+    const huffmanMeta = metadata as unknown as HuffmanMetadata;
+
     // 重建编码表
     const codes = new Map<string, number>();
-    for (const [value, code] of metadata.codes) {
+    for (const [value, code] of huffmanMeta.codes) {
       codes.set(code, value);
     }
 
@@ -557,7 +602,7 @@ export class DataCompressor {
     }
 
     // 截取到编码的实际长度
-    bits = bits.slice(0, metadata.encodedBits);
+    bits = bits.slice(0, huffmanMeta.encodedBits);
 
     // 解码
     const decoded: number[] = [];
@@ -571,7 +616,7 @@ export class DataCompressor {
         currentCode = '';
 
         // 如果已经解码到预期长度，停止
-        if (decoded.length >= metadata.originalLength) {
+        if (decoded.length >= huffmanMeta.originalLength) {
           break;
         }
       }

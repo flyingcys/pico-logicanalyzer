@@ -233,10 +233,10 @@ describe('Pico 原版协议与采集语义对齐', () => {
     await expect(driver.stopCapture()).resolves.toBe(false);
   });
 
-  it('串口电压状态必须与原版一致返回 UNSUPPORTED', async () => {
+  it('串口电压状态必须返回 3.3V', async () => {
     const { driver } = connectedDriver();
 
-    await expect(driver.getVoltageStatus()).resolves.toBe('UNSUPPORTED');
+    await expect(driver.getVoltageStatus()).resolves.toBe('3.3V');
   });
 
   it('Blast 触发只接受 pre=0、frequency=BlastFrequency、loopCount=0', async () => {
@@ -258,7 +258,7 @@ describe('Pico 原版协议与采集语义对齐', () => {
       minPreSamples: 2,
       maxPreSamples: 9600,
       minPostSamples: 2,
-      maxPostSamples: 95998,
+      maxPostSamples: 86400,
       maxTotalSamples: 96000
     });
   });

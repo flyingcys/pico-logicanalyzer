@@ -39,7 +39,7 @@ export interface AutomatedTestConfig {
     webhooks: string[];
     email?: {
       recipients: string[];
-      smtpConfig: any;
+      smtpConfig: Record<string, unknown>;
     };
   };
 }
@@ -64,6 +64,14 @@ interface TestResultCollection {
     gradeDistribution: Record<string, number>;
     qualityGatesPassed: boolean;
   };
+}
+
+/**
+ * 驱动构造函数类型（动态加载的驱动类）
+ */
+interface DriverConstructor {
+  new (...args: unknown[]): AnalyzerDriverBase;
+  name: string;
 }
 
 /**
@@ -302,7 +310,7 @@ export class AutomatedTestRunner {
 
       // 查找驱动类
       const exportedClasses = Object.values(module).filter(
-        (value): value is new (...args: any[]) => AnalyzerDriverBase =>
+        (value): value is DriverConstructor =>
           typeof value === 'function' &&
           value.prototype instanceof AnalyzerDriverBase
       );
@@ -328,7 +336,7 @@ export class AutomatedTestRunner {
   /**
    * 生成测试连接字符串
    */
-  private generateTestConnectionString(DriverClass: any): string {
+  private generateTestConnectionString(DriverClass: DriverConstructor): string {
     const className = DriverClass.name.toLowerCase();
 
     if (className.includes('network') || className.includes('tcp') || className.includes('http')) {

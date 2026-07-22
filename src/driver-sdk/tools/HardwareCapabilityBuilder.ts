@@ -47,6 +47,14 @@ export interface TriggerCapability {
 }
 
 /**
+ * 触发类型扩展选项（addTriggerType 的可选配置）
+ */
+export interface TriggerTypeOptions {
+  supportedEdges?: string[];    // 边沿触发支持的条件列表
+  supportedLevels?: string[];   // 电平触发支持的条件列表
+}
+
+/**
  * 连接能力配置
  */
 export interface ConnectivityCapability {
@@ -58,6 +66,13 @@ export interface ConnectivityCapability {
     discovery?: boolean;        // 是否支持自动发现
     encryption?: boolean;       // 是否支持加密连接
   };
+}
+
+/**
+ * 连接类型扩展选项（addConnectionType 的可选配置）
+ */
+export interface ConnectionTypeOptions {
+  supportedProtocols?: string[]; // 该连接类型支持的协议列表
 }
 
 /**
@@ -150,7 +165,7 @@ export interface TestHardwareCapabilities {
   connection: {
     type?: string;
     speed?: number;
-    parameters?: any;
+    parameters?: Record<string, unknown>;
   };
   features?: {
     signalGeneration?: boolean;
@@ -825,7 +840,7 @@ export class HardwareCapabilityBuilder {
   }
 
   // 便捷的触发配置方法
-  addTriggerType(type: string, options?: any): this {
+  addTriggerType(type: string, options?: TriggerTypeOptions): this {
     // 更新测试格式
     if (!this.testCapability.triggers) {
       this.testCapability.triggers = {
@@ -936,7 +951,7 @@ export class HardwareCapabilityBuilder {
     return this;
   }
 
-  setConnectionParams(params: any): this {
+  setConnectionParams(params: Record<string, unknown>): this {
     // 更新测试格式
     if (!this.testCapability.connection) {
       this.testCapability.connection = {};
@@ -946,7 +961,7 @@ export class HardwareCapabilityBuilder {
   }
 
   // 便捷的连接配置方法
-  addConnectionType(type: string, options: any): this {
+  addConnectionType(type: string, options: ConnectionTypeOptions): this {
     if (!this.capability.connectivity) {
       this.capability.connectivity = {} as ConnectivityCapability;
     }
@@ -1182,14 +1197,14 @@ export class HardwareCapabilityBuilder {
     return typeNames;
   }
 
-  private clockConfig: any = {};
-  private syncConfig: any = {};
+  private clockConfig: NonNullable<HardwareCapabilities['clock']> = {};
+  private syncConfig: NonNullable<HardwareCapabilities['synchronization']> = {};
 
-  private extractClockConfig(): any {
+  private extractClockConfig(): HardwareCapabilities['clock'] {
     return Object.keys(this.clockConfig).length > 0 ? this.clockConfig : undefined;
   }
 
-  private extractSyncConfig(): any {
+  private extractSyncConfig(): HardwareCapabilities['synchronization'] {
     return Object.keys(this.syncConfig).length > 0 ? this.syncConfig : undefined;
   }
 

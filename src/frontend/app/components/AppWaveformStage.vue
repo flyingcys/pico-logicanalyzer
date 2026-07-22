@@ -4,6 +4,7 @@
   import { createWaveformService } from '../../core/services/waveformService';
   import { useSessionStore } from '../../core/stores/sessionStore';
   import { useWaveformStore } from '../../core/stores/waveformStore';
+  import type { AnalyzerChannel } from '../../../models/CaptureModels';
 
   const sessionStore = useSessionStore();
   const waveformStore = useWaveformStore();
@@ -87,7 +88,7 @@
 
     waveformStore.loadCaptureContext({
       sampleRate: sessionStore.sampleRate,
-      channels: sessionStore.channels as any,
+      channels: sessionStore.channels as unknown as AnalyzerChannel[],
       totalSamples: sessionStore.totalSamples,
       preTriggerSamples: sessionStore.preTriggerSamples,
       bursts: sessionStore.bursts ?? undefined

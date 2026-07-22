@@ -24,11 +24,16 @@ export interface ProtocolDefinition {
 }
 
 /**
+ * 协议参数值类型（命令参数的基础类型）
+ */
+export type ProtocolValue = number | string | boolean | Buffer;
+
+/**
  * 协议处理器接口
  */
 export interface ProtocolHandler {
-  handleCommand(command: string, parameters: any[]): Promise<any>;
-  handleResponse(response: any): any;
+  handleCommand(command: string, parameters: ProtocolValue[]): Promise<unknown>;
+  handleResponse(response: unknown): unknown;
 }
 
 /**
@@ -36,7 +41,7 @@ export interface ProtocolHandler {
  */
 export interface CommandBuilder {
   setCommand(command: string): this;
-  addParameter(name: string, value: any): this;
+  addParameter(name: string, value: ProtocolValue): this;
   build(): Buffer | string;
 }
 
@@ -46,7 +51,7 @@ export interface CommandBuilder {
 export interface ResponseParser {
   parse(data: Buffer | string): {
     success: boolean;
-    data?: any;
+    data?: unknown;
     error?: string;
   };
 }
@@ -100,7 +105,7 @@ export interface DataPacket {
  */
 export interface ProtocolConfig {
   type: string;
-  [key: string]: any;
+  [key: string]: ProtocolValue | ProtocolValue[] | undefined;
 }
 
 /**
@@ -190,16 +195,43 @@ export interface ProtocolConfigSuggestions {
 }
 
 /**
+ * 硬件能力概要（用于协议配置建议的输入）
+ */
+export interface HardwareCapabilityProfile {
+  channels?: { digital?: number; maxVoltage?: number };
+  sampling?: { maxRate?: number; supportedRates?: number[]; bufferSize?: number };
+  triggers?: { types?: string[]; maxChannels?: number };
+}
+
+/**
+ * 协议响应解析结果
+ */
+export interface ParsedProtocolResponse {
+  type: string;
+  data: Buffer;
+}
+
+/**
+ * 协议数据帧
+ */
+export interface ProtocolFrame {
+  type: string;
+  startSample?: number;
+  endSample?: number;
+  data?: ProtocolValue | ProtocolValue[];
+}
+
+/**
  * 协议数据结构
  */
 export interface ProtocolData {
-  frames: any[];
+  frames: ProtocolFrame[];
   timing: {
     clockPeriod?: number;
     setupTime?: number;
     holdTime?: number;
   };
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -502,7 +534,7 @@ const uartDecoder = {
   /**
    * 获取协议配置建议
    */
-  getProtocolConfigSuggestions(protocol: string, hardwareCapability: any): ProtocolConfigSuggestions {
+  getProtocolConfigSuggestions(protocol: string, hardwareCapability: HardwareCapabilityProfile): ProtocolConfigSuggestions {
     const suggestions: ProtocolConfigSuggestions = {
       minimumChannels: 2,
       recommendedChannels: [],
@@ -598,7 +630,7 @@ const uartDecoder = {
   /**
    * 构建协议命令
    */
-  buildCommand(protocolName: string, commandName: string, parameters: any[] = []): Buffer {
+  buildCommand(protocolName: string, commandName: string, parameters: ReadonlyArray<number | string> = []): Buffer {
     const protocol = this.registeredProtocols.get(protocolName);
     if (!protocol) {
       throw new Error(`未找到协议: ${protocolName}`);
@@ -625,7 +657,7 @@ const uartDecoder = {
   /**
    * 解析协议响应
    */
-  parseResponse(protocolName: string, data: Buffer): any {
+  parseResponse(protocolName: string, data: Buffer): ParsedProtocolResponse {
     const protocol = this.registeredProtocols.get(protocolName);
     if (!protocol) {
       throw new Error(`未找到协议: ${protocolName}`);
@@ -647,7 +679,7 @@ const uartDecoder = {
   /**
    * 验证协议消息
    */
-  validateMessage(protocolName: string, commandName: string, parameters: any[]): boolean {
+  validateMessage(protocolName: string, commandName: string, parameters: ReadonlyArray<unknown>): boolean {
     const protocol = this.registeredProtocols.get(protocolName);
     if (!protocol) return false;
 
@@ -856,10 +888,15 @@ const uartDecoder = {
      */
     createCommand(
       command: string,
-      parameters?: Record<string, any>,
+      parameters?: Record<string, ProtocolValue | ProtocolValue[]>,
       id?: string | number
     ): string {
-      const jsonObj: any = {
+      const jsonObj: {
+        command: string;
+        timestamp: number;
+        parameters?: Record<string, ProtocolValue | ProtocolValue[]>;
+        id?: string | number;
+      } = {
         command,
         timestamp: Date.now()
       };
@@ -881,19 +918,19 @@ const uartDecoder = {
     parseResponse(response: string): {
       success: boolean;
       command?: string;
-      data?: any;
+      data?: unknown;
       error?: string;
       id?: string | number;
     } {
       try {
-        const obj = JSON.parse(response.trim());
+        const obj = JSON.parse(response.trim()) as Record<string, unknown>;
 
         return {
           success: obj.success !== false,
-          command: obj.command,
-          data: obj.data || obj.result,
-          error: obj.error,
-          id: obj.id
+          command: obj.command as string | undefined,
+          data: obj.data ?? obj.result,
+          error: obj.error as string | undefined,
+          id: obj.id as string | number | undefined
         };
       } catch (error) {
         return {
@@ -906,8 +943,13 @@ const uartDecoder = {
     /**
      * 创建成功响应
      */
-    createSuccess(data?: any, id?: string | number): string {
-      const response: any = {
+    createSuccess(data?: unknown, id?: string | number): string {
+      const response: {
+        success: boolean;
+        timestamp: number;
+        data?: unknown;
+        id?: string | number;
+      } = {
         success: true,
         timestamp: Date.now()
       };
@@ -927,7 +969,12 @@ const uartDecoder = {
      * 创建错误响应
      */
     createError(error: string, id?: string | number): string {
-      const response: any = {
+      const response: {
+        success: boolean;
+        error: string;
+        timestamp: number;
+        id?: string | number;
+      } = {
         success: false,
         error,
         timestamp: Date.now()
@@ -978,7 +1025,12 @@ const uartDecoder = {
     } {
       const parts = contentType.split(';').map(part => part.trim());
       const type = parts[0];
-      const result: any = { type };
+      const result: {
+        type: string;
+        charset?: string;
+        boundary?: string;
+        [key: string]: string | undefined;
+      } = { type };
 
       for (let i = 1; i < parts.length; i++) {
         const [key, value] = parts[i].split('=');
@@ -1070,12 +1122,19 @@ const uartDecoder = {
      * 创建超时Promise
      */
     createTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage?: string): Promise<T> {
-      return Promise.race([
-        promise,
-        new Promise<T>((_, reject) =>
-          setTimeout(() => reject(new Error(timeoutMessage || '操作超时')), timeoutMs)
-        )
-      ]);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<T>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(timeoutMessage || '操作超时')),
+          timeoutMs
+        );
+      });
+      // 无论竞速结果如何都必须释放定时器，避免悬挂的超时回调造成资源泄漏
+      return Promise.race([promise, timeoutPromise]).finally(() => {
+        if (timer !== undefined) {
+          clearTimeout(timer);
+        }
+      });
     },
 
     /**
@@ -1163,7 +1222,7 @@ const uartDecoder = {
       maxConcurrency: number
     ): Promise<T[]> {
       const results: T[] = [];
-      const executing: Promise<any>[] = [];
+      const executing: Promise<T>[] = [];
 
       for (const task of tasks) {
         const promise = task().then(result => {

@@ -94,10 +94,10 @@ export class DecoderManager {
   private streamingDecoderInstances = new Map<string, StreamingDecoderBase>();
 
   /** 当前输入数据 */
-  private currentInputs: Map<string, any[]> | null = null;
+  private currentInputs: Map<string, unknown[]> | null = null;
 
   /** 当前输出数据 */
-  private currentOutputs: Map<string, any[]> | null = null;
+  private currentOutputs: Map<string, unknown[]> | null = null;
 
   /** 性能监控器 */
   public readonly performanceMonitor = new PerformanceMonitor();
@@ -341,7 +341,7 @@ export class DecoderManager {
     }
 
     const results = new Map<string, DecoderAnnotation>();
-    const voidInputs = new Map<string, any[]>();
+    const voidInputs = new Map<string, unknown[]>();
 
     // 执行所有根分支
     for (const branch of tree.branches) {
@@ -364,7 +364,7 @@ export class DecoderManager {
     branch: DecodingBranch,
     sampleRate: number,
     channels: ChannelData[],
-    inputs: Map<string, any[]>,
+    inputs: Map<string, unknown[]>,
     results: Map<string, DecoderAnnotation>
   ): void {
     // 验证选项和通道配置
@@ -415,14 +415,14 @@ export class DecoderManager {
    * @returns 合并后的数据
    */
   private mergeOutputs(
-    oldInputs: Map<string, any[]>,
-    newInputs: Map<string, any[]>
-  ): Map<string, any[]> {
+    oldInputs: Map<string, unknown[]>,
+    newInputs: Map<string, unknown[]>
+  ): Map<string, unknown[]> {
     if (!newInputs) {
       return oldInputs;
     }
 
-    const merged = new Map<string, any[]>();
+    const merged = new Map<string, unknown[]>();
 
     // 添加新输入
     for (const [key, value] of newInputs) {
@@ -445,7 +445,7 @@ export class DecoderManager {
    * @param inputName 输入名称
    * @returns 输入数据或null
    */
-  public getInput(inputName: string): any[] | null {
+  public getInput(inputName: string): unknown[] | null {
     if (!this.currentInputs || !this.currentInputs.has(inputName)) {
       return null;
     }
@@ -458,7 +458,7 @@ export class DecoderManager {
    * @param outputName 输出名称
    * @param output 输出数据
    */
-  public addOutput(outputName: string, output: any[]): void {
+  public addOutput(outputName: string, output: unknown[]): void {
     if (!this.currentOutputs) {
       this.currentOutputs = new Map();
     }
@@ -903,8 +903,9 @@ export class DecoderManager {
     for (const [id, instance] of this.decoderInstances) {
       try {
         // 如果解码器有dispose方法，调用它
-        if (typeof (instance as any).dispose === 'function') {
-          (instance as any).dispose();
+        const maybeDisposable = instance as unknown as { dispose?: () => void };
+        if (typeof maybeDisposable.dispose === 'function') {
+          maybeDisposable.dispose();
         }
       } catch (error) {
         console.error(`Error disposing decoder ${id}:`, error);
@@ -914,8 +915,9 @@ export class DecoderManager {
     // 清理流式解码器实例
     for (const [id, instance] of this.streamingDecoderInstances) {
       try {
-        if (typeof (instance as any).dispose === 'function') {
-          (instance as any).dispose();
+        const maybeDisposable = instance as unknown as { dispose?: () => void };
+        if (typeof maybeDisposable.dispose === 'function') {
+          maybeDisposable.dispose();
         }
       } catch (error) {
         console.error(`Error disposing streaming decoder ${id}:`, error);

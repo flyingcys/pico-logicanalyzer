@@ -66,7 +66,7 @@ export class LACFileFormat {
    */
   public static serialize(exportedCapture: ExportedCapture): string {
     const session = this.hydrateCaptureSession(exportedCapture.Settings);
-    const originalCapture: Record<string, any> = {
+    const originalCapture: Record<string, unknown> = {
       Settings: this.toOriginalSettings(session)
     };
 
@@ -201,20 +201,21 @@ export class LACFileFormat {
   /**
    * JSON序列化时的自定义处理器 - 对应C# SampleRegionConverter.WriteJson
    */
-  private static sampleRegionReplacer(key: string, value: any): any {
+  private static sampleRegionReplacer(key: string, value: unknown): unknown {
     // 处理SampleRegion的颜色序列化 - 对应C#的颜色处理
     if (key === 'SelectedRegions' && Array.isArray(value)) {
-      return value.map((region: any) => {
+      return value.map((region: unknown) => {
         if (region && typeof region === 'object') {
+          const r = region as Record<string, unknown>;
           // 确保颜色字段以正确的格式序列化
           return {
-            FirstSample: region.FirstSample,
-            LastSample: region.LastSample,
-            RegionName: region.RegionName,
-            R: region.R,
-            G: region.G,
-            B: region.B,
-            A: region.A
+            FirstSample: r.FirstSample,
+            LastSample: r.LastSample,
+            RegionName: r.RegionName,
+            R: r.R,
+            G: r.G,
+            B: r.B,
+            A: r.A
           };
         }
         return region;
@@ -226,21 +227,22 @@ export class LACFileFormat {
   /**
    * JSON反序列化时的自定义处理器 - 对应C# SampleRegionConverter.ReadJson
    */
-  private static sampleRegionReviver(key: string, value: any): any {
+  private static sampleRegionReviver(key: string, value: unknown): unknown {
     // 处理SampleRegion的颜色反序列化
     if (key === 'SelectedRegions' && Array.isArray(value)) {
-      return value.map((region: any) => {
+      return value.map((region: unknown) => {
         if (region && typeof region === 'object' &&
             'R' in region && 'G' in region && 'B' in region && 'A' in region) {
+          const r = region as Record<string, unknown>;
           // 恢复颜色对象结构
           return {
-            FirstSample: region.FirstSample,
-            LastSample: region.LastSample,
-            RegionName: region.RegionName,
-            R: region.R,
-            G: region.G,
-            B: region.B,
-            A: region.A
+            FirstSample: r.FirstSample,
+            LastSample: r.LastSample,
+            RegionName: r.RegionName,
+            R: r.R,
+            G: r.G,
+            B: r.B,
+            A: r.A
           };
         }
         return region;
@@ -385,18 +387,18 @@ export class LACFileFormat {
       : fallbackIndex;
   }
 
-  private static normalizeExportedCapture(raw: any): ExportedCapture {
+  private static normalizeExportedCapture(raw: unknown): ExportedCapture {
     if (!raw || typeof raw !== 'object') {
       throw new Error('Invalid .lac file: root must be an object');
     }
 
-    const rawSettings = raw.Settings ?? raw.settings;
+    const rawSettings = (raw as Record<string, unknown>).Settings ?? (raw as Record<string, unknown>).settings;
     if (!rawSettings) {
       throw new Error('Invalid .lac file: missing Settings');
     }
 
-    const samples = raw.Samples ?? raw.samples;
-    const selectedRegions = raw.SelectedRegions ?? raw.selectedRegions;
+    const samples = (raw as Record<string, unknown>).Samples ?? (raw as Record<string, unknown>).samples;
+    const selectedRegions = (raw as Record<string, unknown>).SelectedRegions ?? (raw as Record<string, unknown>).selectedRegions;
     const exportedCapture: ExportedCapture = {
       Settings: this.hydrateCaptureSession(rawSettings)
     };
@@ -406,43 +408,45 @@ export class LACFileFormat {
     }
 
     if (selectedRegions !== undefined && selectedRegions !== null) {
-      exportedCapture.SelectedRegions = this.normalizeSelectedRegions(selectedRegions);
+      exportedCapture.SelectedRegions = this.normalizeSelectedRegions(selectedRegions as unknown[]);
     }
 
     return exportedCapture;
   }
 
-  private static hydrateCaptureSession(value: any): CaptureSession {
+  private static hydrateCaptureSession(value: unknown): CaptureSession {
     if (value instanceof CaptureSession) {
       const cloned = value.clone ? value.clone() : value;
       return cloned;
     }
 
     const session = new CaptureSession();
-    session.frequency = this.readNumber(value, 'Frequency', 'frequency', session.frequency);
-    session.preTriggerSamples = this.readNumber(value, 'PreTriggerSamples', 'preTriggerSamples', session.preTriggerSamples);
-    session.postTriggerSamples = this.readNumber(value, 'PostTriggerSamples', 'postTriggerSamples', session.postTriggerSamples);
-    session.loopCount = this.readNumber(value, 'LoopCount', 'loopCount', session.loopCount);
-    session.measureBursts = this.readBoolean(value, 'MeasureBursts', 'measureBursts', session.measureBursts);
-    session.triggerType = this.readNumber(value, 'TriggerType', 'triggerType', session.triggerType) as TriggerType;
-    session.triggerChannel = this.readNumber(value, 'TriggerChannel', 'triggerChannel', session.triggerChannel);
-    session.triggerInverted = this.readBoolean(value, 'TriggerInverted', 'triggerInverted', session.triggerInverted);
-    session.triggerBitCount = this.readNumber(value, 'TriggerBitCount', 'triggerBitCount', session.triggerBitCount);
-    session.triggerPattern = this.readNumber(value, 'TriggerPattern', 'triggerPattern', session.triggerPattern);
+    const obj = value as Record<string, unknown>;
+    session.frequency = this.readNumber(obj, 'Frequency', 'frequency', session.frequency);
+    session.preTriggerSamples = this.readNumber(obj, 'PreTriggerSamples', 'preTriggerSamples', session.preTriggerSamples);
+    session.postTriggerSamples = this.readNumber(obj, 'PostTriggerSamples', 'postTriggerSamples', session.postTriggerSamples);
+    session.loopCount = this.readNumber(obj, 'LoopCount', 'loopCount', session.loopCount);
+    session.measureBursts = this.readBoolean(obj, 'MeasureBursts', 'measureBursts', session.measureBursts);
+    session.triggerType = this.readNumber(obj, 'TriggerType', 'triggerType', session.triggerType) as TriggerType;
+    session.triggerChannel = this.readNumber(obj, 'TriggerChannel', 'triggerChannel', session.triggerChannel);
+    session.triggerInverted = this.readBoolean(obj, 'TriggerInverted', 'triggerInverted', session.triggerInverted);
+    session.triggerBitCount = this.readNumber(obj, 'TriggerBitCount', 'triggerBitCount', session.triggerBitCount);
+    session.triggerPattern = this.readNumber(obj, 'TriggerPattern', 'triggerPattern', session.triggerPattern);
 
-    const rawChannels = value?.CaptureChannels ?? value?.captureChannels ?? [];
+    const rawChannels = (obj as Record<string, unknown>)?.CaptureChannels ?? (obj as Record<string, unknown>)?.captureChannels ?? [];
     session.captureChannels = Array.isArray(rawChannels)
-      ? rawChannels.map((channel: any) => this.hydrateAnalyzerChannel(channel))
+      ? rawChannels.map((channel: unknown) => this.hydrateAnalyzerChannel(channel))
       : [];
 
-    const rawBursts = value?.Bursts ?? value?.bursts;
+    const rawBursts = (obj as Record<string, unknown>)?.Bursts ?? (obj as Record<string, unknown>)?.bursts;
     if (Array.isArray(rawBursts)) {
-      session.bursts = rawBursts.map((rawBurst: any) => {
+      session.bursts = rawBursts.map((rawBurst: unknown) => {
         const burst = new BurstInfo();
-        burst.burstSampleStart = this.readNumber(rawBurst, 'BurstSampleStart', 'burstSampleStart', burst.burstSampleStart);
-        burst.burstSampleEnd = this.readNumber(rawBurst, 'BurstSampleEnd', 'burstSampleEnd', burst.burstSampleEnd);
-        burst.burstSampleGap = this.readNumber(rawBurst, 'BurstSampleGap', 'burstSampleGap', burst.burstSampleGap);
-        burst.burstTimeGap = this.readNumber(rawBurst, 'BurstTimeGap', 'burstTimeGap', burst.burstTimeGap);
+        const rb = rawBurst as Record<string, unknown>;
+        burst.burstSampleStart = this.readNumber(rb, 'BurstSampleStart', 'burstSampleStart', burst.burstSampleStart);
+        burst.burstSampleEnd = this.readNumber(rb, 'BurstSampleEnd', 'burstSampleEnd', burst.burstSampleEnd);
+        burst.burstSampleGap = this.readNumber(rb, 'BurstSampleGap', 'burstSampleGap', burst.burstSampleGap);
+        burst.burstTimeGap = this.readNumber(rb, 'BurstTimeGap', 'burstTimeGap', burst.burstTimeGap);
         return burst;
       });
     }
@@ -450,33 +454,34 @@ export class LACFileFormat {
     return session;
   }
 
-  private static hydrateAnalyzerChannel(value: any): AnalyzerChannel {
+  private static hydrateAnalyzerChannel(value: unknown): AnalyzerChannel {
     if (value instanceof AnalyzerChannel) {
       return value.clone ? value.clone() : value;
     }
 
+    const obj = value as Record<string, unknown>;
     const channel = new AnalyzerChannel(
-      this.readNumber(value, 'ChannelNumber', 'channelNumber', 0),
-      this.readString(value, 'ChannelName', 'channelName', '')
+      this.readNumber(obj, 'ChannelNumber', 'channelNumber', 0),
+      this.readString(obj, 'ChannelName', 'channelName', '')
     );
-    const channelColor = this.readOptionalNumber(value, 'ChannelColor', 'channelColor');
+    const channelColor = this.readOptionalNumber(obj, 'ChannelColor', 'channelColor');
     channel.channelColor = channelColor;
-    channel.hidden = this.readBoolean(value, 'Hidden', 'hidden', false);
-    channel.minimized = this.readBoolean(value, 'Minimized', 'minimized', false);
+    channel.hidden = this.readBoolean(obj, 'Hidden', 'hidden', false);
+    channel.minimized = this.readBoolean(obj, 'Minimized', 'minimized', false);
 
-    const samples = value?.Samples ?? value?.samples;
+    const samples = obj?.Samples ?? obj?.samples;
     if (samples instanceof Uint8Array) {
       channel.samples = new Uint8Array(samples);
     } else if (Array.isArray(samples)) {
-      channel.samples = new Uint8Array(samples.map((sample: any) => sample ? 1 : 0));
+      channel.samples = new Uint8Array(samples.map((sample: unknown) => sample ? 1 : 0));
     }
 
     return channel;
   }
 
-  private static toOriginalSettings(session: CaptureSession): Record<string, any> {
+  private static toOriginalSettings(session: CaptureSession): Record<string, unknown> {
     const settings = session.cloneSettings();
-    const original: Record<string, any> = {
+    const original: Record<string, unknown> = {
       Frequency: settings.frequency,
       PreTriggerSamples: settings.preTriggerSamples,
       PostTriggerSamples: settings.postTriggerSamples,
@@ -502,8 +507,8 @@ export class LACFileFormat {
     return original;
   }
 
-  private static toOriginalChannel(channel: AnalyzerChannel): Record<string, any> {
-    const original: Record<string, any> = {
+  private static toOriginalChannel(channel: AnalyzerChannel): Record<string, unknown> {
+    const original: Record<string, unknown> = {
       ChannelNumber: channel.channelNumber,
       ChannelName: channel.channelName,
       Hidden: channel.hidden
@@ -520,7 +525,7 @@ export class LACFileFormat {
     return original;
   }
 
-  private static normalizeSelectedRegions(regions: any[]): SampleRegion[] {
+  private static normalizeSelectedRegions(regions: unknown[]): SampleRegion[] {
     if (!Array.isArray(regions)) {
       return [];
     }
@@ -536,34 +541,39 @@ export class LACFileFormat {
     }));
   }
 
-  private static readNumber(value: any, pascalKey: string, camelKey: string, fallback: number): number {
-    const raw = value?.[pascalKey] ?? value?.[camelKey];
+  private static readNumber(value: unknown, pascalKey: string, camelKey: string, fallback: number): number {
+    const obj = value as Record<string, unknown>;
+    const raw = obj?.[pascalKey] ?? obj?.[camelKey];
     return typeof raw === 'number' && Number.isFinite(raw) ? raw : fallback;
   }
 
-  private static readOptionalNumber(value: any, pascalKey: string, camelKey: string): number | undefined {
-    const raw = value?.[pascalKey] ?? value?.[camelKey];
+  private static readOptionalNumber(value: unknown, pascalKey: string, camelKey: string): number | undefined {
+    const obj = value as Record<string, unknown>;
+    const raw = obj?.[pascalKey] ?? obj?.[camelKey];
     return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined;
   }
 
-  private static readString(value: any, pascalKey: string, camelKey: string, fallback: string): string {
-    const raw = value?.[pascalKey] ?? value?.[camelKey];
+  private static readString(value: unknown, pascalKey: string, camelKey: string, fallback: string): string {
+    const obj = value as Record<string, unknown>;
+    const raw = obj?.[pascalKey] ?? obj?.[camelKey];
     return typeof raw === 'string' ? raw : fallback;
   }
 
-  private static readBoolean(value: any, pascalKey: string, camelKey: string, fallback: boolean): boolean {
-    const raw = value?.[pascalKey] ?? value?.[camelKey];
+  private static readBoolean(value: unknown, pascalKey: string, camelKey: string, fallback: boolean): boolean {
+    const obj = value as Record<string, unknown>;
+    const raw = obj?.[pascalKey] ?? obj?.[camelKey];
     return typeof raw === 'boolean' ? raw : fallback;
   }
 
-  private static readColorNumber(value: any, pascalKey: string, camelKey: string, fallback: number = 0): number {
-    const direct = this.readOptionalNumber(value, pascalKey, camelKey);
+  private static readColorNumber(value: unknown, pascalKey: string, camelKey: string, fallback: number = 0): number {
+    const obj = value as Record<string, unknown>;
+    const direct = this.readOptionalNumber(obj, pascalKey, camelKey);
     if (direct !== undefined) {
       return direct;
     }
 
-    const color = value?.color;
-    const colorValue = color?.[camelKey];
+    const color = obj?.color;
+    const colorValue = (color as Record<string, unknown>)?.[camelKey];
     return typeof colorValue === 'number' && Number.isFinite(colorValue) ? colorValue : fallback;
   }
 }

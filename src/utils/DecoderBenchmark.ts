@@ -4,6 +4,27 @@
  * 提供全面的解码器速度基准测试和性能分析
  */
 
+import type {
+  ChannelData,
+  DecoderOptionValue,
+  DecoderSelectedChannel,
+  DecoderResult
+} from '../decoders/types';
+
+export interface BenchmarkDecoder {
+  decode?(
+    sampleRate: number,
+    channels: ChannelData[],
+    options: DecoderOptionValue[]
+  ): Promise<DecoderResult[]>;
+  streamingDecode?(
+    sampleRate: number,
+    channels: ChannelData[],
+    options: DecoderOptionValue[],
+    selectedChannels: DecoderSelectedChannel[]
+  ): Promise<DecoderResult[]>;
+}
+
 export interface BenchmarkConfiguration {
   /** 测试名称 */
   name: string;
@@ -83,6 +104,7 @@ export class DecoderBenchmark {
   private isRunning = false;
   private currentTest = '';
   private progressCallback?: (progress: { current: number; total: number; test: string }) => void;
+  private timerId?: NodeJS.Timeout;
 
   constructor(private onProgress?: (progress: { current: number; total: number; test: string }) => void) {
     this.progressCallback = onProgress;
@@ -93,7 +115,7 @@ export class DecoderBenchmark {
    */
   public async runDecoderBenchmark(
     decoderId: string,
-    decoderInstance: any,
+    decoderInstance: BenchmarkDecoder | null,
     configuration: BenchmarkConfiguration
   ): Promise<DecoderPerformanceResult> {
     const result: DecoderPerformanceResult = {
@@ -230,7 +252,7 @@ export class DecoderBenchmark {
    * 运行完整的基准测试套件
    */
   public async runBenchmarkSuite(
-    decoders: Array<{ id: string; instance: any }>,
+    decoders: Array<{ id: string; instance: BenchmarkDecoder }>,
     configurations: BenchmarkConfiguration[]
   ): Promise<BenchmarkReport> {
     if (this.isRunning) {
@@ -307,8 +329,8 @@ export class DecoderBenchmark {
   /**
    * 生成基准测试数据
    */
-  private generateBenchmarkData(sampleCount: number, channelCount: number): any[] {
-    const channels = [];
+  private generateBenchmarkData(sampleCount: number, channelCount: number): ChannelData[] {
+    const channels: ChannelData[] = [];
 
     for (let i = 0; i < channelCount; i++) {
       const samples = new Uint8Array(sampleCount);
@@ -331,8 +353,8 @@ export class DecoderBenchmark {
 
       channels.push({
         channelNumber: i,
-        samples,
-        name: `CH${i}`
+        channelName: `CH${i}`,
+        samples
       });
     }
 
@@ -510,6 +532,10 @@ export class DecoderBenchmark {
    */
   public stop(): void {
     this.isRunning = false;
+    if (this.timerId) {
+      clearTimeout(this.timerId);
+      this.timerId = undefined;
+    }
     console.log('🛑 基准测试已停止');
   }
 

@@ -101,7 +101,7 @@ async function detectDevices() {
     return;
   }
 
-  ElMessage.success(`检测到 ${(result.data as any[])?.length ?? 0} 个设备`);
+  ElMessage.success(`检测到 ${Array.isArray(result.data) ? result.data.length : 0} 个设备`);
 }
 
 async function scanNetworkDevices() {

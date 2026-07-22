@@ -4,7 +4,7 @@ import { LACEditorProvider } from './providers/LACEditorProvider';
 import { hardwareDriverManager } from './drivers/HardwareDriverManager';
 import { WiFiDeviceDiscovery } from './services/WiFiDeviceDiscovery';
 import { NetworkStabilityService } from './services/NetworkStabilityService';
-import { AnalyzerDriverType, CaptureError, TriggerType } from './models/AnalyzerTypes';
+import { AnalyzerDriverType, CaptureError, ConnectionParams, TriggerType, CaptureCompletedHandler } from './models/AnalyzerTypes';
 import { CaptureSession, AnalyzerChannel } from './models/CaptureModels';
 import { LACFileFormat } from './models/LACFileFormat';
 import {
@@ -101,8 +101,8 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
 
       vscode.window.showInformationMessage('逻辑分析器主界面已打开！');
 
-    } catch (error) {
-      vscode.window.showErrorMessage(`打开逻辑分析器界面失败: ${error}`);
+    } catch (error: unknown) {
+      vscode.window.showErrorMessage(`打开逻辑分析器界面失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
 
@@ -163,7 +163,7 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
             device: {
               id: 'autodetect',
               name: '自动检测',
-              type: 'usb' as any,
+              type: 'usb' as const,
               connectionString: 'auto',
               connectionPath: '',
               driverType: AnalyzerDriverType.Multi,
@@ -232,8 +232,8 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
 
       await runCaptureWithProgress(captureConfig, { saveToWorkspace: true });
 
-    } catch (error) {
-      vscode.window.showErrorMessage(`数据采集失败: ${error}`);
+    } catch (error: unknown) {
+      vscode.window.showErrorMessage(`数据采集失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
 
@@ -260,8 +260,8 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
 
     try {
       await runCaptureWithProgress(lastCaptureConfig, { saveToWorkspace: true });
-    } catch (error) {
-      vscode.window.showErrorMessage(`重复采集失败: ${error}`);
+    } catch (error: unknown) {
+      vscode.window.showErrorMessage(`重复采集失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
 
@@ -299,8 +299,8 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
         } else {
           vscode.window.showWarningMessage('未发现网络设备');
         }
-      } catch (error) {
-        vscode.window.showErrorMessage(`网络设备扫描失败: ${error}`);
+      } catch (error: unknown) {
+        vscode.window.showErrorMessage(`网络设备扫描失败: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   );
@@ -337,8 +337,8 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
 
         await vscode.window.showTextDocument(document);
 
-      } catch (error) {
-        vscode.window.showErrorMessage(`网络诊断失败: ${error}`);
+      } catch (error: unknown) {
+        vscode.window.showErrorMessage(`网络诊断失败: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   );
@@ -408,8 +408,8 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
         } else {
           vscode.window.showErrorMessage('WiFi配置发送失败');
         }
-      } catch (error) {
-        vscode.window.showErrorMessage(`WiFi配置失败: ${error}`);
+      } catch (error: unknown) {
+        vscode.window.showErrorMessage(`WiFi配置失败: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   );
@@ -442,13 +442,13 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
         vscode.window.showInformationMessage(
           `已生成合成采集: ${session.captureChannels.length} 个通道，${session.totalSamples} 个样本`
         );
-      } catch (error) {
+      } catch (error: unknown) {
         if (error instanceof SignalDslParseError) {
           vscode.window.showErrorMessage(`Signal DSL 解析失败: ${error.message}`);
           return;
         }
 
-        vscode.window.showErrorMessage(`生成合成采集失败: ${error}`);
+        vscode.window.showErrorMessage(`生成合成采集失败: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   );
@@ -508,7 +508,7 @@ function buildSyntheticCaptureDefaultUri(): vscode.Uri {
 }
 
 // 连接到指定设备的辅助函数
-async function connectToDevice(deviceId: string, params?: any): Promise<void> {
+export async function connectToDevice(deviceId: string, params?: ConnectionParams): Promise<void> {
   try {
     vscode.window.showInformationMessage(`正在连接设备: ${deviceId}`);
 
@@ -519,18 +519,20 @@ async function connectToDevice(deviceId: string, params?: any): Promise<void> {
     } else {
       vscode.window.showErrorMessage(`设备连接失败: ${result.error}`);
     }
-  } catch (error) {
-    vscode.window.showErrorMessage(`设备连接异常: ${error}`);
+  } catch (error: unknown) {
+    vscode.window.showErrorMessage(`设备连接异常: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 // 连接到网络设备的辅助函数
-async function connectToNetworkDevice(host: string, port: number): Promise<void> {
+export async function connectToNetworkDevice(host: string, port: number): Promise<void> {
   try {
     vscode.window.showInformationMessage(`正在连接网络设备: ${host}:${port}`);
 
-    // 使用网络稳定性服务建立连接
-    const connected = await networkStabilityService.connect(host, port);
+    // 使用网络稳定性服务建立连接（服务未初始化时跳过预检，直接交由驱动建立连接）
+    const connected = networkStabilityService
+      ? await networkStabilityService.connect(host, port)
+      : true;
 
     if (connected) {
       // 通过硬件驱动管理器注册网络连接
@@ -545,17 +547,21 @@ async function connectToNetworkDevice(host: string, port: number): Promise<void>
         );
 
         // 开始监控连接质量
-        const quality = networkStabilityService.getConnectionQuality();
-        console.log('连接质量:', quality);
+        if (networkStabilityService) {
+          const quality = networkStabilityService.getConnectionQuality();
+          console.log('连接质量:', quality);
+        }
       } else {
-        await networkStabilityService.disconnect();
+        if (networkStabilityService) {
+          await networkStabilityService.disconnect();
+        }
         vscode.window.showErrorMessage(`网络设备连接失败: ${result.error}`);
       }
     } else {
       vscode.window.showErrorMessage(`无法连接到网络设备: ${host}:${port}`);
     }
-  } catch (error) {
-    vscode.window.showErrorMessage(`网络设备连接异常: ${error}`);
+  } catch (error: unknown) {
+    vscode.window.showErrorMessage(`网络设备连接异常: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -604,13 +610,13 @@ async function runCaptureWithProgress(
         currentDevice.stopCapture().then(() => {
           vscode.window.showInformationMessage('数据采集已取消');
           reject(new Error('数据采集已取消'));
-        }).catch(error => {
-          vscode.window.showErrorMessage(`停止采集失败: ${error}`);
-          reject(error);
+        }).catch((error: unknown) => {
+          vscode.window.showErrorMessage(`停止采集失败: ${error instanceof Error ? error.message : String(error)}`);
+          reject(error as Error);
         });
       });
 
-      const captureCompletedHandler = async (args: { success: boolean; session: CaptureSession }) => {
+      const captureCompletedHandler = (args: { success: boolean; session: CaptureSession }) => {
         if (finished) {
           return;
         }
@@ -628,20 +634,30 @@ async function runCaptureWithProgress(
 
         try {
           if (options.saveToWorkspace) {
-            await saveCaptureData(args.session);
+            saveCaptureData(args.session)
+              .then(() => {
+                vscode.window.showInformationMessage(
+                  `数据采集成功！共采集 ${args.session.totalSamples} 个样本`
+                );
+                resolve(args.session);
+              })
+              .catch((saveError: unknown) => {
+                vscode.window.showErrorMessage(`保存采集数据失败: ${saveError instanceof Error ? saveError.message : String(saveError)}`);
+                reject(saveError as Error);
+              });
+          } else {
+            vscode.window.showInformationMessage(
+              `数据采集成功！共采集 ${args.session.totalSamples} 个样本`
+            );
+            resolve(args.session);
           }
-
-          vscode.window.showInformationMessage(
-            `数据采集成功！共采集 ${args.session.totalSamples} 个样本`
-          );
-          resolve(args.session);
         } catch (saveError) {
           vscode.window.showErrorMessage(`保存采集数据失败: ${saveError}`);
           reject(saveError);
         }
       };
 
-      currentDevice.startCapture(captureSession, captureCompletedHandler)
+      currentDevice.startCapture(captureSession, captureCompletedHandler as unknown as CaptureCompletedHandler)
         .then(result => {
           if (result !== CaptureError.None && !finished) {
             finish();
@@ -650,11 +666,11 @@ async function runCaptureWithProgress(
             reject(new Error(errorMsg));
           }
         })
-        .catch(error => {
+        .catch((error: unknown) => {
           if (!finished) {
             finish();
-            vscode.window.showErrorMessage(`启动采集异常: ${error}`);
-            reject(error);
+            vscode.window.showErrorMessage(`启动采集异常: ${error instanceof Error ? error.message : String(error)}`);
+            reject(error as Error);
           }
         });
     });
@@ -780,8 +796,8 @@ async function getCaptureConfiguration(): Promise<CaptureWorkflowConfig | null> 
       channels,
       activeChannels: channelNumbers
     };
-  } catch (error) {
-    vscode.window.showErrorMessage(`获取采集配置失败: ${error}`);
+  } catch (error: unknown) {
+    vscode.window.showErrorMessage(`获取采集配置失败: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
@@ -895,7 +911,7 @@ async function saveCaptureData(session: CaptureSession): Promise<void> {
     if (action === '打开文件') {
       await vscode.commands.executeCommand('vscode.open', fileUri);
     }
-  } catch (error) {
-    throw new Error(`保存采集数据失败: ${error}`);
+  } catch (error: unknown) {
+    throw new Error(`保存采集数据失败: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

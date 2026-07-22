@@ -9,6 +9,7 @@ import {
   ConnectionParams,
   ConnectionResult,
   DeviceStatus,
+  HardwareCapabilities,
   CaptureMode
 } from '../models/AnalyzerTypes';
 
@@ -56,6 +57,7 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
   private _bufferSize: number = 10000000; // 默认10M样本
   private _host: string;
   private _port: number;
+  private _monitorInterval: ReturnType<typeof setInterval> | undefined = undefined;
 
   // 通信对象
   private _socket: Socket | undefined = undefined;
@@ -191,6 +193,12 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
 
       this._capturing = false;
       this._currentCaptureId = null;
+
+      // 清理监控定时器
+      if (this._monitorInterval) {
+        clearInterval(this._monitorInterval);
+        this._monitorInterval = undefined;
+      }
       return true;
     } catch (error) {
       console.error('停止Saleae采集失败:', error);
@@ -236,8 +244,11 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
       // 获取连接的设备列表
       const devicesResponse = await this.sendCommand({ command: 'GET_CONNECTED_DEVICES' });
 
-      if (devicesResponse.connected_devices && devicesResponse.connected_devices.length > 0) {
-        const device = devicesResponse.connected_devices[0];
+      const connectedDevices = devicesResponse.connected_devices as
+        | Array<{ device_id: string; device_type: string }>
+        | undefined;
+      if (connectedDevices && connectedDevices.length > 0) {
+        const device = connectedDevices[0];
         this._deviceId = device.device_id;
         this._version = `Saleae Logic ${device.device_type}`;
 
@@ -254,8 +265,9 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
           device_id: this._deviceId
         });
 
-        if (capabilitiesResponse.capabilities) {
-          this.parseDeviceCapabilities(capabilitiesResponse.capabilities);
+        const capabilities = capabilitiesResponse.capabilities as Record<string, unknown> | undefined;
+        if (capabilities) {
+          this.parseDeviceCapabilities(capabilities);
         }
       }
     } catch (error) {
@@ -304,19 +316,21 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
   /**
    * 解析设备能力信息
    */
-  private parseDeviceCapabilities(capabilities: any): void {
-    if (capabilities.digital_channels) {
-      this._channelCount = capabilities.digital_channels.length;
+  private parseDeviceCapabilities(capabilities: Record<string, unknown>): void {
+    const digitalChannels = capabilities.digital_channels as unknown[] | undefined;
+    if (digitalChannels) {
+      this._channelCount = digitalChannels.length;
     }
 
-    if (capabilities.supported_sample_rates) {
-      const rates = capabilities.supported_sample_rates;
-      this._maxFrequency = Math.max(...rates);
+    const sampleRates = capabilities.supported_sample_rates as number[] | undefined;
+    if (sampleRates) {
+      this._maxFrequency = Math.max(...sampleRates);
       this._blastFrequency = this._maxFrequency;
     }
 
-    if (capabilities.memory_size) {
-      this._bufferSize = capabilities.memory_size;
+    const memorySize = capabilities.memory_size as number | undefined;
+    if (memorySize) {
+      this._bufferSize = memorySize;
     }
   }
 
@@ -361,8 +375,19 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
   /**
    * 构建触发设置
    */
-  private buildTriggerSettings(session: CaptureSession): any {
-    const triggers = [];
+  private buildTriggerSettings(session: CaptureSession): {
+    triggers: Array<{
+      channel_index: number;
+      trigger_type: string;
+      minimum_pulse_width_seconds: number;
+    }>;
+    capture_mode: string;
+  } {
+    const triggers: Array<{
+      channel_index: number;
+      trigger_type: string;
+      minimum_pulse_width_seconds: number;
+    }> = [];
 
     // 基于原始触发类型构建Saleae触发设置
     if (session.triggerType !== undefined && session.triggerChannel !== undefined) {
@@ -392,17 +417,18 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
       throw new Error('Saleae采集启动失败：未收到capture_id');
     }
 
-    return response.capture_id;
+    return response.capture_id as string;
   }
 
   /**
    * 监控采集进度
    */
   private async monitorCaptureProgress(session: CaptureSession): Promise<void> {
-    const checkInterval = setInterval(async () => {
+    this._monitorInterval = setInterval(async () => {
       try {
         if (!this._currentCaptureId || !this._capturing) {
-          clearInterval(checkInterval);
+          clearInterval(this._monitorInterval!);
+          this._monitorInterval = undefined;
           return;
         }
 
@@ -412,14 +438,17 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
         });
 
         if (statusResponse.status === 'COMPLETE') {
-          clearInterval(checkInterval);
+          clearInterval(this._monitorInterval!);
+          this._monitorInterval = undefined;
           await this.processCaptureResults(session);
         } else if (statusResponse.status === 'ERROR') {
-          clearInterval(checkInterval);
-          this.handleCaptureError(session, statusResponse.error_message);
+          clearInterval(this._monitorInterval!);
+          this._monitorInterval = undefined;
+          this.handleCaptureError(session, statusResponse.error_message as string);
         }
       } catch (error) {
-        clearInterval(checkInterval);
+        clearInterval(this._monitorInterval!);
+        this._monitorInterval = undefined;
         this.handleCaptureError(session, `监控采集进度失败: ${error}`);
       }
     }, 100); // 每100ms检查一次状态
@@ -457,11 +486,12 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
   /**
    * 解析Saleae数据格式
    */
-  private parseSaleaeData(session: CaptureSession, dataResponse: any): void {
+  private parseSaleaeData(session: CaptureSession, dataResponse: Record<string, unknown>): void {
     // Saleae Logic 2 API返回的数据格式处理
-    if (dataResponse.digital_samples) {
-      const samples = dataResponse.digital_samples;
-
+    const samples = dataResponse.digital_samples as
+      | Record<number, { samples: Array<{ time: number; value: boolean }>; sample_rate?: number }>
+      | undefined;
+    if (samples) {
       for (let channelIndex = 0; channelIndex < session.captureChannels.length; channelIndex++) {
         const channel = session.captureChannels[channelIndex];
         const channelData = samples[channel.channelNumber];
@@ -518,6 +548,12 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
     this._capturing = false;
     this._currentCaptureId = null;
 
+    // 清理监控定时器
+    if (this._monitorInterval) {
+      clearInterval(this._monitorInterval);
+      this._monitorInterval = undefined;
+    }
+
     console.error('Saleae采集错误:', errorMessage);
 
     const eventArgs: CaptureEventArgs = {
@@ -531,7 +567,7 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
   /**
    * 发送命令到Saleae Logic API
    */
-  private async sendCommand(command: any): Promise<any> {
+  private async sendCommand(command: Record<string, unknown>): Promise<Record<string, unknown>> {
     return new Promise((resolve, reject) => {
       if (!this._socket) {
         reject(new Error('Socket未连接'));
@@ -542,6 +578,7 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
 
       // 设置响应处理器
       const responseHandler = (data: Buffer) => {
+        clearTimeout(timeout);
         try {
           const response = JSON.parse(data.toString());
           this._socket!.off('data', responseHandler);
@@ -561,12 +598,13 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
       // 发送命令
       this._socket.write(commandStr, error => {
         if (error) {
+          clearTimeout(timeout);
           reject(new Error(`发送命令失败: ${error.message}`));
         }
       });
 
-      // 设置超时
-      setTimeout(() => {
+      // 设置超时 - 修复泄漏：清除定时器防止unhandled rejection
+      const timeout = setTimeout(() => {
         this._socket!.off('data', responseHandler);
         reject(new Error('命令执行超时'));
       }, 10000);
@@ -576,7 +614,7 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
   /**
    * 构建硬件能力描述
    */
-  private buildCapabilities(): any {
+  private buildCapabilities(): HardwareCapabilities {
     return {
       channels: {
         digital: this._channelCount,
@@ -595,11 +633,11 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
         maxChannels: this._channelCount,
         patternWidth: this._channelCount,
         sequentialSupport: true,
-        conditions: ['rising', 'falling', 'high', 'low', 'change']
+        conditions: ['rising', 'falling', 'high', 'low', 'any']
       },
       connectivity: {
         interfaces: ['usb'],
-        protocols: ['saleae_api']
+        protocols: ['saleae']
       },
       features: {
         signalGeneration: false,
@@ -613,6 +651,12 @@ export class SaleaeLogicDriver extends AnalyzerDriverBase {
    * 资源清理
    */
   override dispose(): void {
+    // 清理监控定时器
+    if (this._monitorInterval) {
+      clearInterval(this._monitorInterval);
+      this._monitorInterval = undefined;
+    }
+
     this.disconnect();
     super.dispose();
   }

@@ -461,7 +461,7 @@ describe('ExportPerformanceOptimizer 精准业务逻辑测试', () => {
       });
 
       const results = await Promise.allSettled(concurrentTasks);
-      
+
       // 所有任务都应该成功完成
       results.forEach(result => {
         expect(result.status).toBe('fulfilled');
@@ -470,6 +470,83 @@ describe('ExportPerformanceOptimizer 精准业务逻辑测试', () => {
           expect(result.value.length).toBeGreaterThan(0);
         }
       });
+    });
+  });
+
+  describe('泛型类型安全验证', () => {
+    it('应该支持自定义对象类型的泛型数据处理', async () => {
+      interface CustomSample {
+        id: number;
+        value: string;
+      }
+      const customData: CustomSample[] = Array.from({ length: 100 }, (_, i) => ({
+        id: i,
+        value: `sample-${i}`
+      }));
+
+      const processedChunks: CustomSample[][] = [];
+      const mockProcessor = jest.fn().mockImplementation(
+        async (chunk: CustomSample[], chunkIndex: number) => {
+          processedChunks.push(chunk);
+          return `chunk-${chunkIndex}-count-${chunk.length}`;
+        }
+      );
+
+      const results = await optimizerInstance.processLargeDataset(customData, mockProcessor);
+
+      // 验证返回 string[]
+      expect(Array.isArray(results)).toBe(true);
+      expect(results.length).toBeGreaterThan(0);
+      expect(mockProcessor).toHaveBeenCalled();
+
+      // 验证 processor 接收到正确类型的 chunk
+      expect(processedChunks.length).toBeGreaterThan(0);
+      processedChunks.forEach(chunk => {
+        chunk.forEach(item => {
+          expect(typeof item.id).toBe('number');
+          expect(typeof item.value).toBe('string');
+        });
+      });
+
+      // 验证返回值为字符串数组
+      results.forEach(result => {
+        expect(typeof result).toBe('string');
+        expect(result).toMatch(/^chunk-\d+-count-\d+$/);
+      });
+    });
+
+    it('应该支持数字数组的泛型处理并返回string[]', async () => {
+      const numericData: number[] = [10, 20, 30, 40, 50];
+
+      const results = await optimizerInstance.processLargeDataset(
+        numericData,
+        async (chunk, index) => `idx-${index}-len-${chunk.length}`
+      );
+
+      expect(results.every(r => typeof r === 'string')).toBe(true);
+      expect(results.length).toBeGreaterThan(0);
+    });
+
+    it('应该在泛型化后保持处理结果总数一致', async () => {
+      interface TaggedItem {
+        tag: string;
+      }
+      const taggedData: TaggedItem[] = Array.from({ length: 10000 }, (_, i) => ({
+        tag: `t-${i}`
+      }));
+
+      const chunkCounts: number[] = [];
+      await optimizerInstance.processLargeDataset(
+        taggedData,
+        async (chunk) => {
+          chunkCounts.push(chunk.length);
+          return 'ok';
+        }
+      );
+
+      // 所有 chunk 的元素总数应等于原始数据长度
+      const totalProcessed = chunkCounts.reduce((sum, n) => sum + n, 0);
+      expect(totalProcessed).toBe(taggedData.length);
     });
   });
 });

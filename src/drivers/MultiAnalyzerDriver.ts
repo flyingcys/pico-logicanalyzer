@@ -12,7 +12,10 @@ import {
   DeviceStatus,
   CaptureMode,
   TriggerType,
-  TriggerDelays
+  TriggerDelays,
+  CaptureLimits,
+  AnalyzerChannel,
+  HardwareCapabilities
 } from '../models/AnalyzerTypes';
 
 /**
@@ -34,7 +37,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
     // 返回所有设备的最小最大频率（确保所有设备都能支持）
     return Math.min(...this._connectedDevices.map(d => d.maxFrequency));
   }
-  get minFrequency(): number {
+  override get minFrequency(): number {
     // 返回所有设备的最大最小频率（确保所有设备都能支持）
     return Math.max(...this._connectedDevices.map(d => d.minFrequency));
   }
@@ -66,7 +69,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
   }> = [];
   private _sourceSession: CaptureSession | null = null;
   private _currentCaptureHandler?: CaptureCompletedHandler;
-  private _locker = {}; // 用于同步控制
+  private _combined: boolean = false; // 用于防止 combineDeviceResults 重入
 
   constructor(connectionStrings: string[]) {
     super();
@@ -292,6 +295,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
       this._currentCaptureHandler = captureCompletedHandler;
       this._sourceSession = session;
       this._capturing = true;
+      this._combined = false; // 重置重入守卫
 
       // 启动从设备采集（除了主设备外的所有设备）
       let channelsCapturing = 1;
@@ -445,7 +449,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
     originalSession: CaptureSession,
     localChannels: number[],
     deviceIndex: number
-  ): any[] {
+  ): AnalyzerChannel[] {
     const maxChannelsPerDevice = Math.min(...this._connectedDevices.map(d => d.channelCount));
     const sourceChannels = originalSession.captureChannels;
 
@@ -518,7 +522,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
   private handleDeviceCaptureCompleted(deviceIndexOrArgs: number | CaptureEventArgs, maybeArgs?: CaptureEventArgs): void {
     const deviceIndex = typeof deviceIndexOrArgs === 'number'
       ? deviceIndexOrArgs
-      : ((deviceIndexOrArgs.session as any).deviceTag ?? 0);
+      : ((deviceIndexOrArgs.session as { deviceTag?: number }).deviceTag ?? 0);
     const args = typeof deviceIndexOrArgs === 'number' ? maybeArgs! : deviceIndexOrArgs;
 
     // 同步锁定
@@ -532,7 +536,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
 
         const eventArgs: CaptureEventArgs = {
           success: false,
-          session: this._sourceSession
+          session: this._sourceSession!
         };
 
         if (this._currentCaptureHandler) {
@@ -561,7 +565,9 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
    * 合并所有设备的采集结果
    */
   private combineDeviceResults(): void {
-    if (!this._sourceSession) return;
+    // 重入守卫：防止多设备并发完成时被多次调用
+    if (!this._sourceSession || this._combined) return;
+    this._combined = true;
 
     const maxChannelsPerDevice = Math.min(...this._connectedDevices.map(d => d.channelCount));
 
@@ -617,7 +623,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
   /**
    * 获取多设备采集限制
    */
-  override getLimits(channels: number[]): any {
+  override getLimits(channels: number[]): CaptureLimits {
     const splitChannels = this.splitChannelsPerDevice(channels);
     const deviceLimits = this._connectedDevices.map((device, index) =>
       device.getLimits(splitChannels[index] || [])
@@ -662,7 +668,7 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
   /**
    * 构建硬件能力描述
    */
-  private buildCapabilities(): any {
+  private buildCapabilities(): HardwareCapabilities {
     return {
       channels: {
         digital: this.channelCount,
@@ -677,21 +683,23 @@ export class MultiAnalyzerDriver extends AnalyzerDriverBase {
         streamingSupport: false
       },
       triggers: {
-        types: [1, 2], // Complex, Fast (不支持Edge和Blast)
+        types: [TriggerType.Complex, TriggerType.Fast],
         maxChannels: 16,
         patternWidth: 16,
         sequentialSupport: true,
-        conditions: ['pattern', 'complex']
+        conditions: ['rising', 'falling']
       },
       connectivity: {
-        interfaces: ['multi-device'],
+        interfaces: ['usb', 'ethernet'],
         protocols: ['custom']
       },
       features: {
-        multiDevice: true,
-        synchronization: true,
-        maxDevices: 5,
-        totalChannels: this.channelCount
+        signalGeneration: false,
+        powerSupply: false,
+        i2cSniffer: true,
+        canSupport: true,
+        customDecoders: true,
+        voltageMonitoring: false
       }
     };
   }

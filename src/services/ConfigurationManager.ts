@@ -139,16 +139,16 @@ export class ConfigurationManager extends ServiceLifecycleBase {
   }
 
   // EventEmitter 代理方法
-  on(event: string | symbol, listener: (...args: any[]) => void): this {
+  on(event: string | symbol, listener: (...args: unknown[]) => void): this {
     this.eventEmitter.on(event, listener);
     return this;
   }
 
-  emit(event: string | symbol, ...args: any[]): boolean {
+  emit(event: string | symbol, ...args: unknown[]): boolean {
     return this.eventEmitter.emit(event, ...args);
   }
 
-  off(event: string | symbol, listener: (...args: any[]) => void): this {
+  off(event: string | symbol, listener: (...args: unknown[]) => void): this {
     this.eventEmitter.off(event, listener);
     return this;
   }
@@ -689,8 +689,13 @@ export class ConfigurationManager extends ServiceLifecycleBase {
         // 文件路径
         try {
           configurationData = await fs.readFile(configurationDataOrPath, 'utf8');
-        } catch (fileError: any) {
-          if (fileError.code === 'ENOENT') {
+        } catch (fileError: unknown) {
+          if (
+            typeof fileError === 'object' &&
+            fileError !== null &&
+            'code' in fileError &&
+            (fileError as { code?: unknown }).code === 'ENOENT'
+          ) {
             throw new Error('文件不存在');
           }
           throw fileError;
@@ -836,16 +841,17 @@ export class ConfigurationManager extends ServiceLifecycleBase {
   /**
    * 验证设备配置是否有效
    */
-  private isValidDeviceConfiguration(device: any): device is DeviceConfiguration {
-    return device &&
-           typeof device.deviceId === 'string' &&
-           device.deviceId.length > 0 &&
-           typeof device.name === 'string' &&
-           typeof device.type === 'string' &&
-           typeof device.connectionString === 'string' &&
-           typeof device.settings === 'object' &&
-           typeof device.lastUsed === 'string' &&
-           typeof device.favorite === 'boolean';
+  private isValidDeviceConfiguration(device: unknown): device is DeviceConfiguration {
+    if (typeof device !== 'object' || device === null) return false;
+    const d = device as Record<string, unknown>;
+    return typeof d.deviceId === 'string' &&
+           (d.deviceId as string).length > 0 &&
+           typeof d.name === 'string' &&
+           typeof d.type === 'string' &&
+           typeof d.connectionString === 'string' &&
+           typeof d.settings === 'object' && d.settings !== null &&
+           typeof d.lastUsed === 'string' &&
+           typeof d.favorite === 'boolean';
   }
 
   /**
@@ -893,16 +899,19 @@ export class ConfigurationManager extends ServiceLifecycleBase {
   /**
    * 验证主题配置是否有效
    */
-  private isValidThemeConfiguration(theme: any): theme is ThemeConfiguration {
-    return theme &&
-           typeof theme.name === 'string' &&
-           theme.name.length > 0 &&
-           typeof theme.colors === 'object' &&
-           typeof theme.colors.background === 'string' &&
-           typeof theme.colors.foreground === 'string' &&
-           Array.isArray(theme.colors.channelColors) &&
-           typeof theme.fonts === 'object' &&
-           typeof theme.fonts.family === 'string';
+  private isValidThemeConfiguration(theme: unknown): theme is ThemeConfiguration {
+    if (typeof theme !== 'object' || theme === null) return false;
+    const t = theme as Record<string, unknown>;
+    const colors = t.colors as Record<string, unknown> | undefined;
+    const fonts = t.fonts as Record<string, unknown> | undefined;
+    return typeof t.name === 'string' &&
+           (t.name as string).length > 0 &&
+           typeof t.colors === 'object' && t.colors !== null &&
+           typeof colors?.background === 'string' &&
+           typeof colors?.foreground === 'string' &&
+           Array.isArray(colors?.channelColors) &&
+           typeof t.fonts === 'object' && t.fonts !== null &&
+           typeof fonts?.family === 'string';
   }
 
   /**

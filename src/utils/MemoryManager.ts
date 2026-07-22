@@ -152,7 +152,6 @@ export class MemoryManager {
     poolName: string,
     blockId: string,
     data: T,
-    dataType: MemoryDataType,
     options: {
       priority?: 'high' | 'medium' | 'low';
       canRelease?: boolean;
@@ -183,7 +182,7 @@ export class MemoryManager {
     const block: MemoryBlock<T> = {
       id: blockId,
       data,
-      dataType,
+      dataType: this.inferDataType(data),
       createdAt: now,
       lastAccessedAt: now,
       accessCount: 1,
@@ -506,6 +505,23 @@ export class MemoryManager {
     if (this.memoryHistory.length > this.maxHistoryLength) {
       this.memoryHistory.shift();
     }
+  }
+
+  /**
+   * 根据数据形态推断内存数据类型
+   */
+  private inferDataType(data: MemoryData): MemoryDataType {
+    if (data instanceof Uint8Array) return MemoryDataType.SAMPLE_DATA;
+    if (data instanceof ArrayBuffer) return MemoryDataType.TEMPORARY_BUFFER;
+    if (data instanceof Map) return MemoryDataType.ANALYSIS_RESULT;
+    if (Array.isArray(data)) return MemoryDataType.TEMPORARY_BUFFER;
+    if (typeof Buffer !== 'undefined' && typeof Buffer.isBuffer === 'function' && Buffer.isBuffer(data)) {
+      return MemoryDataType.TEMPORARY_BUFFER;
+    }
+    if (typeof data === 'string' || typeof data === 'number') {
+      return MemoryDataType.CONFIGURATION;
+    }
+    return MemoryDataType.CACHED_COMPUTATION;
   }
 
   /**

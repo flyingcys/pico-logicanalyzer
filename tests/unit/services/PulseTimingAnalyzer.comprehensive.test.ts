@@ -20,7 +20,8 @@ import {
   TimingAnalysisResult,
   ProtocolComplianceResult,
   EyeDiagramData,
-  TimingStatistics
+  TimingStatistics,
+  PulseTimingOptions
 } from '../../../src/services/PulseTimingAnalyzer';
 
 import { AnalyzerChannel } from '../../../src/models/AnalyzerTypes';
@@ -669,6 +670,55 @@ describe('PulseTimingAnalyzer 精准业务逻辑测试', () => {
         expect(typeof relation.description).toBe('string');
         expect(relation.source).toBeDefined();
       });
+    });
+  });
+
+  describe('PulseTimingOptions 类型选项验证', () => {
+    it('应该接受glitchThreshold(number)选项正常工作', async () => {
+      // 单个样本的高脉冲，在glitchThreshold约束下应被识别为毛刺
+      // 1MHz采样下单个样本=1μs，glitchThreshold=2000ns 使阈值样本数=floor(2)=2，
+      // 从而 sampleDuration=1 < 2，触发毛刺判定
+      const testChannel = createTestChannel(0, [0, 0, 1, 0, 0, 1, 1, 0]);
+      const options: PulseTimingOptions = {
+        glitchThreshold: 2000 // 2μs (2000ns)
+      };
+
+      const result = await analyzerInstance.analyzeTiming([testChannel], 1000000, options);
+
+      expect(result).toBeDefined();
+      expect(result.pulseEvents.length).toBeGreaterThan(0);
+
+      // 带 glitchThreshold 时应能检测到毛刺
+      const glitches = result.pulseEvents.filter(e => e.type === 'glitch');
+      expect(glitches.length).toBeGreaterThan(0);
+    });
+
+    it('应该在不传options时正常工作', async () => {
+      const testChannel = createTestChannel(0, [0, 1, 1, 0, 1, 0]);
+
+      const result = await analyzerInstance.analyzeTiming([testChannel], 1000000);
+
+      expect(result).toBeDefined();
+      expect(result.pulseEvents.length).toBeGreaterThan(0);
+      // 不传 options 时不应生成协议合规性和眼图
+      expect(result.protocolCompliance).toBeUndefined();
+      expect(result.eyeDiagram).toBeUndefined();
+    });
+
+    it('应该支持完整的PulseTimingOptions组合', async () => {
+      const testChannel = createTestChannel(0, [0, 1, 0, 1, 0]);
+      const options: PulseTimingOptions = {
+        protocolTemplate: analyzerInstance.getProtocolTemplate('I2C')!,
+        generateEyeDiagram: true,
+        detectionThreshold: 0.5,
+        glitchThreshold: 500
+      };
+
+      const result = await analyzerInstance.analyzeTiming([testChannel], 1000000, options);
+
+      expect(result.protocolCompliance).toBeDefined();
+      expect(result.protocolCompliance!.protocol).toBe('I2C');
+      expect(result.eyeDiagram).toBeDefined();
     });
   });
 });

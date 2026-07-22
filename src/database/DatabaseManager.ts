@@ -6,7 +6,7 @@ import {
   EvidenceLevel
 } from './HardwareCompatibilityDatabase';
 import { HardwareDriverManager, DetectedDevice } from '../drivers/HardwareDriverManager';
-import { DeviceInfo } from '../models/AnalyzerTypes';
+import { DeviceInfo, AnalyzerDriverType, HardwareCapabilities, TriggerType } from '../models/AnalyzerTypes';
 // import { AnalyzerDriverBase } from '../drivers/AnalyzerDriverBase'; // 暂时注释掉未使用的导入
 
 /**
@@ -16,7 +16,7 @@ import { DeviceInfo } from '../models/AnalyzerTypes';
 export class DatabaseManager {
   private database: HardwareCompatibilityDatabase;
   private driverManager: HardwareDriverManager;
-  private updateInterval: any | null = null; // 修复NodeJS类型问题
+  private updateInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     databasePath?: string,
@@ -180,15 +180,16 @@ export class DatabaseManager {
             name: driverType.name,
             type: 'usb',
             connectionString: 'auto-discovery',
-            driverType: driverType.id as any,
+            driverType: driverType.id as AnalyzerDriverType,
             confidence: 50
           };
 
           // 创建驱动实例进行设备发现
           const driver = await this.driverManager.createDriver(tempDevice);
 
-          if (driver && typeof (driver as any).discoverDevices === 'function') {
-            const devices = await (driver as any).discoverDevices();
+          const discoverable = driver as { discoverDevices?: () => Promise<DeviceInfo[]> } | null;
+          if (discoverable && typeof discoverable.discoverDevices === 'function') {
+            const devices = await discoverable.discoverDevices();
             discovered += devices.length;
 
             for (const deviceInfo of devices) {
@@ -379,13 +380,12 @@ export class DatabaseManager {
   /**
    * 推断设备能力
    */
-  private inferCapabilities(_deviceInfo: DeviceInfo): any {
+  private inferCapabilities(_deviceInfo: DeviceInfo): HardwareCapabilities {
     // 基于设备名称和信息推断基本能力
     // 这里返回默认值，实际使用时应该更智能
     return {
       channels: {
         digital: 8,
-        analog: 0,
         maxVoltage: 5.0,
         inputImpedance: 1000000,
         thresholdVoltages: [1.5, 3.3, 5.0]
@@ -399,10 +399,20 @@ export class DatabaseManager {
         compressionSupport: false
       },
       triggers: {
-        types: ['edge', 'pattern'],
+        types: [TriggerType.Edge, TriggerType.Complex],
         maxChannels: 8,
-        advancedTriggers: false,
-        triggerPosition: true
+        patternWidth: 16,
+        sequentialSupport: false,
+        conditions: ['rising', 'falling']
+      },
+      connectivity: {
+        interfaces: ['usb'],
+        protocols: ['custom']
+      },
+      features: {
+        signalGeneration: false,
+        powerSupply: false,
+        voltageMonitoring: false
       },
       protocol: {
         supportedProtocols: ['uart', 'spi', 'i2c'],
@@ -586,6 +596,7 @@ export class DatabaseManager {
    */
   private startPeriodicMaintenance(): void {
     // 每24小时执行一次维护
+    if (this.updateInterval) clearInterval(this.updateInterval);
     this.updateInterval = setInterval(async () => {
       try {
         await this.validateDatabaseIntegrity();
@@ -609,7 +620,13 @@ export class DatabaseManager {
   /**
    * 获取数据库统计信息
    */
-  async getStatistics(): Promise<any> {
+  async getStatistics(): Promise<{
+    totalDevices: number;
+    devicesByCategory: Record<string, number>;
+    devicesByManufacturer: Record<string, number>;
+    certificationLevels: Record<string, number>;
+    averageUserRating: number;
+  }> {
     return await this.database.getStatistics();
   }
 

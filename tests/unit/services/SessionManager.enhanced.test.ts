@@ -45,7 +45,8 @@ jest.mock('fs/promises', () => ({
   stat: jest.fn(),
   readdir: jest.fn(),
   unlink: jest.fn(),
-  access: jest.fn()
+  access: jest.fn(),
+  copyFile: jest.fn().mockResolvedValue(undefined)
 }));
 
 import { SessionManager, SessionData, SessionManagerOptions } from '../../../src/services/SessionManager';
@@ -286,27 +287,26 @@ describe('SessionManager 增强测试', () => {
       };
       
       // 创建带自动保存选项的新SessionManager
+      // 注意：不调用 initialize()，因为 createNewSession 不依赖初始化状态，
+      // 且基类 initialize 的超时保护（setTimeout）在 fake timers 下会与测试冲突
       const autoSaveSessionManager = new SessionManager(options);
-      await autoSaveSessionManager.initialize();
-      
+
+      // 先创建会话，使当前会话存在且有未保存更改
+      autoSaveSessionManager.createNewSession(testSession, 'auto-save-test');
+
       // Mock保存操作
       const mockSaveSession = jest.spyOn(autoSaveSessionManager, 'saveSession').mockResolvedValue({
         success: true,
         filePath: '/auto-save/session.json'
       });
-      
-      // 使用updateCurrentSession替代setCurrentSession
-      autoSaveSessionManager.updateCurrentSession(testSessionData);
-      
-      // 快进时间
-      jest.advanceTimersByTime(31000); // 31秒
-      
-      // 等待异步操作
-      await new Promise(resolve => setImmediate(resolve));
-      
+
+      // 快进时间并等待异步定时器回调完成
+      await jest.advanceTimersByTimeAsync(31000); // 31秒
+
       expect(mockSaveSession).toHaveBeenCalled();
-      
+
       jest.useRealTimers();
+      await autoSaveSessionManager.dispose();
     });
 
     it('应该禁用自动保存', async () => {
@@ -373,13 +373,12 @@ describe('SessionManager 增强测试', () => {
       (fs.stat as jest.Mock).mockResolvedValue({ size: 1024 });
       
       const result = await sessionManager.saveSession(testSessionData, '/test/session.json');
-      
+
       expect(result.success).toBe(true);
-      // 应该创建备份文件
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        expect.stringContaining('backup'),
-        expect.any(String),
-        'utf8'
+      // 应该创建备份文件（备份实现使用 copyFile，备份路径包含 'backup'）
+      expect(fs.copyFile).toHaveBeenCalledWith(
+        '/test/session.json',
+        expect.stringContaining('backup')
       );
     });
   });

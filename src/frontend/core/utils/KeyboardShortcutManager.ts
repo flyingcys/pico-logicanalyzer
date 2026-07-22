@@ -511,7 +511,7 @@ export class KeyboardShortcutManager {
    * 格式化快捷键显示
    */
   public formatShortcut(keys: string[]): string {
-    const keyMap = {
+    const keyMap: Record<string, string> = {
       'Ctrl': '⌘',
       'Shift': '⇧',
       'Alt': '⌥',

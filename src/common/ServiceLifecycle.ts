@@ -24,7 +24,7 @@ export interface ServiceInitOptions {
   timeout?: number;           // 初始化超时时间（毫秒）
   retryCount?: number;        // 重试次数
   dependencies?: string[];    // 依赖的其他服务
-  config?: Record<string, any>; // 初始化配置
+  config?: Record<string, unknown>; // 初始化配置
 }
 
 /**
@@ -34,7 +34,7 @@ export interface ServiceInitResult {
   success: boolean;
   state: ServiceState;
   error?: Error;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -102,7 +102,7 @@ export interface IServiceLifecycle {
    * 获取服务元数据
    * @returns 服务的元数据信息
    */
-  getMetadata?(): Record<string, any>;
+  getMetadata?(): Record<string, unknown>;
 }
 
 /**
@@ -113,7 +113,7 @@ export abstract class ServiceLifecycleBase implements IServiceLifecycle {
   protected _state: ServiceState = ServiceState.NotInitialized;
   protected _initPromise?: Promise<ServiceInitResult>;
   protected _disposePromise?: Promise<boolean>;
-  protected _metadata: Record<string, any> = {};
+  protected _metadata: Record<string, unknown> = {};
   protected _activeTimeouts: Set<NodeJS.Timeout> = new Set();
   public readonly serviceName: string;
 
@@ -211,7 +211,7 @@ export abstract class ServiceLifecycleBase implements IServiceLifecycle {
   /**
    * 获取服务元数据
    */
-  getMetadata(): Record<string, any> {
+  getMetadata(): Record<string, unknown> {
     return {
       ...this._metadata,
       serviceName: this.serviceName,
@@ -230,7 +230,7 @@ export abstract class ServiceLifecycleBase implements IServiceLifecycle {
 
       // 设置超时
       const timeout = options.timeout || 30000; // 默认30秒
-      let timeoutId: NodeJS.Timeout;
+      let timeoutId!: NodeJS.Timeout;
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
           this._activeTimeouts.delete(timeoutId);
@@ -283,7 +283,7 @@ export abstract class ServiceLifecycleBase implements IServiceLifecycle {
 
       // 设置超时
       const timeout = options.timeout || 10000; // 默认10秒
-      let timeoutId: NodeJS.Timeout;
+      let timeoutId!: NodeJS.Timeout;
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
           this._activeTimeouts.delete(timeoutId);
@@ -351,7 +351,7 @@ export abstract class ServiceLifecycleBase implements IServiceLifecycle {
   /**
    * 更新服务元数据
    */
-  protected updateMetadata(metadata: Record<string, any>): void {
+  protected updateMetadata(metadata: Record<string, unknown>): void {
     this._metadata = { ...this._metadata, ...metadata };
   }
 }

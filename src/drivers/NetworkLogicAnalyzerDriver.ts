@@ -1,6 +1,7 @@
 import { Socket } from 'net';
 import { createSocket, Socket as UDPSocket } from 'dgram';
 import { AnalyzerDriverBase } from './AnalyzerDriverBase';
+import { BurstInfo } from '../models/CaptureModels';
 import {
   AnalyzerDriverType,
   CaptureError,
@@ -10,8 +11,27 @@ import {
   ConnectionParams,
   ConnectionResult,
   DeviceStatus,
+  HardwareCapabilities,
   CaptureMode
 } from '../models/AnalyzerTypes';
+
+/**
+ * 网络命令响应接口
+ */
+interface NetworkCommandResponse {
+  success?: boolean;
+  error?: string;
+  capture_id?: string;
+  status?: string;
+  device_info?: Record<string, unknown>;
+  battery_voltage?: string;
+  voltage?: string;
+  temperature?: number;
+  last_error?: string;
+  progress?: number;
+  error_message?: string;
+  data?: unknown;
+}
 
 /**
  * 网络逻辑分析器通用驱动
@@ -78,11 +98,13 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
   private _tcpSocket: Socket | undefined = undefined;
   private _udpSocket: UDPSocket | undefined = undefined;
   private _isConnected: boolean = false;
-  private _deviceConfig: any = {};
+  private _deviceConfig: Record<string, unknown> = {};
   private _authToken: string = '';
 
   // 定时器资源追踪
-  private _activeTimeouts: Set<NodeJS.Timeout> = new Set();
+  private _activeTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
+  // 采集监控定时器（setInterval），必须在 stop/dispose 路径清理，防止泄漏
+  private _captureMonitorInterval: ReturnType<typeof setInterval> | undefined = undefined;
 
   constructor(
     host: string,
@@ -187,7 +209,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
         isConnected: this._isConnected,
         isCapturing: this._capturing,
         batteryVoltage: 'N/A',
-        lastError: error instanceof Error ? error.message : '状态查询失败'
+        lastError: `状态查询失败: ${error instanceof Error ? error.message : '未知错误'}`
       };
     }
   }
@@ -245,6 +267,9 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
     if (!this._capturing) {
       return true;
     }
+
+    // 停止采集时立即清理监控定时器，防止泄漏
+    this.clearCaptureMonitor();
 
     try {
       await this.sendNetworkCommand({
@@ -417,19 +442,19 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
 
     if (response.device_info) {
       const info = response.device_info;
-      this._version = info.version || 'Unknown Network Device';
-      this._channelCount = info.channels || 8;
-      this._maxFrequency = info.max_frequency || 40000000;
-      this._blastFrequency = info.blast_frequency || this._maxFrequency * 2;
-      this._bufferSize = info.buffer_size || 8000000;
-      this._deviceConfig = info.config || {};
+      this._version = (info.version as string) || 'Unknown Network Device';
+      this._channelCount = (info.channels as number) || 8;
+      this._maxFrequency = (info.max_frequency as number) || 40000000;
+      this._blastFrequency = (info.blast_frequency as number) || this._maxFrequency * 2;
+      this._bufferSize = (info.buffer_size as number) || 8000000;
+      this._deviceConfig = (info.config as Record<string, unknown>) || {};
     }
   }
 
   /**
    * 构建采集配置
    */
-  private buildCaptureConfig(session: CaptureSession): any {
+  private buildCaptureConfig(session: CaptureSession): Record<string, unknown> {
     return {
       channels: session.captureChannels.map(ch => ({
         number: ch.channelNumber,
@@ -456,10 +481,10 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
    * 监控采集进度
    */
   private async monitorCaptureProgress(session: CaptureSession, captureId?: string): Promise<void> {
-    const checkInterval = setInterval(async () => {
+    this._captureMonitorInterval = setInterval(async () => {
       try {
         if (!this._capturing) {
-          clearInterval(checkInterval);
+          this.clearCaptureMonitor();
           return;
         }
 
@@ -470,17 +495,17 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
         });
 
         if (statusResponse.status === 'COMPLETED') {
-          clearInterval(checkInterval);
+          this.clearCaptureMonitor();
           await this.processCaptureResults(session, captureId);
         } else if (statusResponse.status === 'ERROR') {
-          clearInterval(checkInterval);
-          this.handleCaptureError(session, statusResponse.error_message);
+          this.clearCaptureMonitor();
+          this.handleCaptureError(session, statusResponse.error_message ?? '未知采集错误');
         } else if (statusResponse.progress !== undefined) {
           // 可选：报告采集进度
           console.log(`采集进度: ${statusResponse.progress}%`);
         }
       } catch (error) {
-        clearInterval(checkInterval);
+        this.clearCaptureMonitor();
         this.handleCaptureError(session, `监控采集进度失败: ${error}`);
       }
     }, 200); // 每200ms检查一次状态
@@ -488,7 +513,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
     // 设置超时保护
     const timeoutId = setTimeout(() => {
       if (this._capturing) {
-        clearInterval(checkInterval);
+        this.clearCaptureMonitor();
         this.handleCaptureError(session, '采集超时');
       }
       this._activeTimeouts.delete(timeoutId);
@@ -496,6 +521,16 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
 
     // 跟踪超时定时器
     this._activeTimeouts.add(timeoutId);
+  }
+
+  /**
+   * 清理采集监控定时器，防止 setInterval 泄漏
+   */
+  private clearCaptureMonitor(): void {
+    if (this._captureMonitorInterval !== undefined) {
+      clearInterval(this._captureMonitorInterval);
+      this._captureMonitorInterval = undefined;
+    }
   }
 
   /**
@@ -534,16 +569,16 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
   /**
    * 解析网络采集数据
    */
-  private parseNetworkCaptureData(session: CaptureSession, dataResponse: any): void {
+  private parseNetworkCaptureData(session: CaptureSession, dataResponse: NetworkCommandResponse): void {
     switch (this._dataFormat) {
       case DataFormat.JSON:
         this.parseJSONData(session, dataResponse.data);
         break;
       case DataFormat.BINARY:
-        this.parseBinaryData(session, dataResponse.data);
+        this.parseBinaryData(session, dataResponse.data as string);
         break;
       case DataFormat.CSV:
-        this.parseCSVData(session, dataResponse.data);
+        this.parseCSVData(session, dataResponse.data as string);
         break;
       case DataFormat.RAW:
         this.parseRawData(session, dataResponse.data);
@@ -556,30 +591,34 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
   /**
    * 解析JSON格式数据
    */
-  private parseJSONData(session: CaptureSession, data: any): void {
-    if (data.channels && Array.isArray(data.channels)) {
+  private parseJSONData(session: CaptureSession, data: unknown): void {
+    const d = data as Record<string, unknown>;
+    if (d.channels && Array.isArray(d.channels)) {
       for (let i = 0; i < session.captureChannels.length; i++) {
         const channel = session.captureChannels[i];
-        const channelData = data.channels.find((ch: any) => ch.number === channel.channelNumber);
+        const channelData = d.channels.find((ch: unknown) => {
+          const c = ch as Record<string, unknown>;
+          return c.number === channel.channelNumber;
+        });
 
-        if (channelData && channelData.samples) {
-          channel.samples = new Uint8Array(channelData.samples);
+        if (channelData && (channelData as Record<string, unknown>).samples) {
+          channel.samples = new Uint8Array((channelData as Record<string, unknown>).samples as number[]);
         }
       }
     }
 
     // 解析突发信息
-    if (data.bursts && Array.isArray(data.bursts)) {
-      session.bursts = data.bursts;
+    if (d.bursts && Array.isArray(d.bursts)) {
+      session.bursts = d.bursts as BurstInfo[];
     }
   }
 
   /**
    * 解析二进制格式数据
    */
-  private parseBinaryData(session: CaptureSession, data: any): void {
+  private parseBinaryData(session: CaptureSession, data: string | Buffer): void {
     // data应该是Base64编码的二进制数据
-    const binaryData = Buffer.from(data, 'base64');
+    const binaryData = typeof data === 'string' ? Buffer.from(data, 'base64') : data;
     const sampleCount = binaryData.length / session.captureChannels.length;
 
     for (let i = 0; i < session.captureChannels.length; i++) {
@@ -597,7 +636,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
    * 解析CSV格式数据
    */
   private parseCSVData(session: CaptureSession, csvData: string): void {
-    const lines = csvData.split('\\n');
+    const lines = csvData.split('\n');
     if (lines.length < 2) return;
 
     const headers = lines[0].split(',').map(h => h.trim());
@@ -627,7 +666,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
   /**
    * 解析原始格式数据
    */
-  private parseRawData(session: CaptureSession, data: any): void {
+  private parseRawData(session: CaptureSession, data: unknown): void {
     // 假设data是样本数组的数组
     if (Array.isArray(data) && data.length >= session.captureChannels.length) {
       for (let i = 0; i < session.captureChannels.length; i++) {
@@ -657,7 +696,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
   /**
    * 发送网络命令
    */
-  private async sendNetworkCommand(command: any): Promise<any> {
+  private async sendNetworkCommand(command: Record<string, unknown>): Promise<NetworkCommandResponse> {
     return new Promise((resolve, reject) => {
       const commandData = JSON.stringify(command);
 
@@ -676,7 +715,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
    */
   private sendTCPCommand(
     commandData: string,
-    resolve: (value: any) => void,
+    resolve: (value: NetworkCommandResponse) => void,
     reject: (error: Error) => void
   ): void {
     let responseData = '';
@@ -685,7 +724,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
       responseData += data.toString();
 
       // 检查响应是否完整（简单的换行符检查）
-      if (responseData.includes('\\n')) {
+      if (responseData.includes('\n')) {
         this._tcpSocket!.off('data', responseHandler);
         clearTimeout(timeoutId);
 
@@ -704,7 +743,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
     }, 10000);
 
     this._tcpSocket!.on('data', responseHandler);
-    this._tcpSocket!.write(`${commandData}\\n`, error => {
+    this._tcpSocket!.write(`${commandData}\n`, error => {
       if (error) {
         clearTimeout(timeoutId);
         reject(new Error(`发送TCP命令失败: ${error.message}`));
@@ -717,10 +756,10 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
    */
   private sendUDPCommand(
     commandData: string,
-    resolve: (value: any) => void,
+    resolve: (value: NetworkCommandResponse) => void,
     reject: (error: Error) => void
   ): void {
-    const responseHandler = (msg: Buffer, rinfo: any) => {
+    const responseHandler = (msg: Buffer, rinfo: Record<string, unknown>) => {
       this._udpSocket!.off('message', responseHandler);
       clearTimeout(timeoutId);
 
@@ -749,7 +788,7 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
   /**
    * 构建硬件能力描述
    */
-  private buildCapabilities(): any {
+  private buildCapabilities(): HardwareCapabilities {
     return {
       channels: {
         digital: this._channelCount,
@@ -768,18 +807,16 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
         maxChannels: this._channelCount,
         patternWidth: 16,
         sequentialSupport: true,
-        conditions: ['rising', 'falling', 'high', 'low', 'change']
+        conditions: ['rising', 'falling', 'high', 'low', 'any']
       },
       connectivity: {
-        interfaces: ['ethernet', 'wifi'],
-        protocols: [this._protocol]
+        interfaces: ['ethernet'],
+        protocols: ['custom']
       },
       features: {
-        signalGeneration: this._deviceConfig.signal_generation || false,
-        powerSupply: this._deviceConfig.power_supply || false,
-        voltageMonitoring: this._deviceConfig.voltage_monitoring || false,
-        remoteControl: true,
-        firmwareUpdate: this._deviceConfig.firmware_update || false
+        signalGeneration: !!(this._deviceConfig.signal_generation),
+        powerSupply: !!(this._deviceConfig.power_supply),
+        voltageMonitoring: !!(this._deviceConfig.voltage_monitoring)
       }
     };
   }
@@ -788,6 +825,9 @@ export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
    * 资源清理
    */
   override dispose(): void {
+    // 清理采集监控定时器
+    this.clearCaptureMonitor();
+
     // 清理所有活跃的定时器
     for (const timeoutId of this._activeTimeouts) {
       clearTimeout(timeoutId);

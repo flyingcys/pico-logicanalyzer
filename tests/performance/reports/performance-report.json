@@ -4,16 +4,23 @@
     "passedTests": 4,
     "failedTests": 0,
     "averagePerformance": {
-      "avgDuration": 62.88,
-      "avgMemoryUsage": 123.19,
-      "totalMemoryGrowth": 1.6
+      "avgDuration": 69.55,
+      "avgMemoryUsage": 69.29,
+      "totalMemoryGrowth": 0.38
     },
-    "regressions": [],
+    "regressions": [
+      {
+        "testName": "LogicAnalyzerDriver-连接性能",
+        "currentDuration": 0.078,
+        "previousDuration": 0.043,
+        "regressionPercent": 81.4
+      }
+    ],
     "environment": {
-      "nodeVersion": "v22.20.0",
-      "platform": "linux",
-      "timestamp": "2026-04-28T05:57:57.392Z",
-      "runId": "perf-1777355877392"
+      "nodeVersion": "v23.11.0",
+      "platform": "darwin",
+      "timestamp": "2026-07-22T10:39:09.229Z",
+      "runId": "perf-1784716749229"
     }
   },
   "testResults": [
@@ -29,282 +36,282 @@
       "results": [
         {
           "memory": {
-            "rss": 273.75,
-            "heapUsed": 158.63,
-            "heapTotal": 186.59,
-            "external": 14.7,
-            "arrayBuffers": 11.24,
+            "rss": 189.78,
+            "heapUsed": 75.3,
+            "heapTotal": 99.72,
+            "external": 6.54,
+            "arrayBuffers": 3.18,
             "heapStatistics": {
-              "totalHeapSize": 186.59,
-              "usedHeapSize": 158.63,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 3.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 99.72,
+              "usedHeapSize": 75.3,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.52,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369990469886239",
-            "endTime": "4369990470018116",
-            "duration": 0.132
+            "startTime": "66655960213833",
+            "endTime": "66655960264083",
+            "duration": 0.05
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:55.599Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.262Z"
           }
         },
         {
           "memory": {
-            "rss": 274.25,
-            "heapUsed": 158.69,
-            "heapTotal": 186.59,
-            "external": 14.7,
-            "arrayBuffers": 11.24,
+            "rss": 190.45,
+            "heapUsed": 75.31,
+            "heapTotal": 99.72,
+            "external": 6.54,
+            "arrayBuffers": 3.18,
             "heapStatistics": {
-              "totalHeapSize": 186.59,
-              "usedHeapSize": 158.69,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 3.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 99.72,
+              "usedHeapSize": 75.31,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.52,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369990470648929",
-            "endTime": "4369990470713576",
-            "duration": 0.065
+            "startTime": "66655968161208",
+            "endTime": "66655968266125",
+            "duration": 0.105
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:55.599Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.270Z"
           }
         },
         {
           "memory": {
-            "rss": 274.25,
-            "heapUsed": 158.76,
-            "heapTotal": 186.59,
-            "external": 14.7,
-            "arrayBuffers": 11.24,
+            "rss": 190.45,
+            "heapUsed": 75.32,
+            "heapTotal": 99.72,
+            "external": 6.54,
+            "arrayBuffers": 3.18,
             "heapStatistics": {
-              "totalHeapSize": 186.59,
-              "usedHeapSize": 158.76,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 3.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 99.72,
+              "usedHeapSize": 75.32,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.52,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369990471038401",
-            "endTime": "4369990471094620",
-            "duration": 0.056
+            "startTime": "66655968359333",
+            "endTime": "66655968395416",
+            "duration": 0.036
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:55.600Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.270Z"
           }
         },
         {
           "memory": {
-            "rss": 274.25,
-            "heapUsed": 158.82,
-            "heapTotal": 186.59,
-            "external": 14.7,
-            "arrayBuffers": 11.24,
+            "rss": 190.47,
+            "heapUsed": 75.33,
+            "heapTotal": 99.72,
+            "external": 6.54,
+            "arrayBuffers": 3.18,
             "heapStatistics": {
-              "totalHeapSize": 186.59,
-              "usedHeapSize": 158.82,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 3.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 99.72,
+              "usedHeapSize": 75.34,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.52,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369990471398294",
-            "endTime": "4369990471447681",
-            "duration": 0.049
+            "startTime": "66655968470166",
+            "endTime": "66655968632375",
+            "duration": 0.162
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:55.600Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.270Z"
           }
         },
         {
           "memory": {
-            "rss": 274.25,
-            "heapUsed": 158.9,
-            "heapTotal": 186.59,
-            "external": 14.7,
-            "arrayBuffers": 11.24,
+            "rss": 190.48,
+            "heapUsed": 75.35,
+            "heapTotal": 99.72,
+            "external": 6.54,
+            "arrayBuffers": 3.18,
             "heapStatistics": {
-              "totalHeapSize": 186.59,
-              "usedHeapSize": 158.9,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 3.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 99.72,
+              "usedHeapSize": 75.35,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.52,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369990471830369",
-            "endTime": "4369990471883623",
-            "duration": 0.053
+            "startTime": "66655968817666",
+            "endTime": "66655968899250",
+            "duration": 0.082
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:55.600Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.270Z"
           }
         },
         {
           "memory": {
-            "rss": 274.25,
-            "heapUsed": 158.97,
-            "heapTotal": 186.59,
-            "external": 14.7,
-            "arrayBuffers": 11.24,
+            "rss": 190.48,
+            "heapUsed": 75.38,
+            "heapTotal": 99.72,
+            "external": 6.54,
+            "arrayBuffers": 3.18,
             "heapStatistics": {
-              "totalHeapSize": 186.59,
-              "usedHeapSize": 158.97,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 3.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 99.72,
+              "usedHeapSize": 75.38,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.52,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369990472235791",
-            "endTime": "4369990472352770",
-            "duration": 0.117
+            "startTime": "66655968992250",
+            "endTime": "66655969194708",
+            "duration": 0.202
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:55.601Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.271Z"
           }
         },
         {
           "memory": {
-            "rss": 274.25,
-            "heapUsed": 159.04,
-            "heapTotal": 186.59,
-            "external": 14.7,
-            "arrayBuffers": 11.24,
+            "rss": 190.48,
+            "heapUsed": 75.39,
+            "heapTotal": 99.72,
+            "external": 6.54,
+            "arrayBuffers": 3.18,
             "heapStatistics": {
-              "totalHeapSize": 186.59,
-              "usedHeapSize": 159.04,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 3.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 99.72,
+              "usedHeapSize": 75.39,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.52,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369990472639250",
-            "endTime": "4369990472776809",
-            "duration": 0.138
+            "startTime": "66655969239041",
+            "endTime": "66655969301416",
+            "duration": 0.062
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:55.601Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.271Z"
           }
         },
         {
           "memory": {
-            "rss": 274.25,
-            "heapUsed": 159.1,
-            "heapTotal": 186.59,
-            "external": 14.7,
-            "arrayBuffers": 11.24,
+            "rss": 190.48,
+            "heapUsed": 75.39,
+            "heapTotal": 99.72,
+            "external": 6.54,
+            "arrayBuffers": 3.18,
             "heapStatistics": {
-              "totalHeapSize": 186.59,
-              "usedHeapSize": 159.1,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 3.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 99.72,
+              "usedHeapSize": 75.4,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.52,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369990473072687",
-            "endTime": "4369990473132875",
-            "duration": 0.06
+            "startTime": "66655969339583",
+            "endTime": "66655969365791",
+            "duration": 0.026
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:55.602Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.271Z"
           }
         },
         {
           "memory": {
-            "rss": 274.25,
-            "heapUsed": 159.17,
-            "heapTotal": 186.59,
-            "external": 14.7,
-            "arrayBuffers": 11.24,
+            "rss": 190.48,
+            "heapUsed": 75.4,
+            "heapTotal": 99.72,
+            "external": 6.54,
+            "arrayBuffers": 3.18,
             "heapStatistics": {
-              "totalHeapSize": 186.59,
-              "usedHeapSize": 159.17,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 3.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 99.72,
+              "usedHeapSize": 75.41,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.52,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369990473398784",
-            "endTime": "4369990473444323",
-            "duration": 0.046
+            "startTime": "66655969402000",
+            "endTime": "66655969423750",
+            "duration": 0.022
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:55.602Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.271Z"
           }
         },
         {
           "memory": {
-            "rss": 274.25,
-            "heapUsed": 159.24,
-            "heapTotal": 186.59,
-            "external": 14.7,
-            "arrayBuffers": 11.24,
+            "rss": 190.5,
+            "heapUsed": 75.42,
+            "heapTotal": 99.72,
+            "external": 6.54,
+            "arrayBuffers": 3.18,
             "heapStatistics": {
-              "totalHeapSize": 186.59,
-              "usedHeapSize": 159.24,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 3.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 99.72,
+              "usedHeapSize": 75.42,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.52,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369990473808195",
-            "endTime": "4369990473863563",
-            "duration": 0.055
+            "startTime": "66655969571666",
+            "endTime": "66655969603666",
+            "duration": 0.032
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:55.602Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.271Z"
           }
         }
       ],
       "statistics": {
-        "averageDuration": 0.077,
-        "minDuration": 0.046,
-        "maxDuration": 0.138,
-        "standardDeviation": 0.035,
-        "averageMemoryUsed": 158.93,
-        "memoryGrowth": 0.61
+        "averageDuration": 0.078,
+        "minDuration": 0.022,
+        "maxDuration": 0.202,
+        "standardDeviation": 0.058,
+        "averageMemoryUsed": 75.36,
+        "memoryGrowth": 0.12
       },
       "success": true
     },
@@ -320,172 +327,172 @@
       "results": [
         {
           "memory": {
-            "rss": 272.41,
-            "heapUsed": 110.53,
-            "heapTotal": 183.71,
-            "external": 6.92,
+            "rss": 190.95,
+            "heapUsed": 67.14,
+            "heapTotal": 103.72,
+            "external": 6.67,
+            "arrayBuffers": 3.31,
+            "heapStatistics": {
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.14,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
+            }
+          },
+          "timing": {
+            "startTime": "66656244053875",
+            "endTime": "66656309011250",
+            "duration": 64.957
+          },
+          "throughput": {
+            "bytesPerSecond": 769740,
+            "operationsPerSecond": 769740,
+            "recordsPerSecond": 769740
+          },
+          "environment": {
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.611Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 190.95,
+            "heapUsed": 67.15,
+            "heapTotal": 103.72,
+            "external": 6.72,
+            "arrayBuffers": 3.36,
+            "heapStatistics": {
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.15,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
+            }
+          },
+          "timing": {
+            "startTime": "66656309129875",
+            "endTime": "66656373419625",
+            "duration": 64.29
+          },
+          "throughput": {
+            "bytesPerSecond": 777726,
+            "operationsPerSecond": 777726,
+            "recordsPerSecond": 777726
+          },
+          "environment": {
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.675Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 190.95,
+            "heapUsed": 67.17,
+            "heapTotal": 103.72,
+            "external": 6.77,
+            "arrayBuffers": 3.41,
+            "heapStatistics": {
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.17,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
+            }
+          },
+          "timing": {
+            "startTime": "66656373464750",
+            "endTime": "66656472961291",
+            "duration": 99.497
+          },
+          "throughput": {
+            "bytesPerSecond": 502528,
+            "operationsPerSecond": 502528,
+            "recordsPerSecond": 502528
+          },
+          "environment": {
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.774Z"
+          }
+        },
+        {
+          "memory": {
+            "rss": 190.95,
+            "heapUsed": 67.18,
+            "heapTotal": 103.72,
+            "external": 6.82,
             "arrayBuffers": 3.46,
             "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 110.53,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.18,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369990742436073",
-            "endTime": "4369990803720035",
-            "duration": 61.284
+            "startTime": "66656473016500",
+            "endTime": "66656610149916",
+            "duration": 137.133
           },
           "throughput": {
-            "bytesPerSecond": 815874,
-            "operationsPerSecond": 815874,
-            "recordsPerSecond": 815874
+            "bytesPerSecond": 364610,
+            "operationsPerSecond": 364610,
+            "recordsPerSecond": 364610
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:55.932Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:07.912Z"
           }
         },
         {
           "memory": {
-            "rss": 272.41,
-            "heapUsed": 110.59,
-            "heapTotal": 183.71,
-            "external": 6.97,
-            "arrayBuffers": 3.51,
+            "rss": 190.95,
+            "heapUsed": 67.18,
+            "heapTotal": 103.72,
+            "external": 6.87,
+            "arrayBuffers": 3.5,
             "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 110.59,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.18,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369990804145667",
-            "endTime": "4369990912473186",
-            "duration": 108.328
+            "startTime": "66656610187166",
+            "endTime": "66656729542750",
+            "duration": 119.356
           },
           "throughput": {
-            "bytesPerSecond": 461561,
-            "operationsPerSecond": 461561,
-            "recordsPerSecond": 461561
+            "bytesPerSecond": 418915,
+            "operationsPerSecond": 418915,
+            "recordsPerSecond": 418915
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:56.041Z"
-          }
-        },
-        {
-          "memory": {
-            "rss": 272.41,
-            "heapUsed": 110.67,
-            "heapTotal": 183.71,
-            "external": 7.02,
-            "arrayBuffers": 3.55,
-            "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 110.67,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
-            }
-          },
-          "timing": {
-            "startTime": "4369990912867947",
-            "endTime": "4369990996415959",
-            "duration": 83.548
-          },
-          "throughput": {
-            "bytesPerSecond": 598458,
-            "operationsPerSecond": 598458,
-            "recordsPerSecond": 598458
-          },
-          "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:56.125Z"
-          }
-        },
-        {
-          "memory": {
-            "rss": 272.41,
-            "heapUsed": 110.73,
-            "heapTotal": 183.71,
-            "external": 7.07,
-            "arrayBuffers": 3.6,
-            "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 110.73,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
-            }
-          },
-          "timing": {
-            "startTime": "4369990996939933",
-            "endTime": "4369991049333588",
-            "duration": 52.394
-          },
-          "throughput": {
-            "bytesPerSecond": 954308,
-            "operationsPerSecond": 954308,
-            "recordsPerSecond": 954308
-          },
-          "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:56.178Z"
-          }
-        },
-        {
-          "memory": {
-            "rss": 272.41,
-            "heapUsed": 110.8,
-            "heapTotal": 183.71,
-            "external": 7.11,
-            "arrayBuffers": 3.65,
-            "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 110.8,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
-            }
-          },
-          "timing": {
-            "startTime": "4369991049684033",
-            "endTime": "4369991134949772",
-            "duration": 85.266
-          },
-          "throughput": {
-            "bytesPerSecond": 586400,
-            "operationsPerSecond": 586400,
-            "recordsPerSecond": 586400
-          },
-          "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:56.263Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:08.031Z"
           }
         }
       ],
       "statistics": {
-        "averageDuration": 78.164,
-        "minDuration": 52.394,
-        "maxDuration": 108.328,
-        "standardDeviation": 19.689,
-        "averageMemoryUsed": 110.66,
-        "memoryGrowth": 0.27
+        "averageDuration": 97.047,
+        "minDuration": 64.29,
+        "maxDuration": 137.133,
+        "standardDeviation": 29.029,
+        "averageMemoryUsed": 67.16,
+        "memoryGrowth": 0.04
       },
       "success": true
     },
@@ -501,108 +508,108 @@
       "results": [
         {
           "memory": {
-            "rss": 272.41,
-            "heapUsed": 111.13,
-            "heapTotal": 183.71,
-            "external": 9.97,
-            "arrayBuffers": 6.51,
+            "rss": 192.2,
+            "heapUsed": 67.2,
+            "heapTotal": 103.72,
+            "external": 9.73,
+            "arrayBuffers": 6.37,
             "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 111.13,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.2,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369991237621545",
-            "endTime": "4369991339137960",
-            "duration": 101.516
+            "startTime": "66656832633500",
+            "endTime": "66656935689541",
+            "duration": 103.056
           },
           "throughput": {
-            "bytesPerSecond": 9850664,
+            "bytesPerSecond": 9703462,
             "operationsPerSecond": 10,
-            "recordsPerSecond": 9850664
+            "recordsPerSecond": 9703462
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:56.468Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:08.237Z"
           }
         },
         {
           "memory": {
-            "rss": 272.41,
-            "heapUsed": 111.2,
-            "heapTotal": 183.71,
-            "external": 11.4,
-            "arrayBuffers": 7.94,
+            "rss": 185.52,
+            "heapUsed": 67.21,
+            "heapTotal": 103.72,
+            "external": 11.16,
+            "arrayBuffers": 7.8,
             "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 111.2,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.21,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369991339637296",
-            "endTime": "4369991441900861",
-            "duration": 102.264
+            "startTime": "66656935852708",
+            "endTime": "66657039440375",
+            "duration": 103.588
           },
           "throughput": {
-            "bytesPerSecond": 9778612,
+            "bytesPerSecond": 9653628,
             "operationsPerSecond": 10,
-            "recordsPerSecond": 9778612
+            "recordsPerSecond": 9653628
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:56.570Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:08.341Z"
           }
         },
         {
           "memory": {
-            "rss": 273.04,
-            "heapUsed": 111.26,
-            "heapTotal": 183.71,
-            "external": 12.84,
-            "arrayBuffers": 9.37,
+            "rss": 184.56,
+            "heapUsed": 67.22,
+            "heapTotal": 103.72,
+            "external": 12.59,
+            "arrayBuffers": 9.23,
             "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 111.26,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.22,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369991442322706",
-            "endTime": "4369991543915029",
-            "duration": 101.592
+            "startTime": "66657039521583",
+            "endTime": "66657142554958",
+            "duration": 103.033
           },
           "throughput": {
-            "bytesPerSecond": 9843295,
+            "bytesPerSecond": 9705628,
             "operationsPerSecond": 10,
-            "recordsPerSecond": 9843295
+            "recordsPerSecond": 9705628
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:56.672Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:08.444Z"
           }
         }
       ],
       "statistics": {
-        "averageDuration": 101.791,
-        "minDuration": 101.516,
-        "maxDuration": 102.264,
-        "standardDeviation": 0.336,
-        "averageMemoryUsed": 111.2,
-        "memoryGrowth": 0.13
+        "averageDuration": 103.226,
+        "minDuration": 103.033,
+        "maxDuration": 103.588,
+        "standardDeviation": 0.256,
+        "averageMemoryUsed": 67.21,
+        "memoryGrowth": 0.02
       },
       "success": true
     },
@@ -618,228 +625,228 @@
       "results": [
         {
           "memory": {
-            "rss": 273.04,
-            "heapUsed": 111.66,
-            "heapTotal": 183.71,
-            "external": 12.84,
-            "arrayBuffers": 9.37,
+            "rss": 156.8,
+            "heapUsed": 67.31,
+            "heapTotal": 103.72,
+            "external": 12.59,
+            "arrayBuffers": 9.23,
             "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 111.66,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.31,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369991687361695",
-            "endTime": "4369991758600857",
-            "duration": 71.239
+            "startTime": "66657304485833",
+            "endTime": "66657380147958",
+            "duration": 75.662
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:56.887Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:08.682Z"
           }
         },
         {
           "memory": {
-            "rss": 273.04,
-            "heapUsed": 111.74,
-            "heapTotal": 183.71,
-            "external": 12.84,
-            "arrayBuffers": 9.37,
+            "rss": 152.61,
+            "heapUsed": 67.34,
+            "heapTotal": 103.72,
+            "external": 12.59,
+            "arrayBuffers": 9.23,
             "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 111.74,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.34,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369991758974587",
-            "endTime": "4369991828212988",
-            "duration": 69.238
+            "startTime": "66657380183583",
+            "endTime": "66657461851250",
+            "duration": 81.668
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:56.957Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:08.763Z"
           }
         },
         {
           "memory": {
-            "rss": 273.04,
-            "heapUsed": 111.84,
-            "heapTotal": 183.71,
-            "external": 12.84,
-            "arrayBuffers": 9.37,
+            "rss": 152.66,
+            "heapUsed": 67.37,
+            "heapTotal": 103.72,
+            "external": 12.59,
+            "arrayBuffers": 9.23,
             "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 111.84,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.37,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369991828733455",
-            "endTime": "4369991900008647",
-            "duration": 71.275
+            "startTime": "66657461986583",
+            "endTime": "66657539892875",
+            "duration": 77.906
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:57.029Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:08.841Z"
           }
         },
         {
           "memory": {
-            "rss": 273.04,
-            "heapUsed": 111.92,
-            "heapTotal": 183.71,
-            "external": 12.84,
-            "arrayBuffers": 9.37,
+            "rss": 152.67,
+            "heapUsed": 67.4,
+            "heapTotal": 103.72,
+            "external": 12.59,
+            "arrayBuffers": 9.23,
             "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 111.92,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.4,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369991900387949",
-            "endTime": "4369991971994989",
-            "duration": 71.607
+            "startTime": "66657539940000",
+            "endTime": "66657614974666",
+            "duration": 75.035
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:57.101Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:08.916Z"
           }
         },
         {
           "memory": {
-            "rss": 273.04,
-            "heapUsed": 112,
-            "heapTotal": 183.71,
-            "external": 12.84,
-            "arrayBuffers": 9.37,
+            "rss": 149.84,
+            "heapUsed": 67.43,
+            "heapTotal": 103.72,
+            "external": 12.59,
+            "arrayBuffers": 9.23,
             "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 112,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.43,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369991972373088",
-            "endTime": "4369992043796220",
-            "duration": 71.423
+            "startTime": "66657615012000",
+            "endTime": "66657689029500",
+            "duration": 74.018
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:57.172Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:08.991Z"
           }
         },
         {
           "memory": {
-            "rss": 273.04,
-            "heapUsed": 112.08,
-            "heapTotal": 183.71,
-            "external": 12.84,
-            "arrayBuffers": 9.37,
+            "rss": 149.89,
+            "heapUsed": 67.46,
+            "heapTotal": 103.72,
+            "external": 12.59,
+            "arrayBuffers": 9.23,
             "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 112.08,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.46,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369992044254596",
-            "endTime": "4369992115831427",
-            "duration": 71.577
+            "startTime": "66657689065500",
+            "endTime": "66657765084250",
+            "duration": 76.019
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:57.244Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:09.067Z"
           }
         },
         {
           "memory": {
-            "rss": 273.04,
-            "heapUsed": 112.17,
-            "heapTotal": 183.71,
-            "external": 12.84,
-            "arrayBuffers": 9.37,
+            "rss": 149.91,
+            "heapUsed": 67.49,
+            "heapTotal": 103.72,
+            "external": 12.59,
+            "arrayBuffers": 9.23,
             "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 112.17,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.49,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369992116240898",
-            "endTime": "4369992188107005",
-            "duration": 71.866
+            "startTime": "66657765107958",
+            "endTime": "66657846651250",
+            "duration": 81.543
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:57.317Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:09.148Z"
           }
         },
         {
           "memory": {
-            "rss": 273.04,
-            "heapUsed": 112.25,
-            "heapTotal": 183.71,
-            "external": 12.84,
-            "arrayBuffers": 9.37,
+            "rss": 149.91,
+            "heapUsed": 67.51,
+            "heapTotal": 103.72,
+            "external": 12.59,
+            "arrayBuffers": 9.23,
             "heapStatistics": {
-              "totalHeapSize": 183.71,
-              "usedHeapSize": 112.25,
-              "heapSizeLimit": 4144,
-              "mallocedMemory": 2.02,
-              "peakMallocedMemory": 12.66
+              "totalHeapSize": 103.72,
+              "usedHeapSize": 67.51,
+              "heapSizeLimit": 2096,
+              "mallocedMemory": 1.02,
+              "peakMallocedMemory": 12.61
             }
           },
           "timing": {
-            "startTime": "4369992188659845",
-            "endTime": "4369992262418422",
-            "duration": 73.759
+            "startTime": "66657846671541",
+            "endTime": "66657927611041",
+            "duration": 80.94
           },
           "environment": {
-            "nodeVersion": "v22.20.0",
-            "platform": "linux",
-            "arch": "x64",
-            "timestamp": "2026-04-28T05:57:57.391Z"
+            "nodeVersion": "v23.11.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "timestamp": "2026-07-22T10:39:09.229Z"
           }
         }
       ],
       "statistics": {
-        "averageDuration": 71.498,
-        "minDuration": 69.238,
-        "maxDuration": 73.759,
-        "standardDeviation": 1.145,
-        "averageMemoryUsed": 111.96,
-        "memoryGrowth": 0.59
+        "averageDuration": 77.849,
+        "minDuration": 74.018,
+        "maxDuration": 81.668,
+        "standardDeviation": 2.926,
+        "averageMemoryUsed": 67.41,
+        "memoryGrowth": 0.2
       },
       "success": true
     }

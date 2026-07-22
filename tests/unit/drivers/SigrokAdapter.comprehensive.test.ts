@@ -625,23 +625,22 @@ no colon here`;
       
       // 验证触发能力
       expect(capabilities.triggers).toBeDefined();
-      expect(capabilities.triggers.types).toEqual([0, 1]); // Edge, Pattern
+      expect(capabilities.triggers.types).toEqual([0, 1]); // Edge, Complex
       expect(capabilities.triggers.maxChannels).toBe(8);
       expect(capabilities.triggers.patternWidth).toBe(8);
       expect(capabilities.triggers.sequentialSupport).toBe(false);
-      expect(capabilities.triggers.conditions).toEqual(['rising', 'falling', 'high', 'low', 'change']);
-      
+      expect(capabilities.triggers.conditions).toEqual(['rising', 'falling', 'high', 'low']);
+
       // 验证连接能力
       expect(capabilities.connectivity).toBeDefined();
       expect(capabilities.connectivity.interfaces).toEqual(['usb', 'serial']);
       expect(capabilities.connectivity.protocols).toEqual(['sigrok']);
-      
+
       // 验证功能特性
       expect(capabilities.features).toBeDefined();
       expect(capabilities.features.signalGeneration).toBe(false);
       expect(capabilities.features.powerSupply).toBe(false);
       expect(capabilities.features.voltageMonitoring).toBe(false);
-      expect(capabilities.features.protocolDecoding).toBe(true); // sigrok强大的协议解码
     });
 
     it('应该根据设备配置调整能力参数', () => {

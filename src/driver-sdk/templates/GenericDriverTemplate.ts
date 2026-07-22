@@ -8,8 +8,37 @@ import {
   ConnectionParams,
   ConnectionResult,
   DeviceStatus,
-  CaptureMode
+  CaptureMode,
+  HardwareCapabilities
 } from '../../models/AnalyzerTypes';
+
+/**
+ * 模板内部构建的硬件能力描述（示例形状，含协议占位值）
+ */
+interface TemplateCapabilities {
+  channels: { digital: number; maxVoltage: number; inputImpedance: number };
+  sampling: {
+    maxRate: number;
+    minRate: number;
+    supportedRates: number[];
+    bufferSize: number;
+    streamingSupport: boolean;
+  };
+  triggers: {
+    types: number[];
+    maxChannels: number;
+    patternWidth: number;
+    sequentialSupport: boolean;
+    conditions: string[];
+  };
+  connectivity: { interfaces: string[]; protocols: string[] };
+  features: {
+    signalGeneration: boolean;
+    powerSupply: boolean;
+    voltageMonitoring: boolean;
+    protocolDecoding: boolean;
+  };
+}
 
 /**
  * 通用驱动模板
@@ -154,7 +183,7 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
           type: this._driverType,
           connectionPath: this._connectionString,
           isNetwork: this._isNetwork,
-          capabilities: this.buildCapabilities()
+          capabilities: this.buildCapabilities() as unknown as HardwareCapabilities
         }
       };
     } catch (error) {
@@ -728,7 +757,7 @@ export class GenericDriverTemplate extends AnalyzerDriverBase {
   /**
    * 构建硬件能力描述
    */
-  private buildCapabilities(): any {
+  private buildCapabilities(): TemplateCapabilities {
     return {
       channels: {
         digital: this._channelCount,

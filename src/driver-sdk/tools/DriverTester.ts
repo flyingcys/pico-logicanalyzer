@@ -24,8 +24,8 @@ export interface TestCase {
  */
 export interface TestContext {
   mockMode: boolean;
-  deviceSimulator?: any;
-  testData?: any;
+  deviceSimulator?: unknown;
+  testData?: unknown;
   logger: (message: string) => void;
 }
 
@@ -36,7 +36,7 @@ export interface TestResult {
   passed: boolean;
   message: string;
   duration: number;
-  details?: any;
+  details?: Record<string, unknown>;
   error?: Error;
   performance?: {
     memoryUsage?: number;
@@ -462,12 +462,24 @@ export class DriverTester {
       logger(`运行测试: ${testCase.name}`);
 
       try {
+        // 用可追踪的竞速超时，确保无论用例先完成还是超时先触发，
+        // 都会释放定时器，避免悬挂的超时回调造成资源泄漏
+        let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+        const timeoutPromise = new Promise<TestResult>((_, reject) => {
+          timeoutTimer = setTimeout(
+            () => reject(new Error('测试超时')),
+            testCase.timeout
+          );
+        });
+
         const testResult = await Promise.race([
           testCase.run(driver, context),
-          new Promise<TestResult>((_, reject) =>
-            setTimeout(() => reject(new Error('测试超时')), testCase.timeout)
-          )
-        ]);
+          timeoutPromise
+        ]).finally(() => {
+          if (timeoutTimer !== undefined) {
+            clearTimeout(timeoutTimer);
+          }
+        });
 
         // 更新统计
         if (testResult.passed) {

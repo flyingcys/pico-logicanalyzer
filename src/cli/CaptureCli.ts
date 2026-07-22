@@ -15,6 +15,7 @@ import {
 import { LogicAnalyzerCliCaptureRunner, MockCliCaptureRunner } from '../tools/CliCaptureRunner';
 import { writeCaptureOutput } from '../tools/CliCaptureExporter';
 import { TriggerType } from '../models/AnalyzerTypes';
+import type { CaptureSession } from '../models/CaptureModels';
 
 export interface CliIo {
   stdout: (line: string) => void;
@@ -22,7 +23,7 @@ export interface CliIo {
 }
 
 export interface CliDeps {
-  capture?: (config: CliCaptureConfig) => Promise<any>;
+  capture?: (config: CliCaptureConfig) => Promise<CaptureSession>;
   sendNetworkConfig?: (config: CliNetworkConfig) => Promise<void>;
 }
 
@@ -42,8 +43,9 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     await program.parseAsync(argv, { from: 'user' });
     return 0;
   } catch (error) {
-    const exitCode = typeof (error as any).exitCode === 'number' ? (error as any).exitCode : 1;
-    if ((error as any).code !== 'commander.helpDisplayed') {
+    const err = error as { exitCode?: number; code?: string };
+    const exitCode = typeof err.exitCode === 'number' ? err.exitCode : 1;
+    if (err.code !== 'commander.helpDisplayed') {
       io.stderr(error instanceof Error ? error.message : String(error));
     }
     return exitCode;
@@ -123,7 +125,7 @@ export function createProgram(io: CliIo = defaultIo, deps: CliDeps = {}): Comman
           failures.push(`第 ${index + 1} 项: ${message}`);
           io.stderr(failures[failures.length - 1]);
 
-          const exitCode = typeof (error as any).exitCode === 'number' ? (error as any).exitCode : EXIT_BATCH_FAILED;
+          const exitCode = typeof (error as { exitCode?: number }).exitCode === 'number' ? (error as { exitCode?: number }).exitCode : EXIT_BATCH_FAILED;
           if (!options.continueOnError) {
             throw commanderError(`批处理失败: ${message}`, exitCode === EXIT_USAGE ? EXIT_USAGE : EXIT_BATCH_FAILED);
           }
@@ -193,9 +195,27 @@ export function createProgram(io: CliIo = defaultIo, deps: CliDeps = {}): Comman
   return program;
 }
 
-async function resolveCaptureConfig(options: any): Promise<CliCaptureConfig> {
-  const fromFile = options.config ? await loadCaptureConfigFile(options.config) : {};
-  const merged: any = { ...fromFile, ...compactOptions(options) };
+async function resolveCaptureConfig(options: Record<string, unknown>): Promise<CliCaptureConfig> {
+  const fromFile = options.config ? await loadCaptureConfigFile(options.config as string) : {};
+  const merged = { ...fromFile, ...compactOptions(options) } as {
+    output?: string;
+    format?: string;
+    device?: string;
+    frequency?: string | number;
+    preTriggerSamples?: string | number;
+    pre?: string | number;
+    postTriggerSamples?: string | number;
+    post?: string | number;
+    channels?: string | number[];
+    triggerType?: string | number | TriggerType;
+    trigger?: string;
+    triggerChannel?: string | number;
+    triggerInverted?: boolean;
+    triggerBitCount?: string | number;
+    triggerPattern?: string | number;
+    loopCount?: string | number;
+    measureBursts?: boolean;
+  };
 
   const output = merged.output || defaultOutputForFormat(merged.format);
   const format = normalizeFormat(merged.format || inferFormatFromOutput(output)) || 'lac';
@@ -218,8 +238,8 @@ async function resolveCaptureConfig(options: any): Promise<CliCaptureConfig> {
   };
 }
 
-function compactOptions(options: any): Record<string, any> {
-  const compacted: Record<string, any> = {};
+function compactOptions(options: Record<string, unknown>): Record<string, unknown> {
+  const compacted: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(options)) {
     if (value !== undefined) {
       compacted[key] = value;
@@ -228,23 +248,23 @@ function compactOptions(options: any): Record<string, any> {
   return compacted;
 }
 
-async function loadBatchJobs(filename: string): Promise<any[]> {
-  let parsed: any;
+async function loadBatchJobs(filename: string): Promise<Record<string, unknown>[]> {
+  let parsed: unknown;
   try {
     parsed = JSON.parse(await readFile(filename, 'utf8'));
   } catch (error) {
     throw commanderError(`批处理文件无效: ${error instanceof Error ? error.message : String(error)}`, EXIT_USAGE);
   }
 
-  const jobs = Array.isArray(parsed) ? parsed : parsed.captures;
+  const jobs = Array.isArray(parsed) ? parsed : (parsed as { captures?: unknown[] }).captures;
   if (!Array.isArray(jobs) || jobs.length === 0) {
     throw commanderError('批处理文件必须包含非空 captures 数组', EXIT_USAGE);
   }
 
-  return jobs;
+  return jobs as Record<string, unknown>[];
 }
 
-function validateCaptureCommand(config: CliCaptureConfig, options: any): void {
+function validateCaptureCommand(config: CliCaptureConfig, options: Record<string, unknown>): void {
   const errors = validateCaptureConfig(config);
   const repeat = Number(options.repeat ?? 1);
   if (!Number.isInteger(repeat) || repeat < 1) {
@@ -258,7 +278,7 @@ function validateCaptureCommand(config: CliCaptureConfig, options: any): void {
 
 async function executeCaptureSequence(
   config: CliCaptureConfig,
-  options: any,
+  options: Record<string, unknown>,
   io: CliIo,
   deps: CliDeps
 ): Promise<void> {

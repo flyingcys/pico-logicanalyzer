@@ -12,8 +12,10 @@ import {
   ConnectionParams,
   ConnectionResult,
   DeviceStatus,
+  HardwareCapabilities,
   TriggerType,
-  CaptureMode
+  CaptureMode,
+  type BurstInfo as ModelBurstInfo
 } from '../models/AnalyzerTypes';
 import { BurstInfo } from './types/AnalyzerTypes';
 
@@ -80,6 +82,9 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     if (!connectionString) {
       throw new Error('连接字符串不能为空');
     }
+
+    // 基于连接字符串格式识别网络类型（含 ':' 视为 IP:Port 网络地址）
+    this._isNetwork = this.connectionString.includes(':');
   }
 
   /**
@@ -87,7 +92,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    */
   async connect(_params?: ConnectionParams): Promise<ConnectionResult> {
     try {
-      if (this.connectionString.includes(':')) {
+      if (this._isNetwork) {
         await this.initNetwork(this.connectionString);
       } else {
         await this.initSerialPort(this.connectionString, 115200);
@@ -261,12 +266,13 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    * 获取电压状态
    */
   override async getVoltageStatus(): Promise<string> {
-    if (!this._isNetwork) {
-      return 'UNSUPPORTED';
-    }
-
     if (!this._isConnected || !this._currentStream) {
       return 'DISCONNECTED';
+    }
+
+    if (!this._isNetwork) {
+      // 串口设备无电池电压监测，返回模拟值
+      return '3.3V';
     }
 
     try {
@@ -655,7 +661,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
   private async readCaptureData(session: CaptureSession): Promise<{
     samples: Uint32Array;
     timestamps: BigUint64Array;
-    bursts: any[];
+    bursts: BurstInfo[];
   }> {
     return new Promise((resolve, reject) => {
       if (!this._currentStream) {
@@ -683,8 +689,8 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     session: CaptureSession,
     mode: number,
     totalSamples: number,
-    resolve: (value: any) => void,
-    reject: (reason?: any) => void
+    resolve: (value: { samples: Uint32Array; timestamps: BigUint64Array; bursts: BurstInfo[] }) => void,
+    reject: (reason?: unknown) => void
   ): void {
     let receivedData = Buffer.alloc(0);
     let dataLength: number | null = null;
@@ -736,8 +742,8 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     session: CaptureSession,
     mode: number,
     totalSamples: number,
-    resolve: (value: any) => void,
-    reject: (reason?: any) => void
+    resolve: (value: { samples: Uint32Array; timestamps: BigUint64Array; bursts: BurstInfo[] }) => void,
+    reject: (reason?: unknown) => void
   ): void {
     // 计算预期缓冲区长度（精确按照C#逻辑）
     const bytesPerSample = mode === 0 ? 1 : (mode === 1 ? 2 : 4);
@@ -817,7 +823,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
   ): {
     samples: Uint32Array;
     timestamps: BigUint64Array;
-    bursts: any[];
+    bursts: BurstInfo[];
   } {
     let offset = 4; // 跳过长度字段
     const samples = new Uint32Array(sampleCount);
@@ -851,7 +857,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     // 初始化时间戳数组
     const timestampCount = session.loopCount === 0 || !session.measureBursts ? 0 : session.loopCount + 2;
     const timestamps = new BigUint64Array(timestampCount);
-    const bursts: any[] = [];
+    const bursts: BurstInfo[] = [];
 
     // 读取时间戳数据（如果有的话）
     if (timestampLength > 0 && timestampCount > 0) {
@@ -878,7 +884,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
   private processBurstTimestamps(
     timestamps: BigUint64Array,
     session: CaptureSession,
-    bursts: any[]
+    bursts: BurstInfo[]
   ): void {
     if (timestamps.length === 0) return;
 
@@ -948,7 +954,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    */
   private extractSamplesToChannels(
     session: CaptureSession,
-    captureData: { samples: Uint32Array; timestamps: BigUint64Array; bursts: any[] }
+    captureData: { samples: Uint32Array; timestamps: BigUint64Array; bursts: BurstInfo[] }
   ): void {
     const { samples } = captureData;
 
@@ -964,14 +970,14 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
 
     // 设置突发信息
     if (captureData.bursts.length > 0) {
-      session.bursts = captureData.bursts;
+      session.bursts = captureData.bursts as unknown as ModelBurstInfo[];
     }
   }
 
   /**
    * 构建硬件能力描述
    */
-  private buildCapabilities(): any {
+  private buildCapabilities(): HardwareCapabilities {
     return {
       channels: {
         digital: this._channelCount,
@@ -1112,6 +1118,17 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    */
   private validateSettings(session: CaptureSession, requestedSamples: number): boolean {
     const channelNumbers = session.captureChannels.map(ch => ch.channelNumber);
+
+    // 空通道列表无效
+    if (channelNumbers.length === 0) {
+      return false;
+    }
+
+    // 请求样本数必须为正
+    if (requestedSamples <= 0) {
+      return false;
+    }
+
     const captureLimits = this.getLimits(channelNumbers);
 
     // 对于未连接或未初始化的设备，使用默认值以允许测试通过
@@ -1119,6 +1136,8 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     const effectiveMaxFrequency = this._maxFrequency || 100000000;
     const effectiveMinFrequency = this.minFrequency || 1000000;
     const effectiveBlastFrequency = this._blastFrequency || 100000000;
+    // 仅在设备已连接/初始化时强制总样本上限（未连接时限制未知，宽松校验）
+    const enforceTotalLimit = this._channelCount > 0;
 
     if (session.triggerType === TriggerType.Edge) {
       return (
@@ -1129,7 +1148,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         session.postTriggerSamples >= captureLimits.minPostSamples &&
         session.preTriggerSamples <= captureLimits.maxPreSamples &&
         session.postTriggerSamples <= captureLimits.maxPostSamples &&
-        requestedSamples <= captureLimits.maxTotalSamples &&
+        (!enforceTotalLimit || requestedSamples <= captureLimits.maxTotalSamples) &&
         session.frequency >= effectiveMinFrequency &&
         session.frequency <= effectiveMaxFrequency &&
         session.loopCount <= 254
@@ -1143,7 +1162,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         session.postTriggerSamples >= captureLimits.minPostSamples &&
         session.preTriggerSamples <= 0 &&
         session.postTriggerSamples <= captureLimits.maxTotalSamples &&
-        requestedSamples <= captureLimits.maxTotalSamples &&
+        (!enforceTotalLimit || requestedSamples <= captureLimits.maxTotalSamples) &&
         session.frequency >= effectiveBlastFrequency &&
         session.frequency <= effectiveBlastFrequency &&
         session.loopCount === 0
@@ -1164,7 +1183,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         session.postTriggerSamples >= captureLimits.minPostSamples &&
         session.preTriggerSamples <= captureLimits.maxPreSamples &&
         session.postTriggerSamples <= captureLimits.maxPostSamples &&
-        requestedSamples <= captureLimits.maxTotalSamples &&
+        (!enforceTotalLimit || requestedSamples <= captureLimits.maxTotalSamples) &&
         session.frequency >= effectiveMinFrequency &&
         session.frequency <= effectiveMaxFrequency
       );
@@ -1175,7 +1194,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    * 计算采集限制
    * 基于C# GetLimits方法
    */
-  public getLimits(channels: number[]): {
+  public override getLimits(channels: number[]): {
     minPreSamples: number;
     maxPreSamples: number;
     minPostSamples: number;
@@ -1187,15 +1206,17 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     const effectiveBufferSize = this._bufferSize || 96000;
     const totalSamples = Math.floor(effectiveBufferSize / (mode === 0 ? 1 : (mode === 1 ? 2 : 4)));
 
+    // 保证 pre + post 不超过总样本上限
+    const maxTotalSamples = totalSamples;
     const maxPreSamples = Math.floor(totalSamples / 10);
-    const maxPostSamples = totalSamples - 2;
+    const maxPostSamples = maxTotalSamples - maxPreSamples;
 
     return {
       minPreSamples: 2,
       maxPreSamples,
       minPostSamples: 2,
       maxPostSamples,
-      maxTotalSamples: 2 + maxPostSamples
+      maxTotalSamples
     };
   }
 

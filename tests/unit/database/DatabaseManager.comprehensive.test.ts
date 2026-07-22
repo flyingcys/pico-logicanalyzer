@@ -543,8 +543,8 @@ describe('DatabaseManager 专注业务逻辑测试', () => {
 
       expect(capabilities.channels.digital).toBe(8);
       expect(capabilities.sampling.maxRate).toBe(25000000);
-      expect(capabilities.triggers.types).toContain('edge');
-      expect(capabilities.triggers.types).toContain('pattern');
+      expect(capabilities.triggers.types).toContain(0);
+      expect(capabilities.triggers.types).toContain(1);
       expect(capabilities.protocol.supportedProtocols).toContain('uart');
       expect(capabilities.protocol.supportedProtocols).toContain('spi');
       expect(capabilities.protocol.supportedProtocols).toContain('i2c');

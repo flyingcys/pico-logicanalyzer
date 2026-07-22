@@ -12,7 +12,9 @@ import {
   ConnectionParams,
   ConnectionResult,
   DeviceStatus,
-  CaptureMode
+  CaptureMode,
+  HardwareCapabilities,
+  TriggerType
 } from '../models/AnalyzerTypes';
 
 /**
@@ -649,7 +651,7 @@ export class SigrokAdapter extends AnalyzerDriverBase {
   /**
    * 构建硬件能力描述
    */
-  private buildCapabilities(): any {
+  private buildCapabilities(): HardwareCapabilities {
     return {
       channels: {
         digital: this._channelCount,
@@ -664,11 +666,11 @@ export class SigrokAdapter extends AnalyzerDriverBase {
         streamingSupport: false
       },
       triggers: {
-        types: [0, 1], // Edge, Pattern
+        types: [TriggerType.Edge, TriggerType.Complex],
         maxChannels: this._channelCount,
         patternWidth: this._channelCount,
         sequentialSupport: false,
-        conditions: ['rising', 'falling', 'high', 'low', 'change']
+        conditions: ['rising', 'falling', 'high', 'low']
       },
       connectivity: {
         interfaces: ['usb', 'serial'],
@@ -677,8 +679,7 @@ export class SigrokAdapter extends AnalyzerDriverBase {
       features: {
         signalGeneration: false,
         powerSupply: false,
-        voltageMonitoring: false,
-        protocolDecoding: true // sigrok有强大的协议解码功能
+        voltageMonitoring: false
       }
     };
   }

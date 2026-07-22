@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { hardwareDriverManager } from '../drivers/HardwareDriverManager';
 import { CaptureError, TriggerType } from '../models/AnalyzerTypes';
 import { AnalyzerChannel, CaptureSession } from '../models/CaptureModels';
-import { LACFileFormat } from '../models/LACFileFormat';
+import { LACFileFormat, ExportedCapture } from '../models/LACFileFormat';
 import { DecoderManager, type DecoderExecutionResult } from '../decoders/DecoderManager';
 import type {
   ChannelData,
@@ -368,7 +368,7 @@ ${webviewScriptTags}
   /**
    * 解析.lac文件内容
    */
-  private parseLACFile(content: string): any {
+  private parseLACFile(content: string): ExportedCapture {
     try {
       return LACFileFormat.parse(content);
     } catch (error) {
@@ -379,7 +379,7 @@ ${webviewScriptTags}
   /**
    * 保存.lac文件
    */
-  private async saveLACFile(document: vscode.TextDocument, data: any): Promise<void> {
+  private async saveLACFile(document: vscode.TextDocument, data: ExportedCapture): Promise<void> {
     try {
       const edit = new vscode.WorkspaceEdit();
       const lacContent = JSON.stringify(data, null, 2);
@@ -997,7 +997,7 @@ ${webviewScriptTags}
       .map(channel => ({
         channelNumber: channel.channelNumber,
         channelName: channel.channelName || channel.textualChannelNumber,
-        samples: new Uint8Array(channel.samples),
+        samples: new Uint8Array(channel.samples!),
         hidden: channel.hidden
       }));
   }
@@ -1088,7 +1088,7 @@ ${webviewScriptTags}
     };
   }
 
-  private toJsonSafeValue(value: unknown, seen = new WeakSet<object>()): any {
+  private toJsonSafeValue(value: unknown, seen = new WeakSet<object>()): unknown {
     if (
       value === null ||
       typeof value === 'string' ||

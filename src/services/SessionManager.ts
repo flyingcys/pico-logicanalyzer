@@ -27,8 +27,8 @@ export interface SessionData {
 
   // 扩展数据
   decoderResults?: Map<string, DecoderResult[]>;
-  analysisResults?: any;
-  measurementResults?: any;
+  analysisResults?: unknown;
+  measurementResults?: unknown;
 
   // UI状态
   viewSettings?: ViewSettings;
@@ -69,12 +69,12 @@ export interface MarkerSettings {
 }
 
 export interface SessionMetadata {
-  deviceInfo?: any;
+  deviceInfo?: unknown;
   captureSettings: {
     sampleRate: number;
     totalSamples: number;
     duration: number;
-    triggerInfo?: any;
+    triggerInfo?: unknown;
   };
   fileInfo: {
     size: number;
@@ -103,6 +103,11 @@ export interface SessionOperationResult {
   filePath?: string;
   error?: string;
   warnings?: string[];
+  metadata?: {
+    fileSize?: number;
+    compression?: string;
+    [key: string]: unknown;
+  };
 }
 
 export class SessionManager extends ServiceLifecycleBase {
@@ -177,7 +182,7 @@ export class SessionManager extends ServiceLifecycleBase {
   async createSession(config: {
     name: string;
     description?: string;
-    captureSettings?: any;
+    captureSettings?: { sampleRate?: number; totalSamples?: number; duration?: number; [key: string]: unknown };
   }): Promise<string> {
     const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -255,10 +260,14 @@ export class SessionManager extends ServiceLifecycleBase {
   async getSessionState(sessionId: string): Promise<{
     lastModified: number;
     isModified: boolean;
+    hasUnsavedChanges: boolean;
+    version: string;
   }> {
     return {
       lastModified: Date.now(),
-      isModified: this.unsavedChanges
+      isModified: this.unsavedChanges,
+      hasUnsavedChanges: this.unsavedChanges,
+      version: this.CURRENT_VERSION
     };
   }
 
@@ -268,6 +277,7 @@ export class SessionManager extends ServiceLifecycleBase {
   async synchronizeSession(sessionId: string): Promise<{
     success: boolean;
     conflictsResolved: number;
+    lastSyncTime: number;
   }> {
     // 模拟同步操作
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -277,21 +287,27 @@ export class SessionManager extends ServiceLifecycleBase {
 
     return {
       success: true,
-      conflictsResolved: 0
+      conflictsResolved: 0,
+      lastSyncTime: Date.now()
     };
   }
 
   /**
    * 保存采集数据到会话
    */
-  async saveCaptureData(sessionId: string, captureData: any): Promise<void> {
+  async saveCaptureData(sessionId: string, captureData: Record<string, unknown>): Promise<void> {
     if (this.currentSession?.sessionId === sessionId) {
-      // 更新会话数据
-      this.currentSession.metadata.captureSettings = {
-        sampleRate: captureData.metadata.sampleRate,
-        totalSamples: captureData.metadata.totalSamples,
-        duration: captureData.metadata.totalSamples / captureData.metadata.sampleRate
-      };
+      // 容错处理：captureData 可能为原始样本数据（含 samples/timestamp）或带 metadata 的结构
+      const meta = (captureData?.metadata ?? undefined) as
+        | { sampleRate?: number; totalSamples?: number }
+        | undefined;
+      if (meta && typeof meta.sampleRate === 'number' && typeof meta.totalSamples === 'number') {
+        this.currentSession.metadata.captureSettings = {
+          sampleRate: meta.sampleRate,
+          totalSamples: meta.totalSamples,
+          duration: meta.sampleRate > 0 ? meta.totalSamples / meta.sampleRate : 0
+        };
+      }
       this.unsavedChanges = true;
     }
   }
@@ -357,9 +373,14 @@ export class SessionManager extends ServiceLifecycleBase {
       const dir = path.dirname(filePath);
       await fs.mkdir(dir, { recursive: true });
 
-      // 创建备份（如果启用）
+      // 创建备份（如果启用）—— 备份失败不应中断主保存流程
       if (this.options.backupEnabled && await this.fileExists(filePath)) {
-        await this.createBackup(filePath);
+        try {
+          await this.createBackup(filePath);
+        } catch (backupError) {
+          // 备份失败仅记录警告，不中断保存
+          console.warn('SessionManager: 创建备份失败，继续保存:', backupError);
+        }
       }
 
       // 序列化数据
@@ -367,6 +388,17 @@ export class SessionManager extends ServiceLifecycleBase {
 
       // 写入文件
       await fs.writeFile(filePath, serializedData, 'utf8');
+
+      // 获取文件大小（优先 stat，失败则用序列化内容长度）
+      let fileSize = serializedData.length;
+      try {
+        const stats = await fs.stat(filePath);
+        if (stats && typeof stats.size === 'number') {
+          fileSize = stats.size;
+        }
+      } catch {
+        // 保持 serializedData.length
+      }
 
       // 更新当前会话状态
       this.currentSession = completeSessionData;
@@ -378,15 +410,34 @@ export class SessionManager extends ServiceLifecycleBase {
       return {
         success: true,
         sessionId: completeSessionData.sessionId,
-        filePath
+        filePath,
+        metadata: {
+          fileSize,
+          compression: this.options.compressionEnabled ? 'enabled' : 'disabled'
+        }
       };
 
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : '保存会话失败'
+        error: this.formatSaveError(error)
       };
     }
+  }
+
+  /**
+   * 格式化保存错误信息（映射常见错误码为用户友好提示）
+   */
+  private formatSaveError(error: unknown): string {
+    const err = error as { code?: string; message?: string };
+    const rawMessage = error instanceof Error ? error.message : '保存会话失败';
+    if (err?.code === 'ENOSPC') {
+      return `磁盘空间不足：${rawMessage}`;
+    }
+    if (err?.code === 'EACCES' || err?.code === 'EPERM') {
+      return `权限不足：${rawMessage}`;
+    }
+    return rawMessage;
   }
 
   /**
@@ -423,10 +474,12 @@ export class SessionManager extends ServiceLifecycleBase {
       // 反序列化数据
       const sessionData = await this.deserializeSession(fileContent, filePath);
 
-      // 验证会话数据
-      const validationResult = this.validateSessionData(sessionData);
-      if (!validationResult.success) {
-        return validationResult;
+      // 验证会话数据完整性
+      if (!this.validateSessionData(sessionData)) {
+        return {
+          success: false,
+          error: '会话数据完整性校验失败：缺少必要字段（version/captureSession/timestamp/sessionId）'
+        };
       }
 
       // 更新当前会话状态
@@ -455,7 +508,7 @@ export class SessionManager extends ServiceLifecycleBase {
    */
   async autoSave(): Promise<SessionOperationResult> {
     if (!this.currentSession || !this.unsavedChanges) {
-      return { success: true }; // 没有需要保存的内容
+      return { success: true, warnings: ['No unsaved changes'] }; // 没有需要保存的内容
     }
 
     try {
@@ -568,11 +621,11 @@ export class SessionManager extends ServiceLifecycleBase {
       throw new Error('没有当前会话可更新');
     }
 
-    this.currentSession = {
-      ...this.currentSession,
-      ...updates,
+    // 使用 Object.assign 原地更新，保持当前会话对象引用不变
+    // 这样外部持有的会话引用能与当前会话保持同步
+    Object.assign(this.currentSession, updates, {
       timestamp: new Date().toISOString() // 更新时间戳
-    };
+    });
 
     this.unsavedChanges = true;
   }
@@ -607,13 +660,28 @@ export class SessionManager extends ServiceLifecycleBase {
 
   /**
    * 获取会话历史版本
+   * 参数可以是 sessionId，也可以直接是历史目录路径
+   * 返回历史文件路径列表（按文件名升序，限制最大版本数）
    */
-  async getSessionHistory(sessionId: string): Promise<SessionData[]> {
+  async getSessionHistory(sessionIdOrPath: string): Promise<string[]> {
     try {
-      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-      if (!workspaceFolder) return [];
+      let historyDir: string;
 
-      const historyDir = path.join(workspaceFolder.uri.fsPath, '.vscode', 'logicanalyzer', 'history', sessionId);
+      // 判断传入的是路径（含分隔符或扩展名）还是 sessionId
+      const looksLikePath = sessionIdOrPath.includes('/') ||
+        sessionIdOrPath.includes(path.sep) ||
+        sessionIdOrPath.endsWith(this.FILE_EXTENSION) ||
+        sessionIdOrPath.endsWith('.json');
+
+      if (looksLikePath) {
+        historyDir = sessionIdOrPath;
+      } else {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+          return [];
+        }
+        historyDir = path.join(workspaceFolder.uri.fsPath, '.vscode', 'logicanalyzer', 'history', sessionIdOrPath);
+      }
 
       if (!await this.fileExists(historyDir)) {
         return [];
@@ -621,27 +689,117 @@ export class SessionManager extends ServiceLifecycleBase {
 
       const files = await fs.readdir(historyDir);
       const historyFiles = files
-        .filter(f => f.endsWith(this.FILE_EXTENSION))
-        .sort((a, b) => b.localeCompare(a)); // 按时间倒序
+        .filter(f => f.endsWith(this.FILE_EXTENSION) || f.endsWith('.json'))
+        .sort((a, b) => a.localeCompare(b)); // 按文件名升序
 
-      const history = [];
-      for (const file of historyFiles.slice(0, this.options.maxHistoryVersions || 10)) {
-        try {
-          const filePath = path.join(historyDir, file);
-          const content = await fs.readFile(filePath, 'utf8');
-          const sessionData = await this.deserializeSession(content, filePath);
-          history.push(sessionData);
-        } catch (error) {
-          console.error(`加载历史版本失败: ${file}`, error);
-        }
-      }
-
-      return history;
+      const maxVersions = this.options.maxHistoryVersions || 10;
+      return historyFiles
+        .slice(0, maxVersions)
+        .map(f => path.join(historyDir, f));
 
     } catch (error) {
       console.error('获取会话历史失败:', error);
       return [];
     }
+  }
+
+  /**
+   * 更新会话管理选项
+   * 支持 autoSave / autoSaveInterval 变化时自动重启定时器
+   */
+  updateOptions(options: Partial<SessionManagerOptions>): void {
+    const previousAutoSave = this.options.autoSave;
+    const previousInterval = this.options.autoSaveInterval;
+
+    this.options = { ...this.options, ...options };
+
+    // autoSave 由关闭变开启，或间隔变化时，重启定时器
+    if (this.options.autoSave && (!previousAutoSave || previousInterval !== this.options.autoSaveInterval)) {
+      this.startAutoSave();
+    } else if (!this.options.autoSave && previousAutoSave && this.autoSaveTimer) {
+      // autoSave 被关闭，停止定时器
+      clearInterval(this.autoSaveTimer);
+      this.autoSaveTimer = undefined;
+    }
+  }
+
+  /**
+   * 清理超出最大版本数限制的旧历史文件
+   * @param historyDir 历史目录路径
+   * @param prefix 文件名前缀（仅清理匹配前缀的文件）
+   * @returns 实际删除的文件数量
+   */
+  async cleanupOldVersions(historyDir: string, prefix: string): Promise<number> {
+    try {
+      if (!await this.fileExists(historyDir)) {
+        return 0;
+      }
+
+      const files = await fs.readdir(historyDir);
+      const matching = files
+        .filter(f => f.startsWith(prefix))
+        .sort((a, b) => a.localeCompare(b)); // 升序
+
+      const maxVersions = this.options.maxHistoryVersions || 10;
+      const toDelete = matching.slice(maxVersions); // 保留前 maxVersions 个，删除其余旧版本
+
+      let deleted = 0;
+      for (const file of toDelete) {
+        try {
+          await fs.unlink(path.join(historyDir, file));
+          deleted++;
+        } catch {
+          // 忽略单个文件删除失败
+        }
+      }
+
+      return deleted;
+    } catch (error) {
+      console.error('清理旧历史版本失败:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * 恢复损坏的会话数据
+   * 补全缺失的必要字段（timestamp/sessionId 等），使其重新可用
+   */
+  async recoverSession(data: Partial<SessionData>): Promise<SessionData> {
+    const recovered: SessionData = {
+      version: data.version || this.CURRENT_VERSION,
+      timestamp: data.timestamp || new Date().toISOString(),
+      sessionId: data.sessionId || this.generateSessionId(),
+      name: data.name || 'Recovered Session',
+      description: data.description,
+      tags: data.tags || [],
+
+      captureSession: data.captureSession || ({} as CaptureSession),
+      selectedRegions: data.selectedRegions || [],
+
+      decoderResults: data.decoderResults,
+      analysisResults: data.analysisResults,
+      measurementResults: data.measurementResults,
+
+      viewSettings: data.viewSettings,
+      channelSettings: data.channelSettings,
+      markerSettings: data.markerSettings,
+
+      metadata: data.metadata || {
+        captureSettings: {
+          sampleRate: 0,
+          totalSamples: 0,
+          duration: 0
+        },
+        fileInfo: {
+          size: 0
+        }
+      }
+    };
+
+    this.currentSession = recovered;
+    this.unsavedChanges = true;
+
+    return recovered;
   }
 
   /**
@@ -755,35 +913,27 @@ export class SessionManager extends ServiceLifecycleBase {
   }
 
   /**
-   * 验证会话数据
+   * 验证会话数据完整性（公共方法）
+   * 检查必要字段是否存在：version / captureSession / timestamp / sessionId
    */
-  private validateSessionData(sessionData: any): SessionOperationResult {
-    const warnings: string[] = [];
-
-    // 检查必需字段
-    if (!sessionData.version) {
-      return { success: false, error: '缺少版本信息' };
+  validateSessionData(sessionData: unknown): boolean {
+    if (!sessionData || typeof sessionData !== 'object') {
+      return false;
     }
-
-    if (!sessionData.captureSession) {
-      return { success: false, error: '缺少采集会话数据' };
+    const data = sessionData as Record<string, unknown>;
+    if (!data.version) {
+      return false;
     }
-
-    // 版本兼容性检查
-    if (sessionData.version !== this.CURRENT_VERSION) {
-      warnings.push(`版本不匹配: 文件版本 ${sessionData.version}, 当前版本 ${this.CURRENT_VERSION}`);
+    if (!data.captureSession) {
+      return false;
     }
-
-    // 数据完整性检查
-    if (!sessionData.captureSession.captureChannels ||
-        sessionData.captureSession.captureChannels.length === 0) {
-      warnings.push('没有找到通道数据');
+    if (!data.timestamp) {
+      return false;
     }
-
-    return {
-      success: true,
-      warnings: warnings.length > 0 ? warnings : undefined
-    };
+    if (!data.sessionId) {
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -898,8 +1048,8 @@ export class SessionManager extends ServiceLifecycleBase {
   /**
    * 创建JSON替换器
    */
-  private createJsonReplacer(): (key: string, value: any) => any {
-    return (key: string, value: any) => {
+  private createJsonReplacer(): (key: string, value: unknown) => unknown {
+    return (key: string, value: unknown) => {
       // 处理Uint8Array
       if (value instanceof Uint8Array) {
         return {
@@ -914,11 +1064,11 @@ export class SessionManager extends ServiceLifecycleBase {
   /**
    * 创建JSON恢复器
    */
-  private createJsonReviver(): (key: string, value: any) => any {
-    return (key: string, value: any) => {
+  private createJsonReviver(): (key: string, value: unknown) => unknown {
+    return (key: string, value: unknown) => {
       // 恢复Uint8Array
-      if (value && value.__type === 'Uint8Array') {
-        return new Uint8Array(value.data);
+      if (value && typeof value === 'object' && (value as { __type?: string }).__type === 'Uint8Array') {
+        return new Uint8Array((value as { data: ArrayLike<number> }).data);
       }
       return value;
     };

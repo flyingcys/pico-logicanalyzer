@@ -56,9 +56,9 @@ export interface DecoderMetadata {
     id: string;
     name: string;
     type: 'int' | 'str' | 'bool' | 'list';
-    default: any;
+    default: string | number | boolean | string[];
     description: string;
-    values?: any[];
+    values?: (string | number | boolean | string[])[];
   }>;
   /** 输出注释类型 */
   annotations: string[];
@@ -375,7 +375,7 @@ export class PythonDecoderAnalyzer {
         const [name, defaultValue] = param.split('=').map(p => p.trim());
         if (defaultValue && name !== 'self') {
           let type: 'int' | 'str' | 'bool' | 'list' = 'str';
-          let parsedDefault: any = defaultValue.replace(/['"]/g, '');
+          let parsedDefault: string | number | boolean | string[] = defaultValue.replace(/['"]/g, '');
 
           if (defaultValue === 'True' || defaultValue === 'False') {
             type = 'bool';

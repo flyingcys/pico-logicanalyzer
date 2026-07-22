@@ -71,8 +71,9 @@ describe('LogicAnalyzerDriver 简化核心测试', () => {
 
     it('应该正确识别网络连接字符串', () => {
       const driver = new LogicAnalyzerDriver('192.168.1.100:8080');
-      // 连接前网络状态应该为false（仅在连接后确定）
-      expect(driver.isNetwork).toBe(false);
+      // 构造函数阶段基于连接字符串格式识别网络类型（含 ':' 视为网络地址）
+      expect(driver.isNetwork).toBe(true);
+      expect(driver.driverType).toBe(AnalyzerDriverType.Network);
     });
   });
 

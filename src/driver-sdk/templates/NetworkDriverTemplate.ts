@@ -1,5 +1,5 @@
 import { Socket } from 'net';
-import { createSocket, Socket as UDPSocket } from 'dgram';
+import { createSocket, Socket as UDPSocket, RemoteInfo } from 'dgram';
 import { AnalyzerDriverBase } from '../../drivers/AnalyzerDriverBase';
 import {
   AnalyzerDriverType,
@@ -9,7 +9,8 @@ import {
   CaptureCompletedHandler,
   ConnectionParams,
   ConnectionResult,
-  DeviceStatus
+  DeviceStatus,
+  HardwareCapabilities
 } from '../../models/AnalyzerTypes';
 import { ProtocolHelper } from '../tools/ProtocolHelper';
 
@@ -21,6 +22,94 @@ export enum ProtocolType {
   UDP = 'udp',
   HTTP = 'http',
   WEBSOCKET = 'websocket'
+}
+
+/**
+ * 网络命令基础结构（设备协议命令的通用载体）
+ */
+interface NetworkCommand {
+  command: string;
+  sessionId?: string;
+  timestamp?: number;
+  id?: number;
+  [key: string]: unknown;
+}
+
+/**
+ * 网络命令响应数据载荷
+ */
+interface NetworkResponseData {
+  name?: string;
+  model?: string;
+  channels?: number;
+  maxFrequency?: number;
+  bufferSize?: number;
+  version?: string;
+  captureId?: string;
+  status?: string;
+  errorMessage?: string;
+  batteryVoltage?: string;
+  temperature?: number;
+  lastError?: string;
+  voltage?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * 网络命令响应
+ */
+interface NetworkCommandResponse {
+  success?: boolean;
+  id?: number;
+  commandId?: number;
+  error?: string;
+  sessionId?: string;
+  data?: NetworkResponseData;
+  [key: string]: unknown;
+}
+
+/**
+ * 采集数据响应中的单通道载荷
+ */
+interface CaptureChannelData {
+  number: number;
+  samples?: number[] | string;
+}
+
+/**
+ * 采集数据响应载荷
+ */
+interface CaptureDataPayload {
+  channels?: CaptureChannelData[];
+}
+
+/**
+ * 模板内部构建的硬件能力描述（示例形状，含协议占位值）
+ */
+interface TemplateCapabilities {
+  channels: { digital: number; maxVoltage: number; inputImpedance: number };
+  sampling: {
+    maxRate: number;
+    minRate: number;
+    supportedRates: number[];
+    bufferSize: number;
+    streamingSupport: boolean;
+  };
+  triggers: {
+    types: number[];
+    maxChannels: number;
+    patternWidth: number;
+    sequentialSupport: boolean;
+    conditions: string[];
+  };
+  connectivity: { interfaces: string[]; protocols: string[] };
+  features: {
+    signalGeneration: boolean;
+    powerSupply: boolean;
+    voltageMonitoring: boolean;
+    protocolDecoding: boolean;
+    remoteControl: boolean;
+  };
 }
 
 /**
@@ -87,7 +176,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   // 命令管理
   private _commandId: number = 0;
   private _pendingCommands = new Map<number, {
-    resolve: (response: any) => void;
+    resolve: (response: NetworkCommandResponse) => void;
     reject: (error: Error) => void;
     timeout: NodeJS.Timeout;
   }>();
@@ -150,7 +239,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
           type: this.driverType,
           connectionPath: `${this._protocol}://${this._host}:${this._port}`,
           isNetwork: true,
-          capabilities: this.buildCapabilities()
+          capabilities: this.buildCapabilities() as unknown as HardwareCapabilities
         }
       };
     } catch (error) {
@@ -335,7 +424,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   /**
    * 处理UDP消息
    */
-  private handleUDPMessage(message: Buffer, rinfo: any): void {
+  private handleUDPMessage(message: Buffer, rinfo: RemoteInfo): void {
     try {
       const response = JSON.parse(message.toString());
       this.handleNetworkResponse(response);
@@ -347,7 +436,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   /**
    * 处理网络响应
    */
-  private handleNetworkResponse(response: any): void {
+  private handleNetworkResponse(response: NetworkCommandResponse): void {
     const commandId = response.id || response.commandId;
 
     if (commandId && this._pendingCommands.has(commandId)) {
@@ -579,7 +668,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
       }
 
       // 解析采集数据
-      this.parseCaptureData(session, response.data);
+      this.parseCaptureData(session, response.data as unknown as CaptureDataPayload);
 
       this._capturing = false;
 
@@ -597,10 +686,10 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   /**
    * 解析采集数据
    */
-  private parseCaptureData(session: CaptureSession, data: any): void {
+  private parseCaptureData(session: CaptureSession, data: CaptureDataPayload): void {
     if (data.channels && Array.isArray(data.channels)) {
       for (const channel of session.captureChannels) {
-        const channelData = data.channels.find((ch: any) => ch.number === channel.channelNumber);
+        const channelData = data.channels.find((ch: CaptureChannelData) => ch.number === channel.channelNumber);
 
         if (channelData && channelData.samples) {
           if (Array.isArray(channelData.samples)) {
@@ -731,7 +820,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   /**
    * 发送网络命令
    */
-  private async sendNetworkCommand(command: any, timeoutMs: number = 10000): Promise<any> {
+  private async sendNetworkCommand(command: NetworkCommand, timeoutMs: number = 10000): Promise<NetworkCommandResponse> {
     return new Promise((resolve, reject) => {
       const commandId = ++this._commandId;
       command.id = commandId;
@@ -785,7 +874,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   /**
    * 发送HTTP命令
    */
-  private async sendHTTPCommand(commandData: string): Promise<any> {
+  private async sendHTTPCommand(commandData: string): Promise<NetworkCommandResponse> {
     const url = ProtocolHelper.http.buildUrl(
       `http://${this._host}:${this._port}`,
       '/api/command'
@@ -810,7 +899,7 @@ export class NetworkDriverTemplate extends AnalyzerDriverBase {
   /**
    * 构建硬件能力描述
    */
-  private buildCapabilities(): any {
+  private buildCapabilities(): TemplateCapabilities {
     return {
       channels: {
         digital: this._channelCount,

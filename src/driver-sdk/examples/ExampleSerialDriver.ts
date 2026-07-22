@@ -8,6 +8,19 @@ import {
 } from '../../models/AnalyzerTypes';
 
 /**
+ * 通道扩展注解（示例：后处理阶段为通道附加的演示性字段）
+ */
+interface ChannelAnnotation {
+  timestamps?: number[];
+  statistics?: {
+    totalSamples: number;
+    highSamples: number;
+    lowSamples: number;
+    dutyCycle: number;
+  };
+}
+
+/**
  * 示例串口驱动
  * 演示如何基于SerialDriverTemplate创建自定义驱动
  * 这个例子模拟了一个简单的串口逻辑分析器
@@ -155,21 +168,21 @@ export class ExampleSerialDriver extends SerialDriverTemplate {
     for (const channel of session.captureChannels) {
       if (channel.samples) {
         // 添加时间戳（这是个示例，实际实现可能不同）
-        (channel as any).timestamps = Array.from(
+        (channel as unknown as ChannelAnnotation).timestamps = Array.from(
           { length: channel.samples.length },
           (_, i) => i * samplePeriod
         );
 
         // 计算统计信息
         const ones = Array.from(channel.samples).reduce((sum, val) => sum + val, 0);
-        (channel as any).statistics = {
+        (channel as unknown as ChannelAnnotation).statistics = {
           totalSamples: channel.samples.length,
           highSamples: ones,
           lowSamples: channel.samples.length - ones,
           dutyCycle: ones / channel.samples.length
         };
 
-        console.log(`通道 ${channel.channelName} 统计:`, (channel as any).statistics);
+        console.log(`通道 ${channel.channelName} 统计:`, (channel as unknown as ChannelAnnotation).statistics);
       }
     }
   }

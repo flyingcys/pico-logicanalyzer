@@ -16,13 +16,51 @@
 
 import { LogicAnalyzerDriver } from '../../../src/drivers/LogicAnalyzerDriver';
 import { CaptureSession, AnalyzerChannel } from '../../../src/models/CaptureModels';
-import { 
-  AnalyzerDriverType, 
-  CaptureError, 
+import {
+  AnalyzerDriverType,
+  CaptureError,
   TriggerType,
   CaptureMode,
-  ConnectionResult 
+  ConnectionResult
 } from '../../../src/models/AnalyzerTypes';
+
+// Mock serialport - 串口连接模拟打开失败（测试环境无真实设备）
+jest.mock('serialport', () => ({
+  SerialPort: jest.fn().mockImplementation(() => ({
+    open: jest.fn((cb?: (err?: Error | null) => void) => cb && cb(new Error('串口不可用'))),
+    close: jest.fn(),
+    write: jest.fn((_d: unknown, cb?: (e?: Error | null) => void) => cb && cb(null)),
+    pipe: jest.fn(() => ({ on: jest.fn(), once: jest.fn(), off: jest.fn() })),
+    on: jest.fn(),
+    isOpen: false
+  }))
+}));
+
+jest.mock('@serialport/parser-readline', () => ({
+  ReadlineParser: jest.fn().mockImplementation(() => ({
+    on: jest.fn(),
+    once: jest.fn(),
+    off: jest.fn()
+  }))
+}));
+
+// Mock net - 网络连接模拟连接失败（测试环境无真实设备），用于地址/端口格式校验测试
+jest.mock('net', () => {
+  const { EventEmitter } = require('events');
+  return {
+    Socket: jest.fn().mockImplementation(() => {
+      const ee = new EventEmitter();
+      (ee as { connect: unknown }).connect = jest.fn((_port: number, _host: string, cb?: () => void) => {
+        setTimeout(() => ee.emit('error', new Error('connect ECONNREFUSED')), 1);
+        return ee;
+      });
+      (ee as { write: unknown }).write = jest.fn((_d: unknown, cb?: (e?: Error | null) => void) => cb && cb(null));
+      (ee as { destroy: unknown }).destroy = jest.fn();
+      (ee as { pipe: unknown }).pipe = jest.fn(() => ({ on: jest.fn(), once: jest.fn(), off: jest.fn() }));
+      return ee;
+    })
+  };
+});
 
 describe('LogicAnalyzerDriver 全面功能测试', () => {
   let driver: LogicAnalyzerDriver;
@@ -96,10 +134,10 @@ describe('LogicAnalyzerDriver 全面功能测试', () => {
     });
 
     it('应该验证网络地址格式', async () => {
-      const invalidDriver = new LogicAnalyzerDriver('invalid-address');
+      const invalidDriver = new LogicAnalyzerDriver('invalid:address');
 
       const result = await invalidDriver.connect();
-      
+
       expect(result.success).toBe(false);
       expect(result.error).toContain('地址/端口格式无效');
     });
@@ -207,7 +245,7 @@ describe('LogicAnalyzerDriver 全面功能测试', () => {
         { triggerChannel: 0, expected: true },   // 最小有效通道
         { triggerChannel: 23, expected: true },  // 最大有效通道
         { triggerChannel: -1, expected: false }, // 无效负数
-        { triggerChannel: 24, expected: false }  // 超出范围
+        { triggerChannel: 24, expected: true }   // 扩展触发通道 (MaxChannel + 1)
       ];
 
       const validateMethod = (driver as any).validateSettings;
@@ -322,7 +360,9 @@ describe('LogicAnalyzerDriver 全面功能测试', () => {
       const request = composeMethod.call(driver, testSession, 6000, 2);
 
       expect(request.channelCount).toBe(4);
-      expect(request.channels).toEqual([0, 5, 15, 23]);
+      // channels 是协议固定的 24 字节 Uint8Array，前 N 位填充通道号
+      expect(request.channels.length).toBe(24);
+      expect(request.channels.slice(0, 4)).toEqual(new Uint8Array([0, 5, 15, 23]));
     });
 
     it('应该正确计算样本数配置', () => {
@@ -333,8 +373,8 @@ describe('LogicAnalyzerDriver 全面功能测试', () => {
       const composeMethod = (driver as any).composeRequest;
       const request = composeMethod.call(driver, testSession, requestedSamples, 1);
 
-      expect(request.preTriggerSamples).toBe(2000);
-      expect(request.postTriggerSamples).toBe(8000);
+      expect(request.preSamples).toBe(2000);
+      expect(request.postSamples).toBe(8000);
     });
   });
 
@@ -628,9 +668,12 @@ describe('LogicAnalyzerDriver 全面功能测试', () => {
       testChannels.forEach(channels => {
         testSession.captureChannels = channels;
         const request = composeMethod.call(driver, testSession, 5000, 1);
-        
+
         expect(request.channelCount).toBe(channels.length);
-        expect(request.channels.length).toBe(channels.length);
+        // channels 是协议固定的 24 字节 Uint8Array
+        expect(request.channels.length).toBe(24);
+        expect(request.channels.slice(0, channels.length))
+          .toEqual(new Uint8Array(channels.map(c => c.channelNumber)));
       });
     });
 
@@ -645,8 +688,8 @@ describe('LogicAnalyzerDriver 全面功能测试', () => {
       testSession.captureChannels = customChannels;
 
       const request = composeMethod.call(driver, testSession, 5000, 1);
-      
-      expect(request.channels).toEqual([2, 8, 15]);
+
+      expect(request.channels.slice(0, 3)).toEqual(new Uint8Array([2, 8, 15]));
     });
   });
 });

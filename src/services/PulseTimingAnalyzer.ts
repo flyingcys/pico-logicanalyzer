@@ -113,6 +113,14 @@ export interface SignalIntegrityMetrics {
   powerConsumption: number; // 功耗估算 (mW)
 }
 
+// 脉冲时序分析选项
+export interface PulseTimingOptions {
+  protocolTemplate?: ProtocolTimingTemplate;
+  generateEyeDiagram?: boolean;
+  detectionThreshold?: number;
+  glitchThreshold?: number; // ns
+}
+
 export class PulseTimingAnalyzer {
 
   /**
@@ -121,12 +129,7 @@ export class PulseTimingAnalyzer {
   async analyzeTiming(
     channels: AnalyzerChannel[],
     sampleRate: number,
-    options?: {
-      protocolTemplate?: ProtocolTimingTemplate;
-      generateEyeDiagram?: boolean;
-      detectionThreshold?: number;
-      glitchThreshold?: number; // ns
-    }
+    options?: PulseTimingOptions
   ): Promise<TimingAnalysisResult> {
     const startTime = Date.now();
 
@@ -178,7 +181,7 @@ export class PulseTimingAnalyzer {
   private async detectPulseEvents(
     channels: AnalyzerChannel[],
     sampleRate: number,
-    options?: any
+    options?: PulseTimingOptions
   ): Promise<PulseEvent[]> {
     const events: PulseEvent[] = [];
     const glitchThresholdSamples = options?.glitchThreshold ?

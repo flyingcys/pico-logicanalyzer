@@ -3,8 +3,36 @@ import {
   ConnectionParams,
   ConnectionResult,
   CaptureSession,
-  CaptureError
+  CaptureError,
+  CaptureCompletedHandler
 } from '../../models/AnalyzerTypes';
+
+/**
+ * HTTP 采集配置（示例驱动构建的请求载荷）
+ */
+interface HTTPCaptureConfig {
+  captureId: string;
+  channels: Array<{
+    id: number;
+    name: string;
+    enabled: boolean;
+    threshold: number;
+  }>;
+  timing: {
+    sampleRate: number;
+    preTrigger: number;
+    postTrigger: number;
+  };
+  trigger: {
+    type: CaptureSession['triggerType'];
+    channel: CaptureSession['triggerChannel'];
+    edge: string;
+    pattern: CaptureSession['triggerPattern'];
+  };
+  dataFormat: string;
+  compression: boolean;
+  realTimeStreaming: boolean;
+}
 
 /**
  * 示例网络驱动
@@ -18,6 +46,10 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
     maxSampleRate: number;
     hasWiFi: boolean;
   };
+
+  // 追踪实时数据流的 interval 与停止定时器，确保 dispose 时能释放
+  private _streamingInterval: ReturnType<typeof setInterval> | undefined;
+  private _streamingStopTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     host: string,
@@ -192,7 +224,7 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
    */
   override async startCapture(
     session: CaptureSession,
-    captureCompletedHandler?: (args: any) => void
+    captureCompletedHandler?: CaptureCompletedHandler
   ): Promise<CaptureError> {
     console.log('ExampleNetworkDriver: 开始HTTP采集流程');
 
@@ -212,7 +244,7 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
   /**
    * 构建HTTP采集配置
    */
-  private buildHTTPCaptureConfig(session: CaptureSession): any {
+  private buildHTTPCaptureConfig(session: CaptureSession): HTTPCaptureConfig {
     return {
       captureId: `capture_${Date.now()}`,
       channels: session.captureChannels.map(ch => ({
@@ -366,12 +398,16 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
         };
         callback(mockData);
       }, 100);
+      this._streamingInterval = interval;
 
       // 10秒后停止模拟流
-      setTimeout(() => {
+      const stopTimer = setTimeout(() => {
         clearInterval(interval);
+        this._streamingInterval = undefined;
+        this._streamingStopTimer = undefined;
         console.log('实时数据流已停止');
       }, 10000);
+      this._streamingStopTimer = stopTimer;
 
       return true;
     } catch (error) {
@@ -456,8 +492,15 @@ export class ExampleNetworkDriver extends NetworkDriverTemplate {
   override dispose(): void {
     console.log('ExampleNetworkDriver: 清理资源');
 
-    // 清理HTTP特定资源
-    // 例如：关闭WebSocket连接、取消定时器等
+    // 清理实时数据流定时器，避免悬挂的 interval/timeout 造成资源泄漏
+    if (this._streamingInterval !== undefined) {
+      clearInterval(this._streamingInterval);
+      this._streamingInterval = undefined;
+    }
+    if (this._streamingStopTimer !== undefined) {
+      clearTimeout(this._streamingStopTimer);
+      this._streamingStopTimer = undefined;
+    }
 
     // 调用父类清理
     super.dispose();

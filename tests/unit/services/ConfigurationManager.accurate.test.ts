@@ -17,7 +17,7 @@ jest.mock('vscode', () => ({
     getConfiguration: jest.fn(() => ({
       get: jest.fn((key) => {
         // 模拟VSCode配置的真实行为
-        const mockConfigs: Record<string, any> = {
+        const mockConfigs: Record<string, string> = {
           'general.language': 'zh-CN',
           'autoDetectDevices': true,
           'display.theme': 'auto'

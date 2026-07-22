@@ -5,7 +5,7 @@
 -->
 
 <script setup lang="ts">
-  import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+  import { ref, computed, onMounted, onUnmounted, watch, type Component } from 'vue';
   import {
     Connection,
     Disconnect,
@@ -82,17 +82,33 @@
     show: boolean;
     type: 'success' | 'warning' | 'error' | 'info';
     message: string;
-    icon: any;
+    icon: Component;
+  }
+
+  interface StatusBarSampleData {
+    totalSamples?: number;
+    sampleRate?: number;
+    duration?: number;
+  }
+
+  interface StatusBarChannel {
+    hidden?: boolean;
+    hasData?: boolean;
+  }
+
+  interface StatusBarDecoder {
+    active?: boolean;
+    resultCount?: number;
   }
 
   // Props
   interface Props {
     deviceConnected?: boolean;
     deviceName?: string;
-    captureState?: any;
-    sampleData?: any;
-    channels?: any[];
-    decoders?: any[];
+    captureState?: CaptureInfo['status'];
+    sampleData?: StatusBarSampleData;
+    channels?: StatusBarChannel[];
+    decoders?: StatusBarDecoder[];
     fileName?: string;
     fileModified?: boolean;
     showPerformance?: boolean;

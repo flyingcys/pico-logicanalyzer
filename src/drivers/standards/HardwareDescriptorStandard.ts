@@ -87,7 +87,7 @@ export interface ConnectionInterface {
   name: string; // 接口名称
   specification?: string; // 规范版本 (如 "USB 3.0", "Ethernet 1Gbps")
   connectorType?: string; // 连接器类型
-  parameters?: { [key: string]: any }; // 接口特定参数
+  parameters?: { [key: string]: unknown }; // 接口特定参数
 }
 
 /**
@@ -97,7 +97,7 @@ export interface ProtocolSupport {
   name: string; // 协议名称
   version?: string; // 协议版本
   description?: string; // 协议描述
-  parameters?: { [key: string]: any }; // 协议参数
+  parameters?: { [key: string]: unknown }; // 协议参数
 }
 
 /**
@@ -375,11 +375,13 @@ export class HardwareDescriptorParser {
   /**
    * 验证硬件描述
    */
-  static validate(descriptor: any): void {
+  static validate(descriptor: unknown): void {
     // 基本结构验证
     if (!descriptor || typeof descriptor !== 'object') {
       throw new Error('Invalid descriptor: must be an object');
     }
+
+    const obj = descriptor as Record<string, unknown>;
 
     // 必需字段验证
     const requiredFields = [
@@ -392,30 +394,31 @@ export class HardwareDescriptorParser {
     ];
 
     for (const field of requiredFields) {
-      if (!descriptor[field]) {
+      if (!obj[field]) {
         throw new Error(`Required field missing: ${field}`);
       }
     }
 
     // 版本兼容性检查
-    if (!this.SUPPORTED_VERSIONS.includes(descriptor.metadata?.schemaVersion)) {
-      throw new Error(`Unsupported schema version: ${descriptor.metadata?.schemaVersion}`);
+    const metadata = obj.metadata as { schemaVersion?: string } | undefined;
+    if (!this.SUPPORTED_VERSIONS.includes(metadata?.schemaVersion)) {
+      throw new Error(`Unsupported schema version: ${metadata?.schemaVersion}`);
     }
 
     // 设备信息验证
-    this.validateDevice(descriptor.device);
+    this.validateDevice(obj.device as Record<string, unknown>);
 
     // 采集能力验证
-    this.validateCapture(descriptor.capture);
+    this.validateCapture(obj.capture as Record<string, unknown>);
 
     // 性能参数验证
-    this.validatePerformance(descriptor.performance);
+    this.validatePerformance(obj.performance as Record<string, unknown>);
   }
 
   /**
    * 验证设备信息
    */
-  private static validateDevice(device: any): void {
+  private static validateDevice(device: Record<string, unknown>): void {
     const required = ['id', 'name', 'manufacturer', 'model', 'version'];
     for (const field of required) {
       if (!device[field] || typeof device[field] !== 'string') {
@@ -427,14 +430,16 @@ export class HardwareDescriptorParser {
   /**
    * 验证采集能力
    */
-  private static validateCapture(capture: any): void {
+  private static validateCapture(capture: Record<string, unknown>): void {
     // 通道验证
-    if (!capture.channels?.digital?.count || capture.channels.digital.count < 1) {
+    const channels = capture.channels as { digital?: { count?: number } } | undefined;
+    if (!channels?.digital?.count || channels.digital.count < 1) {
       throw new Error('Invalid capture.channels: must have at least 1 digital channel');
     }
 
     // 采样率验证
-    if (!capture.sampling?.rates?.maximum || capture.sampling.rates.maximum < 1000) {
+    const sampling = capture.sampling as { rates?: { maximum?: number } } | undefined;
+    if (!sampling?.rates?.maximum || sampling.rates.maximum < 1000) {
       throw new Error('Invalid capture.sampling: maximum rate must be at least 1kHz');
     }
   }
@@ -442,12 +447,18 @@ export class HardwareDescriptorParser {
   /**
    * 验证性能参数
    */
-  private static validatePerformance(performance: any): void {
-    if (performance.maxSampleRate <= performance.minSampleRate) {
+  private static validatePerformance(performance: Record<string, unknown>): void {
+    const perf = performance as {
+      maxSampleRate: number;
+      minSampleRate: number;
+      maxVoltage: number;
+      minVoltage: number;
+    };
+    if (perf.maxSampleRate <= perf.minSampleRate) {
       throw new Error('Invalid performance: maxSampleRate must be greater than minSampleRate');
     }
 
-    if (performance.maxVoltage <= performance.minVoltage) {
+    if (perf.maxVoltage <= perf.minVoltage) {
       throw new Error('Invalid performance: maxVoltage must be greater than minVoltage');
     }
   }

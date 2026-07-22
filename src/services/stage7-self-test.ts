@@ -8,7 +8,7 @@ import { dataExportService } from './DataExportService';
 import { signalMeasurementService } from './SignalMeasurementService';
 import { pulseTimingAnalyzer } from './PulseTimingAnalyzer';
 import { sessionManager } from './SessionManager';
-import { configurationManager } from './ConfigurationManager';
+import { configurationManager, ConfigurationCategory } from './ConfigurationManager';
 import { workspaceManager } from './WorkspaceManager';
 import { TriggerType } from '../models/AnalyzerTypes';
 import { CaptureSession, AnalyzerChannel } from '../models/CaptureModels';
@@ -343,7 +343,7 @@ export class Stage7SelfTest {
       }
 
       // 测试配置分类
-      const generalConfigs = configurationManager.getConfigurationItemsByCategory('general' as any);
+      const generalConfigs = configurationManager.getConfigurationItemsByCategory(ConfigurationCategory.General);
       if (!generalConfigs || generalConfigs.length === 0) {
         throw new Error('按类别获取配置失败');
       }
@@ -408,7 +408,7 @@ export class Stage7SelfTest {
       }
 
       // 测试文件类型检测
-      const sessionType = (workspaceManager as any).detectFileType('test.lacsession');
+      const sessionType = (workspaceManager as unknown as { detectFileType: (fileName: string) => string }).detectFileType('test.lacsession');
       if (sessionType !== 'session') {
         throw new Error('文件类型检测失败');
       }

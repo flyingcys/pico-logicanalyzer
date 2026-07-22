@@ -48,6 +48,7 @@ jest.mock('fs/promises', () => ({
 }));
 
 import { WorkspaceManager, ProjectConfiguration, FileType, ProjectCreationOptions, ProjectTemplate } from '../../../src/services/WorkspaceManager';
+import { ServiceDisposeOptions } from '../../../src/common/ServiceLifecycle';
 import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
@@ -676,6 +677,67 @@ describe('WorkspaceManager 精准业务逻辑测试', () => {
       
       expect(result1).toBe(true);
       expect(result2).toBe(true);
+    });
+  });
+
+  describe('资源泄漏修复（onDispose clearInterval bug）', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('onDispose 应通过 clearInterval 清理 backupTimer，而非误用 clearTimeout', async () => {
+      // 监测全局 clear* 调用，验证使用的是正确的清理 API
+      const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
+      const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+
+      // 通过类型断言访问私有成员，避免 as any
+      const wm = workspaceManager as unknown as {
+        startAutoBackup(): void;
+        onDispose(options?: ServiceDisposeOptions): Promise<void>;
+        backupTimer: unknown;
+        stopAutoBackup(): void;
+      };
+
+      // 启动自动备份（setInterval 每 24h）
+      wm.startAutoBackup();
+      expect(wm.backupTimer).toBeDefined();
+
+      // 重置 spy 计数（startAutoBackup 内部 stopAutoBackup 幂等清理已调用一次 clearInterval）
+      clearIntervalSpy.mockClear();
+      clearTimeoutSpy.mockClear();
+
+      // 调用 onDispose：修复前用 clearTimeout(this.backupTimer)，
+      // 对 setInterval 返回的 timer 在真实 Node 环境下无效（定时器泄漏，真 bug）
+      await wm.onDispose();
+
+      // 修复后：通过 stopAutoBackup 调用 clearInterval 清理 setInterval 定时器
+      expect(clearIntervalSpy).toHaveBeenCalled();
+      // onDispose 不应使用 clearTimeout 清理 backupTimer（那是 bug 根因）
+      expect(clearTimeoutSpy).not.toHaveBeenCalled();
+
+      clearIntervalSpy.mockRestore();
+      clearTimeoutSpy.mockRestore();
+      // 兜底清理
+      wm.stopAutoBackup();
+    });
+
+    it('onDispose 后 backupTimer 字段应被重置为 undefined', async () => {
+      const wm = workspaceManager as unknown as {
+        startAutoBackup(): void;
+        onDispose(options?: ServiceDisposeOptions): Promise<void>;
+        backupTimer: unknown;
+      };
+
+      wm.startAutoBackup();
+      expect(wm.backupTimer).toBeDefined();
+
+      await wm.onDispose();
+
+      expect(wm.backupTimer).toBeUndefined();
     });
   });
 });

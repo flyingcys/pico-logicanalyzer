@@ -3,6 +3,7 @@ import type {
   FrontendCapabilities,
   FrontendDocumentData,
   HostAdapter,
+  HostCommandName,
   HostCommandResult,
   HostInboundMessage,
   HostMessageHandler
@@ -756,7 +757,7 @@ function runBrowserDecoder(documentData: FrontendDocumentData, payload: unknown)
 
 function readCaptureConfig(payload: unknown): FrontendCaptureConfig | null {
   const payloadRecord = isRecord(payload) ? payload : undefined;
-  const config = isRecord(payloadRecord?.config) ? payloadRecord.config : payloadRecord;
+  const config = isRecord(payloadRecord?.config) ? payloadRecord?.config : payloadRecord;
   if (!isRecord(config)) {
     return null;
   }
@@ -960,7 +961,7 @@ export function createBrowserHost(): HostAdapter {
         type: 'startCapture'
       });
     },
-    async sendCommand<T = unknown>(command, payload): Promise<HostCommandResult<T>> {
+    async sendCommand<T = unknown>(command: HostCommandName | string, payload?: unknown): Promise<HostCommandResult<T>> {
       switch (command) {
         case 'export':
         case 'exportData':
