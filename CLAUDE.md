@@ -1,3 +1,4 @@
+1. web-app 和 vscode 插件必须使用同一套代码
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
