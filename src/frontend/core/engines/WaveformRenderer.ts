@@ -210,16 +210,14 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     }
 
     const chan = visibleChannels[curChan];
+    // chan 必为 this.channels 的元素（visibleChannels 是 this.channels 的 filter 子集），
+    // 故下方 for 循环必然命中，idx 不会为 -1
     let idx = -1;
     for (let i = 0; i < this.channels.length; i++) {
       if (this.channels[i] === chan) {
         idx = i;
         break;
       }
-    }
-
-    if (idx === -1) {
-      return;
     }
 
     const interval = this.intervals[idx].find(i => i.start <= curSample && i.end > curSample);
@@ -542,7 +540,7 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     }
 
     // 渲染边框和分隔线
-    this.renderBorders(channelCount, canvasHeight);
+    this.renderBorders(channelCount, canvasWidth, canvasHeight);
     this.renderInteractionMarkers(canvasHeight, sampleWidth);
 
     // 更新统计信息
@@ -573,7 +571,22 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
       )
     );
     const channelCount = visibleChannels.length;
+
+    // 空区间 guard：firstSample >= lastSample 时无可渲染样本，直接返回，
+    // 避免末尾 renderChannelSegment 访问未初始化的 renders 元素抛 TypeError
+    if (this.firstSample >= lastSample) {
+      return;
+    }
+
     const renders: ChannelRenderStatus[] = new Array(channelCount);
+    // 预初始化各通道渲染状态，防御性保证 renders 元素始终有定义
+    for (let chan = 0; chan < channelCount; chan++) {
+      renders[chan] = {
+        firstSample: this.firstSample,
+        sampleCount: 0,
+        value: visibleChannels[chan].samples![this.firstSample] ?? 0
+      };
+    }
 
     // 主要采样循环 - 基于原版的逐样本渲染逻辑
     for (let curSample = this.firstSample; curSample < lastSample; curSample++) {
@@ -718,8 +731,6 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
 
     // 采样步长 - 跳过一些样本以提高性能
     const stepSize = Math.max(1, Math.floor(this.visibleSamples / this.MAX_VISIBLE_SAMPLES));
-
-    console.log(`优化渲染: 步长=${stepSize}, 可见样本=${this.visibleSamples}`);
 
     // 使用 Path2D 进行批量绘制
     for (let chan = 0; chan < channelCount; chan++) {
@@ -1100,13 +1111,13 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
   /**
    * 渲染边框和分隔线
    */
-  private renderBorders(channelCount: number, canvasHeight: number): void {
+  private renderBorders(channelCount: number, canvasWidth: number, canvasHeight: number): void {
     if (!this.ctx) return;
 
-    // 渲染外边框
+    // 渲染外边框 - 使用逻辑坐标（ctx 已通过 scale(dpr) 映射，避免双重缩放致错位）
     this.ctx.strokeStyle = this.colors.textColor;
     this.ctx.lineWidth = 1;
-    this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.strokeRect(0, 0, canvasWidth, canvasHeight);
 
     // 渲染通道分隔线
     if (channelCount > 1) {
@@ -1116,7 +1127,7 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
 
       for (let i = 1; i < channelCount; i++) {
         const y = i * channelHeight;
-        this.ctx.strokeRect(0, y - 0.5, this.canvas.width, 1);
+        this.ctx.strokeRect(0, y - 0.5, canvasWidth, 1);
       }
     }
   }
