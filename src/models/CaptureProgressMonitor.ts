@@ -247,10 +247,14 @@ export class CaptureProgressMonitor extends EventEmitter {
     progress.progressPercentage = progress.totalSamples > 0 ?
       Math.min(100, Math.round((progress.currentSample / progress.totalSamples) * 10000) / 100) : 0;
 
-    // 计算性能指标
+    // 计算性能指标（仅在调用方未显式提供时自动估算，避免覆盖上报的真实指标）
     if (elapsedTime > 0) {
-      progress.samplesPerSecond = (progress.currentSample / elapsedTime) * 1000;
-      progress.dataRate = progress.samplesPerSecond * progress.activeChannels;
+      if (updates.samplesPerSecond === undefined) {
+        progress.samplesPerSecond = (progress.currentSample / elapsedTime) * 1000;
+      }
+      if (updates.dataRate === undefined) {
+        progress.dataRate = progress.samplesPerSecond * progress.activeChannels;
+      }
 
       // 估算剩余时间
       if (progress.samplesPerSecond > 0) {
