@@ -1,11 +1,15 @@
-// 临时入口:用现成 browserHost 验证 vite 能编译整个 frontend。Task 4 替换为 webHost。
 import '@frontend-shared/styles/html.css';
-import { createFrontendApp } from '@frontend-platform/bootstrap/createFrontendApp';
-import { createBrowserHost, readBrowserBootstrap } from '@frontend-platform/host/browserHost';
+import { createWebApp } from './createWebApp';
+import { createWebHost, readWebBootstrap } from './webHost';
 
-const host = createBrowserHost();
-const bootstrap = readBrowserBootstrap();
-const context = createFrontendApp({ host, bootstrap });
+const host = createWebHost();
+const bootstrap = readWebBootstrap();
+const context = createWebApp({ host, bootstrap });
+
+// 暴露 host 完整实例(含 loadDocument),供 FileDropLayer 通过 window 取用
+if (typeof window !== 'undefined') {
+  (window as unknown as { __WEB_HOST__?: typeof host }).__WEB_HOST__ = host;
+}
 
 context.app.mount('#app');
 context.host.ready();
