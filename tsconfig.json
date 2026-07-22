@@ -78,7 +78,6 @@
   "include": [
     "src/**/*",
     "src/frontend/**/*.vue",
-    "src/webview/shims-vue.d.ts",
     "types/**/*"
   ],
   "exclude": [
