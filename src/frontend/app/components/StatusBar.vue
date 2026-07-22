@@ -8,12 +8,12 @@
   import { ref, computed, onMounted, onUnmounted, watch, type Component } from 'vue';
   import {
     Connection,
-    Disconnect,
+    SwitchButton,
     DataLine,
     Grid,
     Cpu,
     Monitor,
-    MemoryCard,
+    Box,
     Clock,
     Document,
     ZoomIn,
@@ -199,7 +199,7 @@
 
   // 计算属性
   const deviceStatusIcon = computed(() => {
-    return props.deviceConnected ? Connection : Disconnect;
+    return props.deviceConnected ? Connection : SwitchButton;
   });
 
   const deviceStatusText = computed(() => {
@@ -566,7 +566,7 @@
           placement="top"
         >
           <div class="perf-item">
-            <el-icon><MemoryCard /></el-icon>
+            <el-icon><Box /></el-icon>
             <span class="perf-value">{{ formatBytes(performanceInfo.memory) }}</span>
           </div>
         </el-tooltip>
@@ -703,7 +703,7 @@
     color: #67c23a;
   }
 
-  .device-status .el-icon.Disconnect {
+  .device-status .el-icon.SwitchButton {
     color: #f56c6c;
   }
 
