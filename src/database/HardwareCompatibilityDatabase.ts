@@ -158,7 +158,10 @@ export class HardwareCompatibilityDatabase {
 
     try {
       // 确保数据目录存在
-      const dataDir = this.databasePath.substring(0, this.databasePath.lastIndexOf('/'));
+      // 路径不含 '/' 时 lastIndexOf 返回 -1，substring(0, -1) 得空串会导致 mkdir 抛错，
+      // 此时退化为当前工作目录 '.'
+      const lastSlash = this.databasePath.lastIndexOf('/');
+      const dataDir = lastSlash >= 0 ? this.databasePath.substring(0, lastSlash) : '.';
       await fs.mkdir(dataDir, { recursive: true });
 
       // 加载现有数据
@@ -601,7 +604,7 @@ export class HardwareCompatibilityDatabase {
         this.addToIndex('productId', identifiers.productId, deviceId);
       }
       if (identifiers.scpiIdnResponse) {
-        this.addToIndex('scpiIdn', identifiers.scpiIdnResponse.toLowerCase(), deviceId);
+        this.addToIndex('scpiIdnResponse', identifiers.scpiIdnResponse.toLowerCase(), deviceId);
       }
     }
   }
