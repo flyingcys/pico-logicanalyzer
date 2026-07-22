@@ -96,9 +96,18 @@ export function createWebHost(): WebHost {
     ): Promise<HostCommandResult<T>> {
       switch (command) {
         case 'export':
-        case 'exportData':
+        case 'exportData': {
+          const format =
+            (payload as { format?: string } | undefined)?.format ?? 'lac';
+          if (format !== 'lac') {
+            return {
+              success: false,
+              error: `web 版暂不支持导出格式: ${format}`,
+            };
+          }
           host.exportData(payload);
           return { success: true };
+        }
         case 'saveFile':
           host.saveDocument(payload);
           return { success: true };

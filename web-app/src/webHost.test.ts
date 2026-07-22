@@ -69,7 +69,19 @@ describe('createWebHost', () => {
     expect(clickSpy).toHaveBeenCalled();
   });
 
-  it('exportData 非 lac 格式 emit error', async () => {
+  it('sendCommand exportData 非 lac 格式返回失败', async () => {
+    const host = createWebHost();
+    host.loadDocument({
+      uri: 'file:///a.lac',
+      fileName: 'a.lac',
+      content: '{}',
+    });
+    const r = await host.sendCommand('exportData', { format: 'csv' });
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/不支持导出格式/);
+  });
+
+  it('exportData 直接调用非 lac 格式 emit error', () => {
     const host = createWebHost();
     host.loadDocument({
       uri: 'file:///a.lac',
@@ -78,7 +90,7 @@ describe('createWebHost', () => {
     });
     const errors: HostInboundMessage[] = [];
     host.onMessage((m) => errors.push(m));
-    await host.sendCommand('exportData', { format: 'csv' });
+    host.exportData({ format: 'csv' });
     expect(errors.some((m) => m.type === 'error')).toBe(true);
   });
 });
