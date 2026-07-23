@@ -64,6 +64,49 @@ describe('质量门禁配置', () => {
     expect(runSteps).not.toContain('run: npm run test:ci');
   });
 
+  it('Jest 覆盖率应净化分母并锁定关键路径阈值', () => {
+    // jest.config.js 为 CJS；用 require 读取，避免 eval
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const jestConfig = require('../../../jest.config.js') as {
+      collectCoverageFrom: string[];
+      coverageThreshold: Record<string, Record<string, number>>;
+    };
+
+    // web-app 走 Vitest 门禁，不得污染 Jest 覆盖率分母
+    expect(jestConfig.collectCoverageFrom).toEqual(
+      expect.arrayContaining(['!src/web-app/**', '!src/**/*-self-test.ts'])
+    );
+
+    // 不用低全局值伪装质量；只锁稳定关键路径
+    expect(jestConfig.coverageThreshold.global).toBeUndefined();
+
+    const lac = jestConfig.coverageThreshold['./src/models/LACFileFormat.ts'];
+    expect(lac.lines).toBeGreaterThanOrEqual(85);
+    expect(lac.statements).toBeGreaterThanOrEqual(85);
+    expect(lac.functions).toBeGreaterThanOrEqual(85);
+    expect(lac.branches).toBeGreaterThanOrEqual(78);
+
+    const lockedPaths = [
+      './src/decoders/ChannelMapping.ts',
+      './src/decoders/DecoderManager.ts',
+      './src/drivers/SigrokAdapter.ts',
+      './src/frontend/app/main-html.ts',
+      './src/frontend/app/main-vscode.ts',
+      './src/decoders/protocols/I2CDecoder.ts',
+      './src/decoders/protocols/SPIDecoder.ts'
+    ];
+    for (const p of lockedPaths) {
+      expect(jestConfig.coverageThreshold[p]).toEqual(
+        expect.objectContaining({
+          lines: expect.any(Number),
+          statements: expect.any(Number),
+          functions: expect.any(Number),
+          branches: expect.any(Number)
+        })
+      );
+    }
+  });
+
   it('应该提供功能状态矩阵和真实硬件认证矩阵', () => {
     const featureMatrix = readText('docs/功能状态矩阵.md');
     const hardwareMatrix = readText('docs/真实硬件认证矩阵.md');

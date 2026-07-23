@@ -35,7 +35,7 @@ module.exports = {
   watchPathIgnorePatterns: ['<rootDir>/.worktree/'],
 
   // 覆盖率采集范围：剔除非产品代码（自检脚本/模板/示例/测试工具/纯类型声明）
-  // 详见 docs/覆盖率门禁配置建议.md
+  // web-app 由 Vitest 单独门禁，不进 Jest 分母。详见 docs/覆盖率门禁配置建议.md
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*-self-test.ts',
@@ -43,20 +43,21 @@ module.exports = {
     '!src/driver-sdk/templates/**',
     '!src/driver-sdk/examples/**',
     '!src/driver-sdk/testing/**',
+    '!src/web-app/**',
     '!src/**/*.test.ts',
     '!src/**/__tests__/**',
     '!src/types/**',
     '!src/**/*.d.ts'
   ],
 
-  // 覆盖率门禁：仅锁定已有稳定测试的关键解析/解码路径。
-  // 遗留模块覆盖率差异很大，不用低全局值伪装为质量门禁。
+  // 覆盖率门禁：仅锁定已有稳定测试的关键路径。
+  // 阈值 ≈ 实测 - 2（向下取整）；遗留模块差异大，不用低全局值伪装门禁。
   coverageThreshold: {
     './src/models/LACFileFormat.ts': {
-      branches: 34,
-      functions: 35,
-      lines: 40,
-      statements: 40
+      branches: 78,
+      functions: 85,
+      lines: 85,
+      statements: 85
     },
     './src/decoders/protocols/I2CDecoder.ts': {
       branches: 55,
@@ -70,12 +71,24 @@ module.exports = {
       lines: 80,
       statements: 80
     },
-    // 以下为补齐行为测试后新增的关键路径阈值（Task 2/3）
+    // 补齐行为测试后锁定的关键路径（防退化）
     './src/decoders/ChannelMapping.ts': {
       branches: 90,
       functions: 100,
       lines: 100,
       statements: 100
+    },
+    './src/decoders/DecoderManager.ts': {
+      branches: 39,
+      functions: 56,
+      lines: 69,
+      statements: 68
+    },
+    './src/drivers/SigrokAdapter.ts': {
+      branches: 65,
+      functions: 63,
+      lines: 68,
+      statements: 69
     },
     './src/frontend/app/main-html.ts': {
       branches: 100,
