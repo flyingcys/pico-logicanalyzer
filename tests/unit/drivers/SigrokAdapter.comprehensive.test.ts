@@ -922,8 +922,150 @@ no colon here`;
       const customAdapter = new SigrokAdapter('fx2lafw', undefined, customPath);
       
       expect((customAdapter as any)._sigrokCliPath).toBe(customPath);
-      
+
       customAdapter.dispose();
+    });
+  });
+
+  /**
+   * Task 4 追加：spawn 错误、重复 close/error、临时目录清理
+   *
+   * 覆盖 startSigrokCapture 的 error 事件分支、close/error 互相竞争时的稳定性、
+   * 以及 spawn 失败后临时目录的清理保证（当前实现 startCapture 失败不清理临时目录，
+   * 测试驱动修复：在 startCapture 的 catch 分支触发临时目录清理）。
+   */
+  describe('spawn 错误与资源清理（Task 4 追加）', () => {
+    /** 构造一个最小可用的 CaptureSession */
+    function makeMinimalSession(): CaptureSession {
+      return {
+        frequency: 1000000,
+        preTriggerSamples: 10,
+        postTriggerSamples: 10,
+        get totalSamples() { return this.preTriggerSamples + this.postTriggerSamples; },
+        triggerType: TriggerType.Edge,
+        triggerChannel: undefined,
+        triggerInverted: false,
+        loopCount: 0,
+        measureBursts: false,
+        captureChannels: [{ channelNumber: 0, channelName: 'D0', textualChannelNumber: '0', hidden: false }],
+        clone: function() { return this; },
+        cloneSettings: function() { return this; }
+      } as CaptureSession;
+    }
+
+    /** 构造一个 mock child_process.spawn 返回的假进程（EventEmitter + stdout/stderr） */
+    function makeFakeProcess() {
+      const fake = new EventEmitter() as any;
+      fake.stdout = new EventEmitter();
+      fake.stderr = new EventEmitter();
+      fake.kill = jest.fn();
+      return fake;
+    }
+
+    it('spawn error 事件使 startSigrokCapture 拒绝，消息含原始错误，_currentProcess 被重置', async () => {
+      adapter = new SigrokAdapter();
+      const fakeProcess = makeFakeProcess();
+      const spawn = jest.spyOn(require('child_process'), 'spawn').mockReturnValue(fakeProcess);
+
+      try {
+        const capturePromise = (adapter as any).startSigrokCapture(makeMinimalSession());
+        // 触发 spawn error 事件（例如 sigrok-cli 二进制不存在）
+        fakeProcess.emit('error', new Error('spawn failed'));
+
+        await expect(capturePromise).rejects.toThrow(/spawn failed/);
+        expect((adapter as any)._currentProcess).toBeNull();
+      } finally {
+        spawn.mockRestore();
+      }
+    });
+
+    it('startCapture 在 spawn error 时返回 UnexpectedError 并重置采集状态', async () => {
+      adapter = new SigrokAdapter();
+      (adapter as any)._isConnected = true;
+      const fakeProcess = makeFakeProcess();
+      const spawn = jest.spyOn(require('child_process'), 'spawn').mockReturnValue(fakeProcess);
+
+      try {
+        const resultPromise = adapter.startCapture(makeMinimalSession());
+        fakeProcess.emit('error', new Error('spawn failed'));
+        const result = await resultPromise;
+
+        expect(result).toBe(CaptureError.UnexpectedError);
+        expect(adapter.isCapturing).toBe(false);
+      } finally {
+        spawn.mockRestore();
+      }
+    });
+
+    it('close 0 resolve 后再触发 error 不会改变 promise 状态、不产生二次回调', async () => {
+      adapter = new SigrokAdapter();
+      const fakeProcess = makeFakeProcess();
+      const spawn = jest.spyOn(require('child_process'), 'spawn').mockReturnValue(fakeProcess);
+      const processSigrokResults = jest.spyOn(adapter as any, 'processSigrokResults').mockResolvedValue(undefined);
+
+      try {
+        const capturePromise = (adapter as any).startSigrokCapture(makeMinimalSession());
+        // 先正常 close 0：processSigrokResults mock 立即 resolve，promise resolves
+        fakeProcess.emit('close', 0);
+        await capturePromise;
+
+        // promise 已 settle 为 resolved；再触发 error 不应改变状态、
+        // 不应二次调用 processSigrokResults、不应抛未处理 rejection
+        fakeProcess.emit('error', new Error('late error'));
+        // 让 microtask 队列清空，确保任何潜在 reject 已被吞掉
+        await new Promise(resolve => setImmediate(resolve));
+
+        expect(processSigrokResults).toHaveBeenCalledTimes(1);
+      } finally {
+        processSigrokResults.mockRestore();
+        spawn.mockRestore();
+      }
+    });
+
+    it('非零退出码使 startSigrokCapture 拒绝并包含 stderr 输出', async () => {
+      adapter = new SigrokAdapter();
+      const fakeProcess = makeFakeProcess();
+      const spawn = jest.spyOn(require('child_process'), 'spawn').mockReturnValue(fakeProcess);
+
+      try {
+        const capturePromise = (adapter as any).startSigrokCapture(makeMinimalSession());
+        // 先写入 stderr 数据，再非零退出
+        fakeProcess.stderr.emit('data', Buffer.from('device not found'));
+        fakeProcess.emit('close', 2);
+
+        await expect(capturePromise).rejects.toThrow(/device not found/);
+        expect((adapter as any)._currentProcess).toBeNull();
+      } finally {
+        spawn.mockRestore();
+      }
+    });
+
+    it('spawn 失败后临时目录应被清理（startCapture 失败分支触发清理）', async () => {
+      adapter = new SigrokAdapter();
+      (adapter as any)._isConnected = true;
+      // 用真实 fs.mkdtemp 创建一个真实存在的临时目录
+      const realTempDir = await fs.mkdtemp(join(tmpdir(), 'sigrok-cleanup-'));
+      (adapter as any)._tempDir = realTempDir;
+
+      const fakeProcess = makeFakeProcess();
+      const spawn = jest.spyOn(require('child_process'), 'spawn').mockReturnValue(fakeProcess);
+
+      try {
+        // 目录真实存在
+        await expect(fs.stat(realTempDir)).resolves.toBeTruthy();
+
+        const resultPromise = adapter.startCapture(makeMinimalSession());
+        fakeProcess.emit('error', new Error('spawn failed'));
+        const result = await resultPromise;
+
+        expect(result).toBe(CaptureError.UnexpectedError);
+        // 修复后：startCapture 失败分支触发临时目录清理
+        await expect(fs.stat(realTempDir)).rejects.toThrow(/ENOENT/);
+      } finally {
+        spawn.mockRestore();
+        // 兜底清理（测试失败时也别泄漏）
+        await fs.rm(realTempDir, { recursive: true, force: true });
+      }
     });
   });
 });

@@ -771,6 +771,10 @@ export class DecoderManager {
    * 停止特定的解码器
    * @param decoderId 解码器ID
    * @returns 是否成功停止
+   *
+   * 注意：decoder.stop() 抛错时，原始错误会向上传播（不再被吞掉），
+   * 但任务条目仍会在 finally 中清理，避免残留。
+   * 批量容错清理请使用 stopAllStreamingTasks。
    */
   public stopDecoder(decoderId: string): boolean {
     const taskIds = Array.from(this.activeStreamingTasks.keys()).filter(id => id.startsWith(decoderId));
@@ -781,11 +785,12 @@ export class DecoderManager {
       if (decoder) {
         try {
           decoder.stop();
-          this.activeStreamingTasks.delete(taskId);
           stopped = true;
           decoderDebugLog(`已停止解码器任务: ${taskId}`);
-        } catch (error) {
-          console.error(`停止解码器任务失败 ${taskId}:`, error);
+        } finally {
+          // 即使 stop() 抛错也要清理任务条目，避免残留；
+          // 原始错误向上传播，由调用者决定如何处理。
+          this.activeStreamingTasks.delete(taskId);
         }
       }
     }

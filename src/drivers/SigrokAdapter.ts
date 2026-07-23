@@ -157,6 +157,13 @@ export class SigrokAdapter extends AnalyzerDriverBase {
     }
 
     // 清理临时目录
+    await this.cleanupTempDir();
+  }
+
+  /**
+   * 清理临时目录（容错：失败仅告警，不抛错）
+   */
+  private async cleanupTempDir(): Promise<void> {
     try {
       await fs.rm(this._tempDir, { recursive: true, force: true });
     } catch (error) {
@@ -205,6 +212,9 @@ export class SigrokAdapter extends AnalyzerDriverBase {
     } catch (error) {
       this._capturing = false;
       console.error('sigrok采集启动失败:', error);
+      // 采集启动失败时清理临时目录，避免残留
+      // （disconnect/dispose 也会清理，此处提前释放资源）
+      await this.cleanupTempDir();
       return CaptureError.UnexpectedError;
     }
   }
