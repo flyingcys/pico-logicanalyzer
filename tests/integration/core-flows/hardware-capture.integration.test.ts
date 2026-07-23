@@ -30,40 +30,10 @@ jest.mock('fs', () => {
   };
 });
 
-// vscode 虚拟 mock：复用 LACEditorProvider.coverage.test.ts 的内联模式
-// （WebviewPanel/Webview/TextDocument 均在此内联构造，无需扩展 mocks/vscode.ts）
-jest.mock(
-  'vscode',
-  () => ({
-    commands: { executeCommand: jest.fn() },
-    window: {
-      registerCustomEditorProvider: jest.fn(),
-      showInformationMessage: jest.fn(),
-      showErrorMessage: jest.fn(),
-      showWarningMessage: jest.fn(),
-      showSaveDialog: jest.fn(),
-      showInputBox: jest.fn(),
-      showQuickPick: jest.fn()
-    },
-    workspace: {
-      applyEdit: jest.fn(),
-      onDidChangeTextDocument: jest.fn(() => ({ dispose: jest.fn() })),
-      fs: { readFile: jest.fn(), writeFile: jest.fn() }
-    },
-    Uri: {
-      joinPath: jest.fn((...parts: unknown[]) => ({
-        fsPath: parts.map(p => (typeof p === 'object' && p !== null ? (p as { fsPath?: string }).fsPath : String(p))).join('/'),
-        toString: () => parts.join('/')
-      })),
-      file: jest.fn((filePath: string) => ({ fsPath: filePath, toString: () => `file://${filePath}` }))
-    },
-    Range: jest.fn((startLine: number, startChar: number, endLine: number, endChar: number) => ({
-      startLine, startChar, endLine, endChar
-    })),
-    WorkspaceEdit: jest.fn(() => ({ replace: jest.fn() }))
-  }),
-  { virtual: true }
-);
+// vscode mock：使用标准 simple-mocks 的 mockVSCode（保持 CI 门禁引用一致）
+// mockVSCode 已含 Provider 链路所需 API（Uri/Range/WorkspaceEdit/window/workspace 等），
+// WebviewPanel/Webview/TextDocument 仍在本文件内联构造（属测试入参，不依赖 vscode mock）
+jest.mock('vscode', () => require('../../../tests/fixtures/mocks/simple-mocks').mockVSCode);
 
 jest.mock('../../../src/drivers/HardwareDriverManager', () => ({
   hardwareDriverManager: {
