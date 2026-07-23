@@ -200,6 +200,10 @@ export class SigrokAdapter extends AnalyzerDriverBase {
     try {
       this._capturing = true;
 
+      // 幂等重建临时目录：上次采集失败可能在 catch 中清理了目录，
+      // 此处确保每次采集前目录存在，支持失败后重试。
+      await fs.mkdir(this._tempDir, { recursive: true });
+
       // 设置捕获完成处理器
       if (captureCompletedHandler) {
         this.once('captureCompleted', captureCompletedHandler);
@@ -732,8 +736,11 @@ export class SigrokAdapter extends AnalyzerDriverBase {
   /**
    * 资源清理
    */
-  override dispose(): void {
-    this.disconnect();
+  override async dispose(): Promise<void> {
+    // 等待 disconnect（含临时目录清理）完成后再移除监听器，
+    // 避免 fire-and-forget 清理与 removeAllListeners 的竞态。
+    // 基类签名为 void，此处依赖 TS void 返回协变（子类可返回 Promise）。
+    await this.disconnect();
     super.dispose();
   }
 }

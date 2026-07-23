@@ -962,6 +962,26 @@ no colon here`;
       return fake;
     }
 
+    /**
+     * 轮询等待 startCapture 内部完成 spawn 并注册事件监听器。
+     *
+     * 背景：startCapture 入口有 `await fs.mkdir(_tempDir, {recursive:true})`，
+     * 该 I/O 在真实 fs 上完成需要若干 tick。spawn 与 error/close 监听器在
+     * mkdir 完成后的同一同步帧内注册（Promise 构造体同步执行）。测试若在
+     * 调 startCapture 后立即 emit('error')，会因监听器未注册触发 EventEmitter
+     * 默认行为（无 error listener 时抛错）。轮询 _currentProcess 非 null 是
+     * spawn 已执行、监听器已注册的可靠信号。
+     */
+    async function waitForCaptureSpawn(adapter: SigrokAdapter, timeoutMs = 1000): Promise<void> {
+      const deadline = Date.now() + timeoutMs;
+      while ((adapter as any)._currentProcess === null && Date.now() < deadline) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
+      if ((adapter as any)._currentProcess === null) {
+        throw new Error('startCapture 未在超时内完成 spawn（_currentProcess 仍为 null）');
+      }
+    }
+
     it('spawn error 事件使 startSigrokCapture 拒绝，消息含原始错误，_currentProcess 被重置', async () => {
       adapter = new SigrokAdapter();
       const fakeProcess = makeFakeProcess();
@@ -987,6 +1007,8 @@ no colon here`;
 
       try {
         const resultPromise = adapter.startCapture(makeMinimalSession());
+        // startCapture 入口有 await fs.mkdir，需等 I/O 完成、spawn listener 注册后才能 emit
+        await waitForCaptureSpawn(adapter);
         fakeProcess.emit('error', new Error('spawn failed'));
         const result = await resultPromise;
 
@@ -1055,6 +1077,8 @@ no colon here`;
         await expect(fs.stat(realTempDir)).resolves.toBeTruthy();
 
         const resultPromise = adapter.startCapture(makeMinimalSession());
+        // startCapture 入口有 await fs.mkdir，需等 I/O 完成、spawn listener 注册后才能 emit
+        await waitForCaptureSpawn(adapter);
         fakeProcess.emit('error', new Error('spawn failed'));
         const result = await resultPromise;
 
@@ -1064,6 +1088,49 @@ no colon here`;
       } finally {
         spawn.mockRestore();
         // 兜底清理（测试失败时也别泄漏）
+        await fs.rm(realTempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('startCapture 失败清理 _tempDir 后，重试应幂等重建目录并正常启动', async () => {
+      // 回归用例：catch 分支清理 _tempDir 后，若调用方不 reconnect 直接重试，
+      // startCapture 入口必须幂等重建目录，否则 sigrok-cli 写文件再次失败。
+      adapter = new SigrokAdapter();
+      (adapter as any)._isConnected = true;
+      const realTempDir = await fs.mkdtemp(join(tmpdir(), 'sigrok-retry-'));
+      (adapter as any)._tempDir = realTempDir;
+
+      const fakeProcessFail = makeFakeProcess();
+      const fakeProcessOk = makeFakeProcess();
+      const spawn = jest.spyOn(require('child_process'), 'spawn')
+        .mockReturnValueOnce(fakeProcessFail)
+        .mockReturnValueOnce(fakeProcessOk);
+      const processSigrokResults = jest.spyOn(adapter as any, 'processSigrokResults').mockResolvedValue(undefined);
+
+      try {
+        // 第一次：spawn error → 返回 UnexpectedError，catch 清理 _tempDir
+        const result1Promise = adapter.startCapture(makeMinimalSession());
+        // startCapture 入口有 await fs.mkdir，需等 I/O 完成、spawn listener 注册后才能 emit
+        await waitForCaptureSpawn(adapter);
+        fakeProcessFail.emit('error', new Error('spawn failed'));
+        const result1 = await result1Promise;
+        expect(result1).toBe(CaptureError.UnexpectedError);
+        expect(adapter.isCapturing).toBe(false);
+        // 目录被清理
+        await expect(fs.stat(realTempDir)).rejects.toThrow(/ENOENT/);
+
+        // 第二次：不 reconnect 直接重试，入口幂等重建目录，close 0 正常完成
+        const result2Promise = adapter.startCapture(makeMinimalSession());
+        // 同样需等 mkdir + listener 注册
+        await waitForCaptureSpawn(adapter);
+        fakeProcessOk.emit('close', 0);
+        const result2 = await result2Promise;
+        expect(result2).toBe(CaptureError.None);
+        // 目录被重建（mkdir recursive 幂等）
+        await expect(fs.stat(realTempDir)).resolves.toBeTruthy();
+      } finally {
+        processSigrokResults.mockRestore();
+        spawn.mockRestore();
         await fs.rm(realTempDir, { recursive: true, force: true });
       }
     });
