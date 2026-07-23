@@ -32,6 +32,29 @@ describe('质量门禁配置', () => {
     expect(preCommit).toContain('npm run validate:local');
   });
 
+  it('单元/集成/压力测试应分层独立，压力不进常规 PR 门禁', () => {
+    const packageJson = readJson('package.json');
+    const workflow = readText('.github/workflows/quality-gate.yml');
+
+    // 单元门禁只匹配 tests/unit，不含压力/性能/e2e
+    expect(packageJson.scripts['test:unit']).toContain('tests/unit');
+    expect(packageJson.scripts['test:unit']).not.toContain('stress');
+    expect(packageJson.scripts['test:unit']).not.toContain('performance');
+    expect(packageJson.scripts['test:unit']).not.toContain('e2e');
+
+    // 集成门禁只匹配 tests/integration
+    expect(packageJson.scripts['test:integration']).toContain('tests/integration');
+
+    // 压力门禁独立存在，供夜间/手动运行
+    expect(packageJson.scripts['test:stress']).toContain('tests/stress');
+
+    // CI 常规 PR 依次执行单元、集成、Web 覆盖率；不执行压力
+    expect(workflow).toContain('npm run test:unit');
+    expect(workflow).toContain('npm run test:integration');
+    expect(workflow).toContain('test:coverage');
+    expect(workflow).not.toContain('npm run test:stress');
+  });
+
   it('应该提供功能状态矩阵和真实硬件认证矩阵', () => {
     const featureMatrix = readText('docs/功能状态矩阵.md');
     const hardwareMatrix = readText('docs/真实硬件认证矩阵.md');

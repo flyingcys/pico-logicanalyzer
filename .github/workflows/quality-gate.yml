@@ -41,6 +41,12 @@ jobs:
       - name: ESLint 检查
         run: npm run lint
 
+      - name: 单元测试（不含压力/性能/e2e）
+        run: npm run test:unit
+
+      - name: 集成测试
+        run: npm run test:integration
+
       - name: Quick CI 测试
         run: npm run test:ci:quick -- --skip-install
 
