@@ -5,9 +5,9 @@
  * 实例 dispose() 抛错时，仍能清理任务表与实例缓存——不残留任务条目，
  * 不因单个失败吞掉其他 decoder 的清理。
  *
- * 已知 bug：当前 stopDecoder(:775) 把 activeStreamingTasks.delete 放在 try 块内，
- * decoder.stop() 抛错时任务条目残留，且原始错误被 catch 吞掉。
- * 本测试驱动修复：把 delete 移到 finally，让原始错误向上传播。
+ * 这些测试最初以失败用例驱动修复了 stopDecoder 的资源残留 bug（delete 原在 try
+ * 块内导致 stop() 抛错时任务残留且原始错误被吞），现已把 delete 移入 finally
+ * 并上抛原始错误；本文件作为该契约的回归保护。
  */
 
 import { DecoderManager } from '../../../src/decoders/DecoderManager';
