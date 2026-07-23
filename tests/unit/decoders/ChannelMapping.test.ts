@@ -160,6 +160,8 @@ describe('ChannelMappingManager', () => {
       const result = manager.validateChannelMapping(decoder, mapping, makeChannels(8));
 
       expect(result.errors.some(e => e.includes('无效'))).toBe(false);
+      // 与「所有必选通道齐全」用例严格度一致：显式断言整体有效
+      expect(result.isValid).toBe(true);
     });
   });
 
