@@ -652,12 +652,17 @@ describe('WaveformRenderer 分支覆盖测试', () => {
       ch.samples = data;
       renderer.setChannels([ch], 1000);
       renderer.updateVisibleSamples(0, 60000);
-      const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
       resetCtx(ctx);
+      (global.Path2D as jest.Mock).mockClear();
       renderer.render();
-      // renderOptimized 内部 console.log "优化渲染"
-      expect(logSpy).toHaveBeenCalled();
-      logSpy.mockRestore();
+      // 优化分支通过 Path2D 批量绘制波形，普通渲染不会向 stroke 传入 Path2D。
+      expect(global.Path2D).toHaveBeenCalledTimes(1);
+      expect(ctx.stroke).toHaveBeenCalledWith(
+        expect.objectContaining({
+          moveTo: expect.any(Function),
+          lineTo: expect.any(Function)
+        })
+      );
     });
   });
 

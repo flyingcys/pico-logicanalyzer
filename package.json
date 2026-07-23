@@ -232,6 +232,7 @@
     "test:lint": "eslint 'src/tests/**/*.{ts,tsx}' --fix",
     "test:type-check": "tsc --project tsconfig.json --noEmit",
     "test:ci": "jest --ci --coverage --watchAll=false --maxWorkers=2",
+    "test:web:coverage": "npm --prefix src/web-app run test:coverage",
     "test:ci:performance": "jest --testPathPattern=performance --ci --maxWorkers=1",
     "test:report": "jest --coverage && open coverage/html-report/report.html",
     "test:badges": "npx coverage-badges-cli --output coverage/badges",

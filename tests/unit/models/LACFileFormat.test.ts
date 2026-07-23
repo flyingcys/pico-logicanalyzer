@@ -860,6 +860,22 @@ describe('LACFileFormat 模块单元测试套件', () => {
       expect(result.Samples!.length).toBe(0);
     });
 
+    it('首通道没有样本时应保留后续通道样本', () => {
+      const captureSession = new CaptureSession();
+      const emptyChannel = new AnalyzerChannel(0, 'CH0');
+      const sampledChannel = new AnalyzerChannel(1, 'CH1');
+      sampledChannel.samples = new Uint8Array([1, 0, 1]);
+      captureSession.captureChannels = [emptyChannel, sampledChannel];
+
+      const result = LACFileFormat.createFromCaptureSession(captureSession, undefined, true);
+
+      expect(result.Samples).toEqual([
+        '00000000000000000000000000000002',
+        '00000000000000000000000000000000',
+        '00000000000000000000000000000002'
+      ]);
+    });
+
     it('应该处理不一致的样本数量', () => {
       const captureSession = new CaptureSession();
       

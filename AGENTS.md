@@ -1,7 +1,11 @@
+1. web-app 和 vscode 插件必须使用同一套代码，入口不同
+2. 编写的功能必须保证 web-app 和 vscode 插件都正常
+3. 调试 web-app 可以通过截图确认，vscode 手工测试不要求截图 
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **pico-logicanalyzer** (18017 symbols, 43819 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **pico-logicanalyzer** (17567 symbols, 42489 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 

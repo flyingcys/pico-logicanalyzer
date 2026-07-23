@@ -83,6 +83,10 @@
       channel => channel.samples && channel.samples.length > 0
     );
     if (!sessionStore.hasData || !hasRenderableSamples) {
+      waveformStore.loadCaptureContext({
+        sampleRate: 0,
+        channels: []
+      });
       return;
     }
 

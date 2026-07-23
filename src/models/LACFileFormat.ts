@@ -314,11 +314,11 @@ export class LACFileFormat {
    * 将通道样本数据打包为UInt128数组 - 对应C#的相反操作
    */
   private static packChannelSamplesToUInt128Array(channels: AnalyzerChannel[]): string[] {
-    if (channels.length === 0 || !channels[0].samples) {
+    if (channels.length === 0) {
       return [];
     }
 
-    const sampleCount = channels[0].samples.length;
+    const sampleCount = Math.max(0, ...channels.map(channel => channel.samples?.length ?? 0));
     const uint128Array: string[] = [];
 
     for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {

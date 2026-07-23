@@ -7,6 +7,10 @@
  */
 
 import { SigrokAdapter } from '../../../src/drivers/SigrokAdapter';
+import { EventEmitter } from 'events';
+import { promises as fs } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { 
   AnalyzerDriverType, 
   CaptureSession, 
@@ -167,9 +171,6 @@ describe('SigrokAdapter 专注业务逻辑测试', () => {
     it('应该正确解析标准扫描输出', () => {
       const parseScanOutput = (adapter as any).parseScanOutput.bind(adapter);
       
-      // 🔍错误驱动学习发现：源码中split('\\n')应该是split('\n')，导致解析失败
-      // 源码存在问题：第298行使用了错误的转义字符
-      // 这里验证当前错误的实现行为
       const mockOutput = `The following devices were found:
 fx2lafw:conn=1.2.3 - FX2 Logic Analyzer
 saleae-logic16:conn=4.5.6 - Saleae Logic16 Logic Analyzer
@@ -177,8 +178,11 @@ kingst-la2016:conn=usb.7.8 - Kingst LA2016 Logic Analyzer`;
       
       const devices = parseScanOutput(mockOutput);
       
-      // 由于源码split('\\n')错误，无法正确分割行，解析失败
-      expect(devices.length).toBe(0);
+      expect(devices).toEqual([
+        { driver: 'fx2lafw', id: 'conn=1.2.3', description: 'FX2 Logic Analyzer' },
+        { driver: 'saleae-logic16', id: 'conn=4.5.6', description: 'Saleae Logic16 Logic Analyzer' },
+        { driver: 'kingst-la2016', id: 'conn=usb.7.8', description: 'Kingst LA2016 Logic Analyzer' }
+      ]);
     });
 
     it('应该正确处理空扫描输出', () => {
@@ -200,8 +204,10 @@ hantek-dso:conn=usb:bus.device - Hantek DSO-2090`;
       
       const devices = parseScanOutput(complexOutput);
       
-      // 🔍错误驱动学习：由于源码split('\\n')错误，解析失败
-      expect(devices.length).toBe(0);
+      expect(devices).toEqual([
+        { driver: 'rigol-ds', id: 'conn=tcp-raw:192.168.1.100:5555', description: 'Rigol DS1104Z' },
+        { driver: 'hantek-dso', id: 'conn=usb:bus.device', description: 'Hantek DSO-2090' }
+      ]);
     });
 
     it('应该正确过滤无效行', () => {
@@ -215,8 +221,10 @@ saleae-logic16:conn=4.5.6 - Saleae Logic16`;
       
       const devices = parseScanOutput(outputWithInvalid);
       
-      // 🔍错误驱动学习：由于源码split('\\n')错误，解析失败
-      expect(devices.length).toBe(0);
+      expect(devices).toEqual([
+        { driver: 'fx2lafw', id: 'conn=1.2.3', description: 'FX2 Logic Analyzer' },
+        { driver: 'saleae-logic16', id: 'conn=4.5.6', description: 'Saleae Logic16' }
+      ]);
     });
 
     it('应该正确处理包含特殊字符的描述', () => {
@@ -227,8 +235,10 @@ custom-device:conn=serial:/dev/ttyUSB0 - Custom Device v1.0 - Professional Editi
       
       const devices = parseScanOutput(specialOutput);
       
-      // 🔍错误驱动学习：由于源码split('\\n')错误，解析失败
-      expect(devices.length).toBe(0);
+      expect(devices).toEqual([
+        { driver: 'fx2lafw', id: 'conn=1.2.3', description: 'FX2 Logic Analyzer (USB 2.0)' },
+        { driver: 'custom-device', id: 'conn=serial:/dev/ttyUSB0', description: 'Custom Device v1.0 - Professional Edition' }
+      ]);
     });
   });
 
@@ -327,9 +337,10 @@ limit_samples: 10000000`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：源码中正则表达式转义字符错误，无法匹配
-      // 源码问题：第384行/channels:\\s*(\\d+)/应为/channels:\s*(\d+)/
-      expect(adapter.channelCount).toBe(8); // 保持默认值
+      expect(adapter.channelCount).toBe(16);
+      expect(adapter.maxFrequency).toBe(100000000);
+      expect(adapter.blastFrequency).toBe(100000000);
+      expect(adapter.bufferSize).toBe(10000000);
     });
 
     it('应该正确解析采样率（MHz单位）', () => {
@@ -339,9 +350,8 @@ limit_samples: 10000000`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：正则表达式转义问题，无法匹配
-      expect(adapter.maxFrequency).toBe(24000000); // 保持默认值
-      expect(adapter.blastFrequency).toBe(100000000); // 默认值
+      expect(adapter.maxFrequency).toBe(100000000);
+      expect(adapter.blastFrequency).toBe(100000000);
     });
 
     it('应该正确解析采样率（kHz单位）', () => {
@@ -351,8 +361,7 @@ limit_samples: 10000000`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：正则表达式转义问题，无法匹配
-      expect(adapter.maxFrequency).toBe(24000000); // 保持默认值
+      expect(adapter.maxFrequency).toBe(500000);
     });
 
     it('应该正确解析采样率（GHz单位）', () => {
@@ -362,8 +371,7 @@ limit_samples: 10000000`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：正则表达式转义问题，无法匹配
-      expect(adapter.maxFrequency).toBe(24000000); // 保持默认值
+      expect(adapter.maxFrequency).toBe(2500000000);
     });
 
     it('应该正确解析采样率（Hz单位）', () => {
@@ -373,8 +381,7 @@ limit_samples: 10000000`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：正则表达式转义问题，无法匹配
-      expect(adapter.maxFrequency).toBe(24000000); // 保持默认值
+      expect(adapter.maxFrequency).toBe(1000000);
     });
 
     it('应该正确解析缓冲区样本数', () => {
@@ -384,8 +391,7 @@ limit_samples: 10000000`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：正则表达式转义问题，无法匹配
-      expect(adapter.bufferSize).toBe(2000000); // 保持默认值
+      expect(adapter.bufferSize).toBe(50000000);
     });
 
     it('应该正确解析完整配置信息', () => {
@@ -399,10 +405,9 @@ other_config: some_value`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：所有解析都失败，保持默认值
-      expect(adapter.channelCount).toBe(8);
-      expect(adapter.maxFrequency).toBe(24000000);
-      expect(adapter.bufferSize).toBe(2000000);
+      expect(adapter.channelCount).toBe(32);
+      expect(adapter.maxFrequency).toBe(200000000);
+      expect(adapter.bufferSize).toBe(32000000);
     });
 
     it('应该正确处理小数采样率', () => {
@@ -412,8 +417,7 @@ other_config: some_value`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：正则表达式转义问题，无法匹配
-      expect(adapter.maxFrequency).toBe(24000000); // 保持默认值
+      expect(adapter.maxFrequency).toBe(12500000);
     });
 
     it('应该忽略无效的配置行', () => {
@@ -429,6 +433,97 @@ no colon here`;
       
       // 应该保持原有值不变
       expect(adapter.channelCount).toBe(originalChannelCount);
+    });
+  });
+
+  describe('sigrok-cli 参数与 CSV 解析', () => {
+    it('应该跳过元数据并解析 logic 位域列', async () => {
+      adapter = new SigrokAdapter();
+      const tempDir = await fs.mkdtemp(join(tmpdir(), 'sigrok-csv-'));
+      (adapter as any)._tempDir = tempDir;
+
+      const session = {
+        frequency: 1000000,
+        preTriggerSamples: 0,
+        postTriggerSamples: 4,
+        get totalSamples() { return this.preTriggerSamples + this.postTriggerSamples; },
+        triggerType: TriggerType.Edge,
+        triggerChannel: 0,
+        triggerInverted: false,
+        loopCount: 0,
+        measureBursts: false,
+        captureChannels: [
+          { channelNumber: 0, channelName: 'D0', textualChannelNumber: '0', hidden: false },
+          { channelNumber: 1, channelName: 'D1', textualChannelNumber: '1', hidden: false }
+        ],
+        clone: function() { return this; },
+        cloneSettings: function() { return this; }
+      } as CaptureSession;
+
+      await fs.writeFile(join(tempDir, 'capture.csv'), `; CSV, generated by libsigrok\n; Sample rate: 1 MHz\n; Channels (2/0): D0,D1\ntime,logic\n0,0\n1,1\n2,2\n3,3\n`);
+      const convertSrToCSV = jest.spyOn(adapter as any, 'convertSrToCSV').mockResolvedValue(undefined);
+
+      try {
+        await (adapter as any).processSigrokResults(session, join(tempDir, 'capture.sr'));
+
+        expect(session.captureChannels[0].samples).toEqual(new Uint8Array([0, 1, 0, 1]));
+        expect(session.captureChannels[1].samples).toEqual(new Uint8Array([0, 0, 1, 1]));
+      } finally {
+        convertSrToCSV.mockRestore();
+        await fs.rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('查询设备信息时应将连接串合并到 driver 参数', async () => {
+      adapter = new SigrokAdapter('fx2lafw', 'conn=1.2.3');
+      const runSigrokCommand = jest.spyOn(adapter as any, 'runSigrokCommand').mockResolvedValue('');
+
+      try {
+        await (adapter as any).queryDeviceInfo();
+
+        expect(runSigrokCommand).toHaveBeenCalledWith([
+          '--driver=fx2lafw:conn=1.2.3',
+          '--show'
+        ]);
+      } finally {
+        runSigrokCommand.mockRestore();
+      }
+    });
+
+    it('采集时不应传递独立的 conn 参数', async () => {
+      adapter = new SigrokAdapter('fx2lafw', 'conn=1.2.3');
+      const process = new EventEmitter() as any;
+      process.stdout = new EventEmitter();
+      process.stderr = new EventEmitter();
+      const spawn = jest.spyOn(require('child_process'), 'spawn').mockReturnValue(process);
+      const processSigrokResults = jest.spyOn(adapter as any, 'processSigrokResults').mockResolvedValue(undefined);
+      const session = {
+        frequency: 1000000,
+        preTriggerSamples: 10,
+        postTriggerSamples: 10,
+        get totalSamples() { return this.preTriggerSamples + this.postTriggerSamples; },
+        triggerType: TriggerType.Edge,
+        triggerChannel: undefined,
+        triggerInverted: false,
+        loopCount: 0,
+        measureBursts: false,
+        captureChannels: [{ channelNumber: 0, channelName: 'D0', textualChannelNumber: '0', hidden: false }],
+        clone: function() { return this; },
+        cloneSettings: function() { return this; }
+      } as CaptureSession;
+
+      try {
+        const capture = (adapter as any).startSigrokCapture(session);
+        process.emit('close', 0);
+        await capture;
+
+        const args = spawn.mock.calls[0][1] as string[];
+        expect(args).toContain('--driver=fx2lafw:conn=1.2.3');
+        expect(args).not.toContain('--conn');
+      } finally {
+        processSigrokResults.mockRestore();
+        spawn.mockRestore();
+      }
     });
   });
 
@@ -651,12 +746,11 @@ no colon here`;
       const buildCapabilities = (adapter as any).buildCapabilities.bind(adapter);
       const capabilities = buildCapabilities();
       
-      // 🔍错误驱动学习：由于正则表达式转义问题，解析失败，保持默认值
-      expect(capabilities.channels.digital).toBe(8); // 默认值
-      expect(capabilities.sampling.maxRate).toBe(24000000); // 默认值
-      expect(capabilities.sampling.bufferSize).toBe(2000000); // 默认值
-      expect(capabilities.triggers.maxChannels).toBe(8); // 默认值
-      expect(capabilities.triggers.patternWidth).toBe(8); // 默认值
+      expect(capabilities.channels.digital).toBe(16);
+      expect(capabilities.sampling.maxRate).toBe(200000000);
+      expect(capabilities.sampling.bufferSize).toBe(50000000);
+      expect(capabilities.triggers.maxChannels).toBe(16);
+      expect(capabilities.triggers.patternWidth).toBe(16);
     });
   });
 

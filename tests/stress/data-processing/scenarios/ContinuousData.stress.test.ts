@@ -34,7 +34,7 @@ jest.mock('vscode', () => require('../../../../tests/fixtures/mocks/simple-mocks
  */
 class GBDataProcessingStressTest extends StressTestBase {
   private loadGenerator!: LoadGenerator;
-  private streamProcessor!: StreamProcessor;
+  private streamProcessor?: StreamProcessor;
   private chunkManager!: ChunkManager;
   private progressTracker!: ProgressTracker;
   private recoveryManager!: RecoveryManager;
@@ -99,15 +99,6 @@ class GBDataProcessingStressTest extends StressTestBase {
       increment: 10,           // 10MB增长
       memoryLimit: 300,        // 300MB内存限制
       interval: 1000
-    });
-    
-    // 流式处理器 - 多模式数据处理
-    this.streamProcessor = new StreamProcessor({
-      mode: 'compress',
-      chunkSize: 5 * 1024 * 1024, // 5MB块
-      concurrency: 4,
-      enableBackpressure: true,
-      retryAttempts: 3
     });
     
     // 块管理器 - 智能内存管理
@@ -228,34 +219,25 @@ class GBDataProcessingStressTest extends StressTestBase {
    * 处理数据块
    */
   private async processDataChunk(data: Buffer): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const chunks: Buffer[] = [];
-      
-      // 创建可读流
-      const readable = new Readable({
-        read() {
-          this.push(data);
-          this.push(null); // 结束流
-        }
-      });
-      
-      // 创建可写流
-      const writable = new Writable({
-        write(chunk, encoding, callback) {
-          chunks.push(chunk);
-          callback();
-        },
-        final(callback) {
-          const result = Buffer.concat(chunks);
-          resolve(result);
-          callback();
-        }
-      });
-      
-      // 使用流处理器处理数据
-      StreamProcessor.createPipeline(readable, this.streamProcessor, writable)
-        .catch(reject);
+    const chunks: Buffer[] = [];
+    const readable = Readable.from([data]);
+    const writable = new Writable({
+      write(chunk, encoding, callback) {
+        chunks.push(chunk);
+        callback();
+      }
     });
+
+    this.streamProcessor = new StreamProcessor({
+      mode: 'compress',
+      chunkSize: 5 * 1024 * 1024,
+      concurrency: 4,
+      enableBackpressure: true,
+      retryAttempts: 3
+    });
+
+    await StreamProcessor.createPipeline(readable, this.streamProcessor, writable);
+    return Buffer.concat(chunks);
   }
   
   /**
@@ -367,6 +349,24 @@ class GBDataProcessingStressTest extends StressTestBase {
 
 // Jest测试套件
 describe('GB级连续数据处理压力测试', () => {
+  it('应连续处理两个数据块', async () => {
+    const stressTest = new GBDataProcessingStressTest(0.1, {
+      intensity: 'light',
+      maxDuration: 60000
+    });
+
+    await stressTest.beforeEach();
+    try {
+      const first = await (stressTest as any).processDataChunk(Buffer.alloc(1024, 0xAA));
+      const second = await (stressTest as any).processDataChunk(Buffer.alloc(1024, 0x55));
+
+      expect(first.length).toBeGreaterThan(0);
+      expect(second.length).toBeGreaterThan(0);
+    } finally {
+      await (stressTest as any).cleanupStressResources();
+    }
+  });
+
   it('应该支持核心组件集成功能验证', async () => {
     // 直接测试各组件而不使用完整的压力测试框架
     const loadGenerator = new LoadGenerator({

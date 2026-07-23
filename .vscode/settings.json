@@ -1,4 +1,4 @@
 {
-    "cmake.sourceDirectory": "/home/share/samba/vscode-extension/pico-logicanalyzer/logicanalyzer/Firmware/LogicAnalyzer",
+    "cmake.sourceDirectory": "/Users/cys/ai-coding/pico-logicanalyzer/logicanalyzer/Firmware/LogicAnalyzer",
     "C_Cpp.workspaceParsingPriority": "low"
 }

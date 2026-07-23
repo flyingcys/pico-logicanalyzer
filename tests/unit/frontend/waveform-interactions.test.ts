@@ -393,6 +393,43 @@ describe('AppWaveformStage 文档状态', () => {
     wrapper.unmount();
   });
 
+  it('应在有样本文件替换为无样本文件时清空波形', async () => {
+    const sessionStore = useSessionStore();
+    const waveformStore = useWaveformStore();
+    const wrapper = mountWaveformStage();
+
+    sessionStore.applyDocument({
+      uri: 'file:///tmp/samples.lac',
+      fileName: 'samples.lac',
+      content: JSON.stringify({
+        captureSession: {
+          sampleRate: 1000000,
+          totalSamples: 4,
+          captureChannels: [{ channelNumber: 0, channelName: 'D0', samples: [0, 1, 0, 1] }]
+        }
+      })
+    });
+    await wrapper.next();
+    expect(waveformStore.totalSamples).toBe(4);
+
+    sessionStore.applyDocument({
+      uri: 'file:///tmp/settings-only.lac',
+      fileName: 'settings-only.lac',
+      content: JSON.stringify({
+        Settings: {
+          Frequency: 1000000,
+          CaptureChannels: [{ ChannelNumber: 0, ChannelName: 'D0' }]
+        }
+      })
+    });
+    await wrapper.next();
+
+    expect(waveformStore.totalSamples).toBe(0);
+    expect(waveformStore.channels).toEqual([]);
+
+    wrapper.unmount();
+  });
+
   it('应支持拖动预览条改变基础视口位置', async () => {
     const sessionStore = useSessionStore();
     sessionStore.applyDocument({

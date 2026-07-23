@@ -1,0 +1,11 @@
+{
+  "id": "checkpoint-1784731527130-pgrgrh7w2",
+  "timestamp": 1784731527130,
+  "processedDataMB": 15,
+  "totalDataMB": 50,
+  "currentPhase": "processing",
+  "chunkIndex": 2,
+  "processingState": {},
+  "errorHistory": [],
+  "metadata": {}
+}
