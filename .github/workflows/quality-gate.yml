@@ -41,17 +41,14 @@ jobs:
       - name: ESLint 检查
         run: npm run lint
 
-      - name: 单元测试（不含压力/性能/e2e）
-        run: npm run test:unit
+      - name: 单元测试与覆盖率门禁（不含压力/性能/e2e）
+        run: npm run test:unit -- --coverage
 
       - name: 集成测试
         run: npm run test:integration
 
       - name: Quick CI 测试
         run: npm run test:ci:quick -- --skip-install
-
-      - name: VSCode 插件覆盖率门禁
-        run: npm run test:ci
 
       - name: Web 应用覆盖率门禁
         run: npm --prefix src/web-app run test:coverage

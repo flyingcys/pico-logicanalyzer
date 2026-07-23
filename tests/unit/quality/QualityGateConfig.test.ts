@@ -48,11 +48,20 @@ describe('质量门禁配置', () => {
     // 压力门禁独立存在，供夜间/手动运行
     expect(packageJson.scripts['test:stress']).toContain('tests/stress');
 
-    // CI 常规 PR 依次执行单元、集成、Web 覆盖率；不执行压力
+    // CI 常规 PR 依次执行单元（带覆盖率门禁）、集成、Web 覆盖率；不执行压力
     expect(workflow).toContain('npm run test:unit');
+    expect(workflow).toContain('--coverage');
     expect(workflow).toContain('npm run test:integration');
     expect(workflow).toContain('test:coverage');
     expect(workflow).not.toContain('npm run test:stress');
+
+    // 常规 PR 不应有裸 test:ci 全量步（会拾取 stress/performance/e2e，违背分层）。
+    // 用 run 步骤行级匹配，避免与 test:ci:quick 误匹配。
+    const runSteps = workflow
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('run:'));
+    expect(runSteps).not.toContain('run: npm run test:ci');
   });
 
   it('应该提供功能状态矩阵和真实硬件认证矩阵', () => {

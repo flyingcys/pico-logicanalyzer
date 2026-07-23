@@ -69,6 +69,25 @@ module.exports = {
       functions: 80,
       lines: 80,
       statements: 80
+    },
+    // 以下为补齐行为测试后新增的关键路径阈值（Task 2/3）
+    './src/decoders/ChannelMapping.ts': {
+      branches: 90,
+      functions: 100,
+      lines: 100,
+      statements: 100
+    },
+    './src/frontend/app/main-html.ts': {
+      branches: 100,
+      functions: 100,
+      lines: 100,
+      statements: 100
+    },
+    './src/frontend/app/main-vscode.ts': {
+      branches: 100,
+      functions: 100,
+      lines: 100,
+      statements: 100
     }
   }
 };
