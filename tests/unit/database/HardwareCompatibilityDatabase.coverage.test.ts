@@ -319,13 +319,14 @@ describe('HardwareCompatibilityDatabase 覆盖率测试', () => {
       expect(result[0].deviceId).toBe('pico-la-v1');
     });
 
-    it('scpiIdn 索引应按小写键构建（直接验证 indexCache）', async () => {
-      // 注：buildIndexes 用 'scpiIdn' 作为索引前缀（源码第 604 行），
-      // 直接验证 buildIndexes 的 scpiIdn 分支已正确写入索引。
+    it('scpiIdnResponse 索引应按小写键构建（直接验证 indexCache）', async () => {
+      // buildIndexes 用 'scpiIdnResponse' 作为索引前缀（与 identifiers.scpiIdnResponse
+      // 字段名及 CompatibilityQuery.identifierType 类型一致），值经 toLowerCase 归一化。
+      // 直接验证 buildIndexes 的 scpiIdnResponse 分支已正确写入索引。
       const indexCache = (db as any).indexCache;
       const keys: string[] = Array.from(indexCache.keys());
-      expect(keys).toContain('scpiIdn:rigol technologies,mso5*');
-      const set: Set<string> = indexCache.get('scpiIdn:rigol technologies,mso5*');
+      expect(keys).toContain('scpiIdnResponse:rigol technologies,mso5*');
+      const set: Set<string> = indexCache.get('scpiIdnResponse:rigol technologies,mso5*');
       expect(set.has('rigol-mso5000')).toBe(true);
     });
   });
@@ -401,15 +402,16 @@ describe('HardwareCompatibilityDatabase 覆盖率测试', () => {
       expect(result[0].deviceId).toBe('saleae-logic-8');
     });
 
-    it('已知源码 bug：scpiIdnResponse 查询无法命中 scpiIdn 索引', async () => {
-      // buildIndexes 建的索引前缀是 'scpiIdn'（源码第 604 行），
-      // 但 queryDevices 用 identifierType（'scpiIdnResponse'）作前缀（源码第 673 行），
-      // 两者不一致导致该查询永远返回空。此处记录此 bug 的实际行为。
+    it('scpiIdnResponse 查询应命中对应索引（前缀与 buildIndexes 一致）', async () => {
+      // buildIndexes 与 queryDevices 均以 identifierType（'scpiIdnResponse'）作索引前缀，
+      // 两者一致。rigol-mso5000 的 identifiers.scpiIdnResponse 为 'RIGOL TECHNOLOGIES,MSO5*'，
+      // 经 toLowerCase 归一化后键为 'scpiIdnResponse:rigol technologies,mso5*'，查询应命中。
       const result = await db.queryDevices({
         identifierType: 'scpiIdnResponse',
         identifierValue: 'RIGOL TECHNOLOGIES,MSO5*'
       });
-      expect(result).toEqual([]);
+      expect(result).toHaveLength(1);
+      expect(result[0].deviceId).toBe('rigol-mso5000');
     });
   });
 
