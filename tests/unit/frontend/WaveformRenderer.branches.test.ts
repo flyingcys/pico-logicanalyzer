@@ -609,6 +609,38 @@ describe('WaveformRenderer 分支覆盖测试', () => {
       ).not.toThrow();
       expect(ctx.stroke).toHaveBeenCalled();
     });
+
+    it('常规长度的电平段切换时应绘制垂直边沿', () => {
+      const ch = new AnalyzerChannel(0, 'CH0');
+      ch.samples = new Uint8Array([0, 0, 1, 1]);
+      renderer.setChannels([ch], 1000);
+      renderer.updateVisibleSamples(0, 4);
+      resetCtx(ctx);
+
+      const paths: Array<Array<[string, number, number]>> = [];
+      let currentPath: Array<[string, number, number]> = [];
+      ctx.beginPath.mockImplementation(() => {
+        currentPath = [];
+      });
+      ctx.moveTo.mockImplementation((x: number, y: number) => {
+        currentPath.push(['moveTo', x, y]);
+      });
+      ctx.lineTo.mockImplementation((x: number, y: number) => {
+        currentPath.push(['lineTo', x, y]);
+      });
+      ctx.stroke.mockImplementation(() => {
+        paths.push([...currentPath]);
+      });
+
+      (renderer as any).renderNormal([ch], 400, 80, 200, 800, 400);
+
+      expect(paths).toContainEqual(
+        expect.arrayContaining([
+          ['moveTo', 400, 80],
+          ['lineTo', 400, 320]
+        ])
+      );
+    });
   });
 
   // -------------------- renderOptimized --------------------

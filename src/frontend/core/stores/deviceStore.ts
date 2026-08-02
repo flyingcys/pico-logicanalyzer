@@ -3,6 +3,8 @@ import { defineStore } from 'pinia';
 export type FrontendTriggerType = 'Edge' | 'Fast' | 'Complex' | 'Blast';
 export type FrequencyJitterLevel = 'normal' | 'medium' | 'high';
 
+const DEFAULT_BLAST_FREQUENCY = 100_000_000;
+
 export interface FrontendCaptureChannelConfig {
   number: number;
   name: string;
@@ -123,6 +125,10 @@ function normalizeCaptureConfig(
   };
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
 export const useDeviceStore = defineStore('frontend-device', {
   state: () => ({
     isConnected: false,
@@ -204,12 +210,60 @@ export const useDeviceStore = defineStore('frontend-device', {
       } else {
         this.captureConfig = normalizeCaptureConfig(this.captureConfig, this.limits);
       }
+
+      if (this.captureConfig.triggerType === 'Blast') {
+        this.setTriggerType('Blast');
+      }
     },
     setConnecting(value: boolean) {
       this.isConnecting = value;
     },
     setCapturing(value: boolean) {
       this.isCapturing = value;
+    },
+    setTriggerType(triggerType: FrontendTriggerType) {
+      this.captureConfig.triggerType = triggerType;
+
+      const modeLimits = this.activeModeLimits;
+      if (triggerType === 'Blast') {
+        const blastFrequency = this.limits?.blastFrequency ?? DEFAULT_BLAST_FREQUENCY;
+        this.captureConfig.frequency = blastFrequency;
+        this.captureConfig.preTriggerSamples = 0;
+        this.captureConfig.loopCount = 0;
+        this.captureConfig.measureBursts = false;
+
+        if (modeLimits) {
+          this.captureConfig.postTriggerSamples = clamp(
+            this.captureConfig.postTriggerSamples,
+            modeLimits.minPostSamples,
+            modeLimits.maxPostSamples
+          );
+        }
+        return;
+      }
+
+      const minFrequency = this.limits?.minFrequency ?? 1000;
+      const maxFrequency = this.limits?.maxFrequency ?? 100000000;
+      this.captureConfig.frequency = clamp(
+        this.captureConfig.frequency,
+        minFrequency,
+        maxFrequency
+      );
+
+      if (modeLimits) {
+        this.captureConfig.preTriggerSamples = clamp(
+          this.captureConfig.preTriggerSamples,
+          modeLimits.minPreSamples,
+          modeLimits.maxPreSamples
+        );
+        this.captureConfig.postTriggerSamples = clamp(
+          this.captureConfig.postTriggerSamples,
+          modeLimits.minPostSamples,
+          modeLimits.maxPostSamples
+        );
+      } else {
+        this.captureConfig.preTriggerSamples = Math.max(2, this.captureConfig.preTriggerSamples);
+      }
     },
     setError(error: string) {
       this.error = error;

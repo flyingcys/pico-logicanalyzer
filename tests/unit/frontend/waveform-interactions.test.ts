@@ -430,6 +430,43 @@ describe('AppWaveformStage 文档状态', () => {
     wrapper.unmount();
   });
 
+  it('应在样本数量相同但电平变化时刷新波形数据', async () => {
+    const sessionStore = useSessionStore();
+    const waveformStore = useWaveformStore();
+    const wrapper = mountWaveformStage();
+
+    sessionStore.applyDocument({
+      uri: 'file:///tmp/recapture.lac',
+      fileName: 'recapture.lac',
+      content: JSON.stringify({
+        captureSession: {
+          sampleRate: 1000000,
+          totalSamples: 4,
+          captureChannels: [{ channelNumber: 0, channelName: 'D0', samples: [0, 0, 0, 0] }]
+        }
+      })
+    });
+    await wrapper.next();
+    expect(Array.from(waveformStore.channels[0].samples!)).toEqual([0, 0, 0, 0]);
+
+    sessionStore.applyDocument({
+      uri: 'file:///tmp/recapture.lac',
+      fileName: 'recapture.lac',
+      content: JSON.stringify({
+        captureSession: {
+          sampleRate: 1000000,
+          totalSamples: 4,
+          captureChannels: [{ channelNumber: 0, channelName: 'D0', samples: [0, 1, 1, 0] }]
+        }
+      })
+    });
+    await wrapper.next();
+
+    expect(Array.from(waveformStore.channels[0].samples!)).toEqual([0, 1, 1, 0]);
+
+    wrapper.unmount();
+  });
+
   it('应支持拖动预览条改变基础视口位置', async () => {
     const sessionStore = useSessionStore();
     sessionStore.applyDocument({

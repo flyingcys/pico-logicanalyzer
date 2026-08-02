@@ -386,7 +386,16 @@ ${webviewScriptTags}
 
       edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), lacContent);
 
-      await vscode.workspace.applyEdit(edit);
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (!applied) {
+        throw new Error('无法更新捕获文档');
+      }
+
+      const saved = await document.save();
+      if (!saved) {
+        throw new Error('无法写入捕获文件');
+      }
+
       vscode.window.showInformationMessage('文件保存成功');
     } catch (error) {
       vscode.window.showErrorMessage(`保存文件失败: ${error}`);

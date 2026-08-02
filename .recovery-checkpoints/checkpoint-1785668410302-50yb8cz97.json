@@ -1,0 +1,11 @@
+{
+  "id": "checkpoint-1785668410302-50yb8cz97",
+  "timestamp": 1785668410302,
+  "processedDataMB": 15,
+  "totalDataMB": 50,
+  "currentPhase": "processing",
+  "chunkIndex": 2,
+  "processingState": {},
+  "errorHistory": [],
+  "metadata": {}
+}

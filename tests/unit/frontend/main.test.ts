@@ -138,6 +138,40 @@ describe('frontend vscode 入口', () => {
 });
 
 describe('waveformService', () => {
+  it('bindHostDocumentUpdates 应把宿主推送的新文档交给会话存储', async () => {
+    jest.resetModules();
+
+    await jest.isolateModulesAsync(async () => {
+      let messageHandler: ((message: unknown) => void) | undefined;
+      const unsubscribe = jest.fn();
+      const host = {
+        onMessage: jest.fn((handler: (message: unknown) => void) => {
+          messageHandler = handler;
+          return unsubscribe;
+        })
+      };
+      const applyDocument = jest.fn();
+      const { bindHostDocumentUpdates } = await import(
+        '../../../src/frontend/core/services/bootstrapService'
+      );
+      const document = {
+        uri: 'file:///tmp/capture.lac',
+        fileName: 'capture.lac',
+        content: '{"Samples":["1"]}'
+      };
+
+      const stop = bindHostDocumentUpdates(host as any, applyDocument);
+      messageHandler?.({ type: 'documentUpdate', payload: document });
+      messageHandler?.({ type: 'testResponse', payload: document });
+
+      expect(applyDocument).toHaveBeenCalledTimes(1);
+      expect(applyDocument).toHaveBeenCalledWith(document);
+
+      stop();
+      expect(unsubscribe).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('applyViewRange 应按 totalSamples 归一化并调用 renderer', async () => {
     jest.resetModules();
 
@@ -716,6 +750,59 @@ describe('deviceStore 采集工作流状态', () => {
     store.captureConfig.frequency = 995000;
 
     expect(store.frequencyJitterLevel).toBe('high');
+  });
+
+  it('切换 Blast 模式应同步设备突发参数，切回普通模式应恢复有效参数', async () => {
+    const actualPinia = jest.requireActual('pinia');
+    const { useDeviceStore } = jest.requireActual('../../../src/frontend/core/stores/deviceStore');
+
+    actualPinia.setActivePinia(actualPinia.createPinia());
+    const store = useDeviceStore();
+
+    store.applyStatus({
+      isConnected: true,
+      isCapturing: false,
+      limits: {
+        minFrequency: 1000,
+        maxFrequency: 100000000,
+        blastFrequency: 200000000,
+        channelCount: 8,
+        modeLimits: [
+          {
+            minPreSamples: 2,
+            maxPreSamples: 10000,
+            minPostSamples: 2,
+            maxPostSamples: 1000,
+            maxTotalSamples: 10000
+          }
+        ]
+      }
+    });
+    store.captureConfig.frequency = 1000000;
+    store.captureConfig.preTriggerSamples = 100;
+    store.captureConfig.postTriggerSamples = 1000;
+    store.captureConfig.loopCount = 4;
+    store.captureConfig.measureBursts = true;
+
+    store.setTriggerType('Blast');
+
+    expect(store.captureConfig).toEqual(expect.objectContaining({
+      triggerType: 'Blast',
+      frequency: 200000000,
+      preTriggerSamples: 0,
+      postTriggerSamples: 1000,
+      loopCount: 0,
+      measureBursts: false
+    }));
+
+    store.setTriggerType('Edge');
+
+    expect(store.captureConfig).toEqual(expect.objectContaining({
+      triggerType: 'Edge',
+      frequency: 100000000,
+      preTriggerSamples: 2,
+      postTriggerSamples: 1000
+    }));
   });
 });
 
@@ -2761,8 +2848,18 @@ describe('deviceCaptureCommands', () => {
       await actions.startCapture();
 
       expect(host.sendCommand).toHaveBeenCalledWith('startCapture', {
-        config: deviceStore.captureConfig
+        config: expect.objectContaining({
+          frequency: 1000000,
+          preTriggerSamples: 1,
+          postTriggerSamples: 3,
+          triggerType: 'Edge',
+          triggerChannel: 0,
+          channels: [{ number: 0, name: 'D0', enabled: true }]
+        })
       });
+      const sentConfig = (host.sendCommand as jest.Mock).mock.calls[0][1].config;
+      expect(sentConfig).not.toBe(deviceStore.captureConfig);
+      expect(sentConfig.channels).not.toBe(deviceStore.captureConfig.channels);
       expect(deviceStore.setCapturing).toHaveBeenNthCalledWith(1, true);
       expect(deviceStore.setCapturing).toHaveBeenLastCalledWith(false);
       expect(deviceStore.applyStatus).toHaveBeenCalledWith(expect.objectContaining({

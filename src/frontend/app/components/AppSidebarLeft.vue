@@ -5,6 +5,7 @@ import { useDeviceStore, type FrontendTriggerType } from '../../core/stores/devi
 import { useSessionStore } from '../../core/stores/sessionStore';
 import { useHost } from '../composables/useHost';
 import { createDeviceCaptureCommands } from '../composables/deviceCaptureCommands';
+import { getFirstSerialDeviceAddress } from '../deviceAddress';
 
 const deviceStore = useDeviceStore();
 const sessionStore = useSessionStore();
@@ -50,8 +51,20 @@ const deviceStatus = computed(() => {
 });
 
 const activeModeLimits = computed(() => deviceStore.activeModeLimits);
-const frequencyMin = computed(() => Math.max(deviceStore.limits?.minFrequency ?? 1000, 1));
-const frequencyMax = computed(() => deviceStore.limits?.maxFrequency ?? 100000000);
+const blastFrequency = computed(() => deviceStore.limits?.blastFrequency ?? 100000000);
+const preSamplesMin = computed(() => deviceStore.captureConfig.triggerType === 'Blast'
+  ? 0
+  : activeModeLimits.value?.minPreSamples ?? 0);
+const frequencyMin = computed(() => deviceStore.captureConfig.triggerType === 'Blast'
+  ? blastFrequency.value
+  : Math.max(deviceStore.limits?.minFrequency ?? 1000, 1));
+const frequencyMax = computed(() => deviceStore.captureConfig.triggerType === 'Blast'
+  ? blastFrequency.value
+  : deviceStore.limits?.maxFrequency ?? 100000000);
+const selectedTriggerType = computed({
+  get: () => deviceStore.captureConfig.triggerType,
+  set: (value: FrontendTriggerType) => deviceStore.setTriggerType(value)
+});
 const channelOptions = computed(() => deviceStore.captureConfig.channels.map(channel => ({
   label: channel.name || `Channel ${channel.number + 1}`,
   value: channel.number
@@ -101,7 +114,13 @@ async function detectDevices() {
     return;
   }
 
-  ElMessage.success(`检测到 ${Array.isArray(result.data) ? result.data.length : 0} 个设备`);
+  const devices = Array.isArray(result.data) ? result.data as typeof scannedDevices.value : [];
+  const serialAddress = getFirstSerialDeviceAddress(devices);
+  if (serialAddress) {
+    manualSerialPath.value = serialAddress;
+  }
+
+  ElMessage.success(`检测到 ${devices.length} 个设备`);
 }
 
 async function scanNetworkDevices() {
@@ -285,7 +304,7 @@ onMounted(() => {
         <el-form-item label="Pre Samples">
           <el-input-number
             v-model="deviceStore.captureConfig.preTriggerSamples"
-            :min="activeModeLimits?.minPreSamples ?? 0"
+            :min="preSamplesMin"
             :max="activeModeLimits?.maxPreSamples ?? 1000000"
             controls-position="right"
           />
@@ -303,7 +322,7 @@ onMounted(() => {
 
       <el-form-item label="触发模式">
         <el-radio-group
-          v-model="deviceStore.captureConfig.triggerType"
+          v-model="selectedTriggerType"
           size="small"
         >
           <el-radio-button

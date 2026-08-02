@@ -604,6 +604,14 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
       // 读取采集数据
       const captureData = await this.readCaptureData(session);
 
+      console.log(
+        `[LogicAnalyzer][Capture] 采集完成: trigger=${session.triggerType}, ` +
+        `frequency=${session.frequency}, pre=${session.preTriggerSamples}, ` +
+        `post=${session.postTriggerSamples}, loop=${session.loopCount}, ` +
+        `channels=${session.captureChannels.map(channel => channel.channelNumber).join(',')}, ` +
+        `packedSamples=${captureData.samples.length}`
+      );
+
       // 解析数据到通道
       this.extractSamplesToChannels(session, captureData);
 
@@ -617,6 +625,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
 
       this.emitCaptureCompleted(eventArgs);
     } catch (error) {
+      console.error('[LogicAnalyzer][Capture] 采集失败:', error);
       this._capturing = false;
       this.resumeTextParserAfterBinaryCapture();
 
@@ -675,6 +684,13 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
       const mode = this.getCaptureMode(session.captureChannels.map(ch => ch.channelNumber));
       const totalSamples = session.preTriggerSamples + session.postTriggerSamples * (session.loopCount + 1);
 
+      console.log(
+        `[LogicAnalyzer][Capture] 准备读取采集帧: transport=${this._isNetwork ? 'network' : 'serial'}, ` +
+        `mode=${mode}, totalSamples=${totalSamples}, pre=${session.preTriggerSamples}, ` +
+        `post=${session.postTriggerSamples}, loop=${session.loopCount}, ` +
+        `measureBursts=${session.measureBursts}`
+      );
+
       // 处理网络和串口的不同读取方式
       if (this._isNetwork) {
         this.readNetworkCaptureData(session, mode, totalSamples, resolve, reject);
@@ -714,6 +730,12 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         const timestampBytes = (session.loopCount > 0 && session.measureBursts) ?
           (session.loopCount + 2) * 4 : 0;
         const expectedTotalLength = 4 + (dataLength * bytesPerSample) + 1 + timestampBytes;
+
+        console.log(
+          `[LogicAnalyzer][Network] 收到采集帧头: mode=${mode}, dataLength=${dataLength}, ` +
+          `bytesPerSample=${bytesPerSample}, expectedTotalLength=${expectedTotalLength}, ` +
+          `received=${receivedData.length}`
+        );
 
         if (receivedData.length >= expectedTotalLength) {
           this._currentStream!.off('data', dataHandler);
@@ -759,6 +781,12 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
       bufferLength += 1 + (session.loopCount + 2) * 4; // 时间戳长度 + 实际时间戳数据
     }
 
+    console.log(
+      `[LogicAnalyzer][Serial] 等待采集帧: mode=${mode}, totalSamples=${totalSamples}, ` +
+      `bytesPerSample=${bytesPerSample}, expectedPayload=${bufferLength}, ` +
+      `expectedFrame=${bufferLength + 4}`
+    );
+
     let receivedBuffer = Buffer.alloc(0);
     let dataLength: number | null = null;
     const headerBuffer = Buffer.alloc(4);
@@ -772,6 +800,10 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         try {
           // 创建完整的数据缓冲区（包含长度头部）
           const completeBuffer = Buffer.concat([headerBuffer, receivedBuffer.slice(0, bufferLength)]);
+          console.log(
+            `[LogicAnalyzer][Serial] 采集帧接收完成: receivedPayload=${receivedBuffer.length}, ` +
+            `usedPayload=${bufferLength}, frameBytes=${completeBuffer.length}`
+          );
           const result = this.parseCaptureData(completeBuffer, session, mode, dataLength);
           resolve(result);
         } catch (error) {
@@ -796,6 +828,13 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         }
 
         dataLength = headerBuffer.readUInt32LE(0);
+        console.log(
+          `[LogicAnalyzer][Serial] 收到采集帧头: dataLength=${dataLength}, ` +
+          `expectedSamples=${totalSamples}, headerBytes=${headerReceived}`
+        );
+        if (dataLength !== totalSamples) {
+          console.warn(`[LogicAnalyzer][Serial] 设备返回样本数与请求不一致: requested=${totalSamples}, returned=${dataLength}`);
+        }
       }
 
       if (payloadOffset < chunk.length) {
@@ -856,6 +895,27 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     // 读取时间戳长度（1字节）
     const timestampLength = data.readUInt8(offset);
     offset += 1;
+
+    let rawNonZero = 0;
+    let rawTransitions = 0;
+    let previousSample = samples.length > 0 ? samples[0] : 0;
+    for (let index = 0; index < samples.length; index++) {
+      const sample = samples[index];
+      if (sample !== 0) {
+        rawNonZero++;
+      }
+      if (index > 0 && sample !== previousSample) {
+        rawTransitions++;
+      }
+      previousSample = sample;
+    }
+
+    console.log(
+      `[LogicAnalyzer][Parser] 样本解析完成: mode=${mode}, sampleCount=${sampleCount}, ` +
+      `dataBytes=${data.length}, timestampLength=${timestampLength}, ` +
+      `nonZero=${rawNonZero}, transitions=${rawTransitions}, ` +
+      `first32=${Array.from(samples.slice(0, 32)).join(',')}`
+    );
 
     // 初始化时间戳数组
     const timestampCount = session.loopCount === 0 || !session.measureBursts ? 0 : session.loopCount + 2;
@@ -970,6 +1030,27 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
       for (let sampleIndex = 0; sampleIndex < samples.length; sampleIndex++) {
         channel.samples[sampleIndex] = (samples[sampleIndex] & mask) !== 0 ? 1 : 0;
       }
+
+      let ones = 0;
+      let transitions = 0;
+      let previousValue = channel.samples.length > 0 ? channel.samples[0] : 0;
+      for (let sampleIndex = 0; sampleIndex < channel.samples.length; sampleIndex++) {
+        const value = channel.samples[sampleIndex];
+        if (value !== 0) {
+          ones++;
+        }
+        if (sampleIndex > 0 && value !== previousValue) {
+          transitions++;
+        }
+        previousValue = value;
+      }
+
+      console.log(
+        `[LogicAnalyzer][Channel] 通道样本: index=${channelIndex}, ` +
+        `channelNumber=${channel.channelNumber}, mask=0x${mask.toString(16)}, ` +
+        `count=${channel.samples.length}, ones=${ones}, zeros=${channel.samples.length - ones}, ` +
+        `transitions=${transitions}, first32=${Array.from(channel.samples.slice(0, 32)).join('')}`
+      );
     }
 
     // 设置突发信息

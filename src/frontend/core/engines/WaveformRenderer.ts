@@ -667,7 +667,8 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
               visibleChannels[chan],
               channelHeight,
               margin,
-              sampleWidth
+              sampleWidth,
+              true
             );
 
             // 更新状态
@@ -844,7 +845,8 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
     channel: AnalyzerChannel,
     channelHeight: number,
     margin: number,
-    sampleWidth: number
+    sampleWidth: number,
+    drawTransition = false
   ): void {
     const yHi = channelIndex * channelHeight + margin;
     const yLo = yHi + channelHeight - margin * 2;
@@ -868,8 +870,8 @@ export class WaveformRenderer implements ISampleDisplay, IRegionDisplay, IMarker
       this.ctx.lineTo(xEnd, yLo);
     }
 
-    // 绘制垂直转换线 (在状态变化点)
-    if (render.sampleCount === 1) {
+    // 仅在状态变化点绘制边沿，避免在每段末尾制造伪跳变。
+    if (drawTransition) {
       this.ctx.moveTo(xEnd, yHi);
       this.ctx.lineTo(xEnd, yLo);
     }

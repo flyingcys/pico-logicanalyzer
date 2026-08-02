@@ -232,6 +232,33 @@ describe('Pico 原版协议与采集语义对齐', () => {
     expect(driver.isCapturing).toBe(false);
   });
 
+  it('采集完成后必须输出原始样本和通道跳变诊断日志', async () => {
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    const frame = fixture<{
+      frameHex: string;
+    }>('pico-serial-8ch-single-frame.json');
+    const { driver, stream, parser } = connectedDriver();
+    const captureSession = session({
+      preTriggerSamples: 2,
+      postTriggerSamples: 2,
+      captureChannels: [channel(0), channel(1)]
+    });
+
+    const start = driver.startCapture(captureSession);
+    await nextTick();
+    parser.emit('data', 'CAPTURE_STARTED');
+    await expect(start).resolves.toBe(CaptureError.None);
+
+    stream.emit('data', hexToBuffer(frame.frameHex));
+    await nextTick();
+
+    const messages = logSpy.mock.calls.map(([message]) => String(message));
+    expect(messages.some(message => message.includes('[LogicAnalyzer][Serial] 收到采集帧头'))).toBe(true);
+    expect(messages.some(message => message.includes('[LogicAnalyzer][Parser] 样本解析完成'))).toBe(true);
+    expect(messages.some(message => message.includes('[LogicAnalyzer][Channel] 通道样本'))).toBe(true);
+    logSpy.mockRestore();
+  });
+
   it.each(fixture<{ cases: PicoFrameFixture[] }>('pico-serial-non-contiguous-channel-frames.json').cases)(
     '$mode 模式必须按真实 channelNumber 拆分非连续通道样本',
     async frame => {

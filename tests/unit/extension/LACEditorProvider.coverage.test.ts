@@ -295,6 +295,7 @@ describe('LACEditorProvider 覆盖率补强', () => {
     dispose.mockResolvedValue(true);
     exportWaveformData.mockResolvedValue({ success: true, filename: '/tmp/x.csv', mimeType: 'text/csv', size: 1 });
     overwriteExportedLacFile.mockResolvedValue(undefined);
+    applyEdit.mockResolvedValue(true);
     showSaveDialog.mockResolvedValue(undefined);
     setupManifestFiles();
   });
@@ -1911,8 +1912,9 @@ describe('executeHostCommand 命令分发', () => {
     async function setupEditor() {
       const provider = createProvider();
       const ctx = createWebviewPanel();
-      await (provider as any).resolveCustomTextEditor(createDocument(), ctx.panel, undefined as any);
-      return { provider, ctx };
+      const document = createDocument();
+      await (provider as any).resolveCustomTextEditor(document, ctx.panel, undefined as any);
+      return { provider, ctx, document };
     }
 
     it('应设置 webview 选项与 html', async () => {
@@ -1928,9 +1930,10 @@ describe('executeHostCommand 命令分发', () => {
     });
 
     it('save 消息应触发 saveLACFile', async () => {
-      const { ctx } = await setupEditor();
+      const { ctx, document } = await setupEditor();
       await ctx.fireMessage({ type: 'save', data: { Settings: {}, Samples: [] } });
       expect(applyEdit).toHaveBeenCalled();
+      expect(document.save).toHaveBeenCalled();
       expect(showInformationMessage).toHaveBeenCalledWith('文件保存成功');
     });
 
