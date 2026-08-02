@@ -102,6 +102,29 @@
         "icon": "$(symbol-event)"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "logicAnalyzer",
+          "title": "Logic Analyzer",
+          "icon": "resources/logic-analyzer.svg"
+        }
+      ]
+    },
+    "views": {
+      "logicAnalyzer": [
+        {
+          "id": "logicAnalyzer.launcher",
+          "name": "Logic Analyzer"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "logicAnalyzer.launcher",
+        "contents": "[打开逻辑分析器](command:logicAnalyzer.openAnalyzer)"
+      }
+    ],
     "customEditors": [
       {
         "viewType": "logicAnalyzer.lacEditor",

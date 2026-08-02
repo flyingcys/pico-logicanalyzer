@@ -131,6 +131,32 @@ describe('质量门禁配置', () => {
     expect(readme).not.toContain('github.com/your-repo');
   });
 
+  it('应该在 Activity Bar 提供逻辑分析器快捷入口', () => {
+    const packageJson = readJson('package.json');
+    const activityBarContainers = packageJson.contributes.viewsContainers.activitybar;
+    const container = activityBarContainers.find(
+      (item: { id?: string }) => item.id === 'logicAnalyzer'
+    );
+    const views = packageJson.contributes.views.logicAnalyzer;
+    const launcherView = views.find(
+      (item: { id?: string }) => item.id === 'logicAnalyzer.launcher'
+    );
+    const icon = readText('resources/logic-analyzer.svg');
+
+    expect(container).toEqual(expect.objectContaining({
+      title: 'Logic Analyzer',
+      icon: 'resources/logic-analyzer.svg'
+    }));
+    expect(launcherView).toEqual(expect.objectContaining({
+      name: 'Logic Analyzer'
+    }));
+    expect(packageJson.contributes.viewsWelcome).toContainEqual(expect.objectContaining({
+      view: 'logicAnalyzer.launcher',
+      contents: expect.stringContaining('command:logicAnalyzer.openAnalyzer')
+    }));
+    expect(icon).toContain('M6 3v18h12');
+  });
+
   it('VSIX 发布清单应该排除开发、CI 和本地恢复文件', () => {
     const vscodeIgnore = readText('.vscodeignore');
 
