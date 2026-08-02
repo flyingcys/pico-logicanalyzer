@@ -1272,7 +1272,7 @@ ${webviewScriptTags}
 
     this.lastCaptureConfig = this.cloneCaptureConfig(config);
     const session = await this.captureWithDevice(config);
-    const lacData = LACFileFormat.createFromCaptureSession(session);
+    const lacData = LACFileFormat.createFromCaptureSession(session, undefined, true);
     await this.saveLACFile(document, lacData);
     const capturedDocument = {
       uri: document.uri.toString(),

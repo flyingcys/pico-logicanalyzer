@@ -338,13 +338,14 @@ export class OutputPacket {
    * 序列化采集请求结构
    */
   private serializeCaptureRequest(req: CaptureRequest): Uint8Array {
-    const buffer = new ArrayBuffer(50); // 精确的结构体大小
+    const buffer = new ArrayBuffer(48); // sizeof(CAPTURE_REQUEST)
     const view = new DataView(buffer);
     let offset = 0;
 
     view.setUint8(offset++, req.triggerType);
     view.setUint8(offset++, req.trigger);
     view.setUint8(offset++, req.invertedOrCount);
+    offset++; // Pico C ABI 对齐 triggerValue
     view.setUint16(offset, req.triggerValue, true);
     offset += 2; // little-endian
 
@@ -354,6 +355,7 @@ export class OutputPacket {
     }
 
     view.setUint8(offset++, req.channelCount);
+    offset++; // Pico C ABI 对齐 frequency
     view.setUint32(offset, req.frequency, true);
     offset += 4; // little-endian
     view.setUint32(offset, req.preSamples, true);

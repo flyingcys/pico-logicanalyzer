@@ -894,7 +894,7 @@ async function saveCaptureData(session: CaptureSession): Promise<void> {
     const fileUri = vscode.Uri.file(filePath);
 
     // 转换为LAC格式
-    const lacData = LACFileFormat.createFromCaptureSession(session);
+    const lacData = LACFileFormat.createFromCaptureSession(session, undefined, true);
     const lacContent = JSON.stringify(lacData, null, 2);
 
     // 写入文件

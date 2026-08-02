@@ -27,6 +27,7 @@ jest.mock('net', () => ({
 class MockStream extends EventEmitter {
   public writes: Buffer[] = [];
   public unpipe = jest.fn();
+  public resume = jest.fn();
 
   write(data: Buffer, callback?: (error?: Error | null) => void): boolean {
     this.writes.push(Buffer.from(data));
@@ -133,6 +134,41 @@ const expectedRequest = (values: {
 };
 
 describe('Pico 原版协议与采集语义对齐', () => {
+  it('CaptureRequest 必须匹配 Pico 固件的 C 结构体对齐布局', () => {
+    const request = new CaptureRequest();
+    request.triggerType = TriggerType.Edge;
+    request.trigger = 3;
+    request.invertedOrCount = 1;
+    request.triggerValue = 0x1234;
+    request.channels[0] = 2;
+    request.channels[23] = 23;
+    request.channelCount = 2;
+    request.frequency = 0x12345678;
+    request.preSamples = 0x01020304;
+    request.postSamples = 0x05060708;
+    request.loopCount = 9;
+    request.measure = 1;
+    request.captureMode = 2;
+
+    const serialized = request.serialize();
+    const view = new DataView(serialized.buffer, serialized.byteOffset, serialized.byteLength);
+
+    expect(serialized.byteLength).toBe(48);
+    expect(view.getUint8(3)).toBe(0);
+    expect(view.getUint16(4, true)).toBe(0x1234);
+    expect(view.getUint8(6)).toBe(2);
+    expect(view.getUint8(29)).toBe(23);
+    expect(view.getUint8(30)).toBe(2);
+    expect(view.getUint8(31)).toBe(0);
+    expect(view.getUint32(32, true)).toBe(0x12345678);
+    expect(view.getUint32(36, true)).toBe(0x01020304);
+    expect(view.getUint32(40, true)).toBe(0x05060708);
+    expect(view.getUint8(44)).toBe(9);
+    expect(view.getUint8(45)).toBe(1);
+    expect(view.getUint8(46)).toBe(2);
+    expect(view.getUint8(47)).toBe(0);
+  });
+
   it('StartCapture 必须等待 CAPTURE_STARTED 后才返回 None 并进入采集状态', async () => {
     const { driver, rawDriver, parser } = connectedDriver();
     rawDriver.readCaptureData = jest.fn().mockReturnValue(new Promise(() => undefined));
@@ -163,6 +199,7 @@ describe('Pico 原版协议与采集语义对齐', () => {
     await start;
 
     expect(stream.unpipe).toHaveBeenCalledWith(parser);
+    expect(stream.resume).toHaveBeenCalled();
   });
 
   it('串口二进制帧在同一个 data chunk 中到达时必须完成采集并提取通道样本', async () => {
@@ -406,7 +443,7 @@ describe('Pico 原版协议与采集语义对齐', () => {
     }));
 
     expect(bytes(request.channels.slice(0, 4))).toEqual([0, 3, 8, 0]);
-    expect(bytes(modelBytes.slice(5, 9))).toEqual([0, 3, 8, 0]);
+    expect(bytes(modelBytes.slice(6, 10))).toEqual([0, 3, 8, 0]);
   });
 
   it('OutputPacket 必须按 C# 规则转义 0xAA、0x55、0xF0', () => {

@@ -309,6 +309,8 @@ export class CaptureRequest {
     view.setUint8(offset++, this.triggerType & 0xFF);
     view.setUint8(offset++, this.trigger & 0xFF);
     view.setUint8(offset++, this.invertedOrCount & 0xFF);
+    // Pico 固件使用默认 C ABI：uint16_t 按 2 字节、uint32_t 按 4 字节对齐。
+    offset++;
     view.setUint16(offset, this.triggerValue & 0xFFFF, true); // little-endian
     offset += 2;
 
@@ -318,6 +320,7 @@ export class CaptureRequest {
     }
 
     view.setUint8(offset++, this.channelCount & 0xFF);
+    offset++;
     view.setUint32(offset, this.frequency >>> 0, true); // little-endian, 确保无符号
     offset += 4;
     view.setUint32(offset, this.preSamples >>> 0, true); // little-endian, 确保无符号
@@ -335,8 +338,8 @@ export class CaptureRequest {
    * 获取结构体大小（字节）
    */
   private getSize(): number {
-    // 1 + 1 + 1 + 2 + 24 + 1 + 4 + 4 + 4 + 1 + 1 + 1 = 45 bytes
-    return 45;
+    // sizeof(CAPTURE_REQUEST) = 48：字段前对齐填充 1 字节，末尾结构体填充 1 字节。
+    return 48;
   }
 }
 

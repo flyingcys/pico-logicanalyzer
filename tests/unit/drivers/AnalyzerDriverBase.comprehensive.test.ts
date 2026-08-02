@@ -829,8 +829,8 @@ describe('CaptureRequest 采集请求结构核心算法', () => {
       const request = new CaptureRequest();
       const serialized = request.serialize();
       
-      // 验证结构体大小：45字节
-      expect(serialized.length).toBe(45);
+      // 验证结构体大小：匹配 Pico 固件 sizeof(CAPTURE_REQUEST)
+      expect(serialized.length).toBe(48);
     });
 
     it('应该正确序列化所有字段的字节布局', () => {
@@ -859,6 +859,7 @@ describe('CaptureRequest 采集请求结构核心算法', () => {
       expect(view.getUint8(offset++)).toBe(0x12); // triggerType
       expect(view.getUint8(offset++)).toBe(0x34); // trigger
       expect(view.getUint8(offset++)).toBe(0x56); // invertedOrCount
+      offset++;
       expect(view.getUint16(offset, true)).toBe(0xABCD); // triggerValue (little-endian)
       offset += 2;
       
@@ -869,6 +870,7 @@ describe('CaptureRequest 采集请求结构核心算法', () => {
       offset += 24;
       
       expect(view.getUint8(offset++)).toBe(8); // channelCount
+      offset++;
       expect(view.getUint32(offset, true)).toBe(0x12345678); // frequency (little-endian)
       offset += 4;
       expect(view.getUint32(offset, true)).toBe(0x87654321); // preSamples (little-endian)
@@ -878,8 +880,9 @@ describe('CaptureRequest 采集请求结构核心算法', () => {
       expect(view.getUint8(offset++)).toBe(0x9A); // loopCount
       expect(view.getUint8(offset++)).toBe(0xBC); // measure
       expect(view.getUint8(offset++)).toBe(0xDE); // captureMode
+      offset++;
       
-      expect(offset).toBe(45); // 验证总大小
+      expect(offset).toBe(48); // 验证总大小
     });
 
     it('应该正确处理字节溢出截断', () => {
@@ -893,7 +896,7 @@ describe('CaptureRequest 采集请求结构核心算法', () => {
       
       expect(view.getUint8(0)).toBe(0);   // 256 & 0xFF
       expect(view.getUint8(1)).toBe(255); // 511 & 0xFF
-      expect(view.getUint8(29)).toBe(44); // 300 & 0xFF (offset 29 = channelCount位置)
+      expect(view.getUint8(30)).toBe(44); // 300 & 0xFF (offset 30 = channelCount位置)
     });
 
     it('应该正确处理little-endian字节序', () => {
@@ -904,15 +907,15 @@ describe('CaptureRequest 采集请求结构核心算法', () => {
       const serialized = request.serialize();
       const view = new DataView(serialized.buffer);
       
-      // triggerValue (offset 3-4) - little-endian
-      expect(view.getUint8(3)).toBe(0x34); // 低字节
-      expect(view.getUint8(4)).toBe(0x12); // 高字节
+      // triggerValue (offset 4-5) - little-endian
+      expect(view.getUint8(4)).toBe(0x34); // 低字节
+      expect(view.getUint8(5)).toBe(0x12); // 高字节
       
-      // frequency (offset 30-33) - little-endian  
-      expect(view.getUint8(30)).toBe(0x78); // 最低字节
-      expect(view.getUint8(31)).toBe(0x56);
-      expect(view.getUint8(32)).toBe(0x34);
-      expect(view.getUint8(33)).toBe(0x12); // 最高字节
+      // frequency (offset 32-35) - little-endian  
+      expect(view.getUint8(32)).toBe(0x78); // 最低字节
+      expect(view.getUint8(33)).toBe(0x56);
+      expect(view.getUint8(34)).toBe(0x34);
+      expect(view.getUint8(35)).toBe(0x12); // 最高字节
     });
 
     it('应该确保与C#版本的精确兼容性', () => {
@@ -941,12 +944,12 @@ describe('CaptureRequest 采集请求结构核心算法', () => {
       expect(serialized[0]).toBe(TriggerType.Complex);
       expect(serialized[1]).toBe(5);
       expect(serialized[2]).toBe(1);
-      expect(serialized[5]).toBe(1); // channels[0]
-      expect(serialized[10]).toBe(1); // channels[5]
-      expect(serialized[29]).toBe(4); // channelCount
+      expect(serialized[6]).toBe(1); // channels[0]
+      expect(serialized[11]).toBe(1); // channels[5]
+      expect(serialized[30]).toBe(4); // channelCount
       
       // 验证频率的little-endian编码
-      const freqBytes = serialized.slice(30, 34);
+      const freqBytes = serialized.slice(32, 36);
       const frequency = new DataView(freqBytes.buffer).getUint32(0, true);
       expect(frequency).toBe(25000000);
     });

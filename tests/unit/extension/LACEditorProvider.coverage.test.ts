@@ -136,6 +136,7 @@ jest.mock('../../../src/decoders/DecoderManager', () => ({
 
 import { LACEditorProvider, createConnectedDeviceInfo } from '../../../src/providers/LACEditorProvider';
 import { TriggerType } from '../../../src/models/AnalyzerTypes';
+import { AnalyzerChannel, CaptureSession } from '../../../src/models/CaptureModels';
 
 const DEFAULT_SAMPLES = [
   '00000000000000000000000000000001',
@@ -326,7 +327,46 @@ describe('LACEditorProvider 覆盖率补强', () => {
     });
   });
 
-  describe('executeHostCommand 命令分发', () => {
+describe('executeHostCommand 命令分发', () => {
+  it('startCapture 应把真实采集样本写入返回的 LAC 文档', async () => {
+    const capturedSession = new CaptureSession();
+    capturedSession.frequency = 1000;
+    capturedSession.preTriggerSamples = 0;
+    capturedSession.postTriggerSamples = 2;
+    const channel = new AnalyzerChannel(0, 'D0');
+    channel.samples = new Uint8Array([1, 0]);
+    capturedSession.captureChannels = [channel];
+
+    const device = createMockDevice({
+      startCapture: jest.fn().mockImplementation(
+        async (_session: CaptureSession, handler: (args: { success: boolean; session: CaptureSession }) => void) => {
+          handler({ success: true, session: capturedSession });
+          return 'None';
+        }
+      )
+    });
+    getCurrentDevice.mockReturnValue(device);
+    const provider = createProvider();
+
+    const result = await (provider as any).executeHostCommand(
+      createDocument(),
+      'startCapture',
+      {
+        config: {
+          frequency: 1000,
+          preTriggerSamples: 0,
+          postTriggerSamples: 2,
+          triggerType: 'Edge',
+          triggerChannel: 0,
+          channels: [{ number: 0, name: 'D0', enabled: true }]
+        }
+      }
+    );
+
+    expect(result.success).toBe(true);
+    expect(JSON.parse(result.data.capturedDocument.content).Samples).toEqual(expect.any(Array));
+  });
+
     it('scanForDevices 应委托给 wifiDiscovery.scanForDevices 并透传 record payload', async () => {
       wifiScanForDevices.mockResolvedValue([{ ipAddress: '1.1.1.1' }]);
       const provider = createProvider();

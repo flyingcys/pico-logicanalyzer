@@ -565,11 +565,14 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
 
     const stream = this._currentStream as unknown as {
       unpipe?: (destination?: NodeJS.WritableStream) => void;
+      resume?: () => void;
     };
 
     if (typeof stream?.unpipe === 'function') {
       stream.unpipe(this._lineParser);
       this._lineParserAttached = false;
+      // SerialPort 会在解除最后一个 pipe 后暂停可读流；二进制采集必须主动恢复。
+      stream.resume?.();
     }
   }
 
@@ -960,7 +963,8 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
 
     for (let channelIndex = 0; channelIndex < session.captureChannels.length; channelIndex++) {
       const channel = session.captureChannels[channelIndex];
-      const mask = 1 << channel.channelNumber;
+      // 固件在采集前按请求通道顺序压缩位宽，返回样本 bit 不是物理 channelNumber。
+      const mask = 1 << channelIndex;
 
       channel.samples = new Uint8Array(samples.length);
       for (let sampleIndex = 0; sampleIndex < samples.length; sampleIndex++) {
