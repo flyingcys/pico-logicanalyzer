@@ -27,6 +27,11 @@ jest.mock('vscode', () => ({
   },
   ProgressLocation: {
     Notification: 15
+  },
+  ExtensionMode: {
+    Production: 1,
+    Development: 2,
+    Test: 3
   }
 }), { virtual: true });
 

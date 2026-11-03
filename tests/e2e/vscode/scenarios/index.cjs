@@ -31,4 +31,5 @@ module.exports = [
   require("./common/ui-channel-config.scenario.cjs"),
   require("./common/ui-trigger-config.scenario.cjs"),
   require("./common/ui-export-button.scenario.cjs"),
+  require("./common/ui-decoder.scenario.cjs"),
 ];
