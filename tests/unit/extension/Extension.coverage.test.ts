@@ -33,7 +33,31 @@ jest.mock('vscode', () => ({
     activeTextEditor: undefined as any,
   },
   workspace: {
-    getConfiguration: jest.fn().mockReturnValue({ get: jest.fn().mockReturnValue(true) }),
+    // ⚠️ 两层判据，缺一不可（两条都由变异验证过必须为红）：
+    //
+    // 1. **配置节名**：产品必须读 `logicAnalyzer.network`。
+    //    原实现无条件返回同一对象 ⇒ 产品把节名写成任意字符串都不红。
+    //    实测变异：把 `getConfiguration('logicAnalyzer.network')` 改成 `('logicAnalyzer.WRONG_SECTION')`
+    //    ⇒ 旧实现仍全绿，等于"读哪节"这件事根本没被测。
+    //
+    // 2. **取值**：返回哨兵值（既非 package.json 默认值，也非 src/extension.ts 的兜底常量）。
+    //    原实现把 5000/30/[4045,...]/true 给回去，其中三条与产品兜底常量相同
+    //    ⇒ 产品删掉 `.get()` 直接写常量也全绿。
+    //    实测变异：逐条短路 `.get()` 调用，旧实现 3/4 条漏判，本实现 4/4 抓红。
+    getConfiguration: jest.fn((section?: string) => {
+      if (section !== 'logicAnalyzer.network') {
+        throw new Error(`未预期的配置节: ${String(section)}（产品应只读 logicAnalyzer.network）`);
+      }
+      return {
+        get: jest.fn((key: string, defaultValue?: unknown) => {
+          if (key === 'scanTimeoutMs') return 7777;
+          if (key === 'maxConcurrentConnections') return 17;
+          if (key === 'defaultPorts') return [9999, 8888];
+          if (key === 'enableBroadcastDiscovery') return false;
+          return defaultValue ?? true;
+        }),
+      };
+    }),
     workspaceFolders: [{ uri: { fsPath: '/workspace' } }] as any,
     fs: { writeFile: jest.fn().mockResolvedValue(undefined) },
     openTextDocument: jest.fn(),
@@ -43,6 +67,11 @@ jest.mock('vscode', () => ({
     file: jest.fn((fsPath: string) => ({ fsPath, toString: () => `file://${fsPath}` })),
   },
   ProgressLocation: { Notification: 15 },
+  ExtensionMode: {
+    Production: 1,
+    Development: 2,
+    Test: 3,
+  },
 }), { virtual: true });
 
 jest.mock('../../../src/providers/LACEditorProvider', () => ({
@@ -85,15 +114,22 @@ type VoidAsync = (...args: any[]) => Promise<any>;
 function makeFakeDevice(opts?: {
   stopResult?: boolean;
   startResult?: CaptureError;
-  sendResult?: boolean | Promise<boolean>;
+  sendResult?: boolean | Promise<boolean> | (() => Promise<boolean>);
+  sendError?: Error;
   startImpl?: (session: any, handler: any) => Promise<CaptureError>;
 }) {
+  const sendNetworkConfig = opts?.sendError
+    ? jest.fn().mockRejectedValue(opts.sendError)
+    : typeof opts?.sendResult === 'function'
+      ? jest.fn(opts.sendResult)
+      : jest.fn().mockResolvedValue(opts?.sendResult ?? true);
+
   return {
     stopCapture: jest.fn().mockResolvedValue(opts?.stopResult ?? true),
     startCapture: opts?.startImpl
       ? jest.fn(opts.startImpl)
       : jest.fn().mockResolvedValue(opts?.startResult ?? CaptureError.None),
-    sendNetworkConfig: jest.fn().mockResolvedValue(opts?.sendResult ?? true),
+    sendNetworkConfig,
   };
 }
 
@@ -203,10 +239,13 @@ describe('VSCode Extension 主入口 — 覆盖率补充', () => {
       await handler();
 
       expect(wifi.scanForDevices).toHaveBeenCalledWith(expect.objectContaining({
-        timeout: 5000,
-        concurrency: 30,
+        connectionTimeout: 3000,
+        scanTimeout: 7777,
+        timeoutMs: 7777,
+        concurrency: 17,
+        ports: [9999, 8888],
         deepScan: true,
-        enableBroadcast: true,
+        enableBroadcast: false,
       }));
       // 注入实例应被复用，deactivate 清理时也调用注入实例方法
       expect(wifi.stopScan).not.toHaveBeenCalled();
@@ -458,7 +497,7 @@ describe('VSCode Extension 主入口 — 覆盖率补充', () => {
     });
 
     it('sendNetworkConfig 抛出异常时显示错误消息', async () => {
-      const device = makeFakeDevice({ sendResult: Promise.reject(new Error('硬件错误')) });
+      const device = makeFakeDevice({ sendError: new Error('硬件错误') });
       hardwareDriverManager.getCurrentDevice.mockReturnValue(device);
       driveWiFiInputs({ ssid: 'net', password: 'p', ip: '', port: '4045' });
       activate(context);
