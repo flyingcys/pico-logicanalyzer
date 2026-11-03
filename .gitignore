@@ -141,3 +141,8 @@ pnpm-lock.yaml
 *.lnk
 .fuse_hidden*
 .nfs*
+
+# RecoveryManager 测试运行产物（2026-11-03）
+# 历史上这里是 process.cwd()/.recovery-checkpoints，现已改到 os.tmpdir() 下按实例隔离，
+# 但为防止回退，仍在此忽略。已有的 20 个历史文件已在 D-8 中移除。
+.recovery-checkpoints/
