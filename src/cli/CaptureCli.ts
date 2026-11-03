@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { readFile } from 'fs/promises';
+import * as fs from 'fs';
+import { readFile, stat, readdir, mkdir } from 'fs/promises';
 import * as path from 'path';
 import {
   CliCaptureConfig,
@@ -15,6 +16,8 @@ import {
 import { LogicAnalyzerCliCaptureRunner, MockCliCaptureRunner } from '../tools/CliCaptureRunner';
 import { writeCaptureOutput } from '../tools/CliCaptureExporter';
 import { TriggerType } from '../models/AnalyzerTypes';
+import { LACFileFormat } from '../models/LACFileFormat';
+import { DataExportService, ExportOptions } from '../services/DataExportService';
 
 export interface CliIo {
   stdout: (line: string) => void;
@@ -29,6 +32,7 @@ export interface CliDeps {
 const EXIT_USAGE = 2;
 const EXIT_CAPTURE_FAILED = 3;
 const EXIT_BATCH_FAILED = 4;
+const EXIT_EXPORT_FAILED = 5;
 
 const defaultIo: CliIo = {
   stdout: line => process.stdout.write(`${line}\n`),
@@ -190,6 +194,17 @@ export function createProgram(io: CliIo = defaultIo, deps: CliDeps = {}): Comman
       io.stdout(`已写出采集配置: ${options.file}`);
     });
 
+  program
+    .command('export <files...>')
+    .description('将一个或多个 .lac 采集文件批量导出为 csv、json、vcd 或 lac 格式')
+    .option('-f, --format <format>', '导出目标格式: csv, json, vcd, lac', 'csv')
+    .option('-o, --output <path>', '指定单个输出文件路径（仅单文件输入时有效）')
+    .option('--out-dir <dir>', '指定输出目录（单文件或批量导出均有效）')
+    .option('--channels <list>', '指定导出的通道列表，例如 0,1,2 或 0-3')
+    .action(async (files: string[], options: any) => {
+      await executeExportCommand(files, options, io);
+    });
+
   return program;
 }
 
@@ -341,4 +356,125 @@ function commanderError(message: string, exitCode: number): Error {
   const error = new Error(message) as Error & { exitCode: number };
   error.exitCode = exitCode;
   return error;
+}
+
+async function executeExportCommand(files: string[], options: any, io: CliIo): Promise<void> {
+  const format = String(options.format || 'csv').toLowerCase();
+  const supportedFormats = ['csv', 'json', 'vcd', 'lac'];
+  if (!supportedFormats.includes(format)) {
+    throw commanderError(`不支持的导出格式 "${format}"。支持的格式: ${supportedFormats.join(', ')}`, EXIT_USAGE);
+  }
+
+  // 展开通配符或目录（如果是目录，扫描其中的 *.lac 文件）
+  const resolvedFiles: string[] = [];
+  for (const filePattern of files) {
+    if (!fs.existsSync(filePattern)) {
+      throw commanderError(`输入文件或目录不存在: ${filePattern}`, EXIT_EXPORT_FAILED);
+    }
+    const fileStat = await stat(filePattern);
+    if (fileStat.isDirectory()) {
+      const entries = await readdir(filePattern);
+      const lacEntries = entries
+        .filter(e => e.toLowerCase().endsWith('.lac'))
+        .map(e => path.join(filePattern, e));
+      if (lacEntries.length === 0) {
+        io.stderr(`目录中未发现 .lac 文件: ${filePattern}`);
+      }
+      resolvedFiles.push(...lacEntries);
+    } else {
+      resolvedFiles.push(filePattern);
+    }
+  }
+
+  if (resolvedFiles.length === 0) {
+    throw commanderError('未指定任何有效的 .lac 输入文件', EXIT_USAGE);
+  }
+
+  // 互斥校验：多文件输入时禁止使用 -o 指定单一输出文件名
+  if (resolvedFiles.length > 1 && options.output) {
+    throw commanderError('批量导出多个文件时不能使用 -o 指定单一文件名，请使用 --out-dir 指定输出目录', EXIT_USAGE);
+  }
+
+  // 确保输出目录存在
+  if (options.outDir) {
+    await mkdir(options.outDir, { recursive: true });
+  }
+
+  let successCount = 0;
+  const failures: string[] = [];
+  const usedTargetPaths = new Set<string>();
+
+  for (const inputFile of resolvedFiles) {
+    try {
+      let targetPath: string;
+      if (options.output) {
+        targetPath = path.resolve(options.output);
+        const targetDir = path.dirname(targetPath);
+        await mkdir(targetDir, { recursive: true });
+      } else {
+        const outDir = options.outDir ? path.resolve(options.outDir) : path.dirname(path.resolve(inputFile));
+        const baseName = path.basename(inputFile, path.extname(inputFile));
+        let candidatePath = path.join(outDir, `${baseName}.${format}`);
+
+        // 重名防冲突自增处理
+        if (usedTargetPaths.has(candidatePath) || fs.existsSync(candidatePath)) {
+          let counter = 1;
+          while (usedTargetPaths.has(candidatePath) || fs.existsSync(candidatePath)) {
+            candidatePath = path.join(outDir, `${baseName}_${counter}.${format}`);
+            counter++;
+          }
+          io.stdout(`检测到重名冲突，已自动调整为: ${path.basename(candidatePath)}`);
+        }
+        targetPath = candidatePath;
+      }
+
+      usedTargetPaths.add(targetPath);
+
+      // 1. 读取并解析 .lac 文件
+      const loadResult = await LACFileFormat.load(inputFile);
+      if (!loadResult.success || !loadResult.data) {
+        throw new Error(`加载 .lac 文件失败: ${loadResult.error || '文件损坏或格式无效'}`);
+      }
+
+      // 2. 转换 CaptureSession
+      const session = LACFileFormat.convertToCaptureSession(loadResult.data);
+
+      // 3. 驱动 DataExportService 导出
+      const exportService = new DataExportService();
+      await exportService.initialize();
+      try {
+        const exportOptions: ExportOptions = {
+          filename: targetPath,
+          timeRange: 'all',
+          selectedChannels: options.channels ? parseChannelList(options.channels) : undefined
+        };
+
+        const result = await exportService.exportWaveformData(session, format, exportOptions);
+        if (!result.success) {
+          throw new Error(result.error || '未知导出错误');
+        }
+
+        // 双重防御：确认文件真正在磁盘生成
+        if (!fs.existsSync(targetPath)) {
+          throw new Error(`导出报告成功但目标文件未生成: ${targetPath}`);
+        }
+
+        const writtenStat = await stat(targetPath);
+        io.stdout(`[OK] ${inputFile} -> ${targetPath} (${writtenStat.size} 字节)`);
+        successCount++;
+      } finally {
+        await exportService.dispose();
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      io.stderr(`[ERROR] 导出失败 (${inputFile}): ${errMsg}`);
+      failures.push(`${inputFile}: ${errMsg}`);
+    }
+  }
+
+  if (failures.length > 0) {
+    throw commanderError(`导出完成但存在 ${failures.length} 个失败项`, EXIT_EXPORT_FAILED);
+  }
+
+  io.stdout(`全部导出完成: ${successCount}/${resolvedFiles.length} 个文件成功`);
 }
