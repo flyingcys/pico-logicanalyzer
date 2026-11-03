@@ -167,9 +167,10 @@ tests/e2e/vscode/
 
 | 文档 | 内容 |
 |---|---|
-| `docs/test-architecture-2026-11-03.md` | 测试体系总览（jest projects / 各脚本 / 目录约束） |
-| `docs/e2e-coverage-matrix-2026-11-03.md` | 9 个命令 + 能力面的覆盖矩阵，如实标 not_exercised |
-| `docs/e2e-found-product-bugs-2026-11-03.md` | e2e 抓到的 4 个真产品缺陷（含根因行号与修复状态） |
+| `docs/open-decisions-2026-11-03.md` | **待裁定事项汇总**（6 条，含影响面与建议） |
+| `docs/test-architecture-2026-11-03.md` | 测试体系总览（jest projects / 各脚本 / UI 桥架构） |
+| `docs/e2e-coverage-matrix-2026-11-03.md` | 9 个场景（4 命令层 + 5 UI 层）的覆盖矩阵 |
+| `docs/e2e-found-product-bugs-2026-11-03.md` | e2e 抓到的 5 个产品缺陷 + 1 个范围外缺陷 |
 | `docs/test-coverage-gaps-2026-11-03.md` | 删除的测试及**留下的真实覆盖缺口**（不做出无痕） |
 | `docs/bug2-export-command-evaluation-2026-11-03.md` | BUG-2「该不该加导出命令」的三问分析 |
 | `docs/hardware-validation/records/2026-11-03-pico-firmware-build-proven.md` | 固件可构建性证明（烧录待授权） |

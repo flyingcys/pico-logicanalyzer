@@ -93,12 +93,55 @@ CLAUDE.md 硬约束：「所有测试文件都放到项目根目录下的 tests 
 
 ## 五、真宿主 e2e（新增）
 
-详见 `tests/e2e/vscode/README.md`。要点：
+详见 `tests/e2e/vscode/README.md`，覆盖明细见 `docs/e2e-coverage-matrix-2026-11-03.md`。要点：
 
 - 跑**真 VS Code 1.74.3**（钉在 `engines.vscode` 下限）+ `xvfb-run`
 - 每场景独立 `--user-data-dir` / `--extensions-dir`，跑完回收进程与目录
 - 结果四态：`pass` / `fail` / `not_exercised` / `blocked`，**只有全 pass 才 EXIT=0**
-- 4 个场景：`commands-coverage` / `open-analyzer` / `create-synthetic-capture` / `network-scan`
+- **9 个场景**：
+  - 命令层 4 个：`commands-coverage` / `open-analyzer` / `create-synthetic-capture` / `network-scan`
+  - **Webview UI 层 5 个**：`ui-waveform` / `ui-channel-config` / `ui-trigger-config` / `ui-export-button` / `ui-decoder`
+
+### 5.1 Webview UI 驱动桥（本期新增）
+
+**为什么需要**：宿主侧**完全拿不到 webview DOM**（实测）：
+```js
+vscode.Tab.input          → { uri, viewType } 两个字段
+input.webview             → undefined
+Object.getOwnPropertyNames(prototype) → ['constructor']
+```
+
+⇒ 必须加一座 postMessage 桥：
+
+```
+tests/e2e/vscode (宿主侧)
+  → executeCommand('logicAnalyzer.__runEditorScenario', actions, {viewType, uri})
+  → src/scenario/scenarioRegistry.ts   （按 viewType+uri 索引，0/多命中都抛错）
+  → src/scenario/scenarioBridge.ts     （nonce 配对、超时、dispose 中止）
+  → webview.postMessage({type:'scenarioRequest', nonce, actions})
+  → webview 内 scenarioExecutor.ts     （真实 DOM 事件 + 读值 + canvas 像素统计）
+  → 回包 → 宿主断言
+```
+
+**三重门控**（缺一不可）：
+1. `ExtensionMode.Test` 才注册命令（**不写进 `package.json`**，对用户透明）
+2. HTML 注入 `window.__scenarioEnabled`（仅 Test 为 true）
+3. webview 侧校验 `__scenarioEnabled` + nonce；宿主侧校验回包 nonce
+
+**动作集**（`scenarioExecutor.ts`）：
+```
+waitForElement / waitForText / click / input / key / sleep
+readText / readTextOptional / readValue / readValueOptional
+countElements / readAllTexts / readCanvasStats
+startCaptureMessages / stopCaptureMessages
+```
+
+**语义选择器** `formItem:"<label>" [子选择器]`：
+- 为什么不用 `:has()`：Chromium 102 不支持（实测 `is not a valid selector`）
+- 为什么不用 `nth-child`：表单顺序稍变就脆断
+- 为什么不给产品加 `data-testid`：会永久进入用户 DOM
+- **引号必填**，无引号 fail-closed 抛错（否则 `formItem:Pre Samples input` 无法区分
+  「label 是 `Pre Samples`」还是「label 是 `Pre` + 子选择器 `Samples input`」）
 
 ---
 
@@ -110,15 +153,31 @@ Test Suites: 11 failed, 53 passed, 64 total
 Tests:       107 failed, 1757 passed, 1864 total
 ```
 
-**归拢后**（`npx jest`，全量）：
+**归拢后**（`npx jest tests/unit`，2026-11-03 最终复跑）：
 ```
-见 docs/test-coverage-gaps-2026-11-03.md 与最终回归日志
+Test Suites: 1 failed, 92 passed, 93 total
+Tests:       2472 passed, 2472 total          ← 用例 100% 通过
 ```
 
-> ⚠️ **既有失败不在本次范围内**。`LogicAnalyzerDriver.*` / `SessionManager.*` /
-> `MemoryManager.comprehensive` 等 10 个套件本来就红，本次只保证**不劣化**。
-> 它们大多是 mock 与产品实现漂移（如 `fs.copyFile is not a function`），
-> 属于独立的技术债，需要单独排期。
+**唯一的失败套件**：`tests/unit/extension/Extension.coverage.test.ts`
+—— 它是 OUT-1 那个 **Promise 泄漏导致 worker 崩溃**（不是用例断言失败），
+详见 `docs/e2e-found-product-bugs-2026-11-03.md`。
+
+> ⚠️ **这份文档早期版本写过「106 个用例失败」，那个数字已过期**。
+> 原因是：合并远程 master（`834575bc`，39 个提交）时带入了修复
+> （`5a76d992 test: tighten coverage path gates`、
+> `74a83f78 test: fix stale scpiIdn assertions`、
+> `3ca420e3 fix(drivers): idempotent temp dir on capture retry` 等），
+> 把原先的 `LogicAnalyzerDriver.*` / `SessionManager.*` 等失败修掉了。
+>
+> ⇒ **保留这段是为了提醒**：跨会话讨到的历史数字，合并后必须**重新实测**，
+> 不能拿旧数字下结论。
+
+### 6.1 已知的测试基础设施缺陷（范围外）
+
+| 缺陷 | 影响 | 绕法 |
+|---|---|---|
+| `Extension.coverage.test.ts:461` 未捕获的 `Promise.reject` | `npx jest tests/unit/extension` **整个目录跑不了**（worker 崩溃）；全量跑时被 worker 隔离，不影响总结果 | 验证 extension 时**跑单文件**。详见 `docs/e2e-found-product-bugs-2026-11-03.md` OUT-1 |
 
 ---
 
