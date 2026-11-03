@@ -21,6 +21,8 @@ import {
   WEBVIEW_VSCODE_SCRIPT_LIST_PREFIX,
   type WebviewAssetManifest
 } from '../frontend/platform/bootstrap/assetManifest';
+import { registerScenarioWebview } from '../scenario/scenarioRegistry';
+import { abortScenarioRequestsForWebview, completeScenarioRequest } from '../scenario/scenarioBridge';
 
 type HostCommandResult<T = unknown> = {
   success: boolean;
@@ -129,6 +131,22 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
+    // 设置就绪门控 Promise（收到 webview 的 ready 消息后触发）
+    let markReady: (() => void) | undefined;
+    const ready = new Promise<void>(resolve => {
+      markReady = resolve;
+    });
+
+    // 登记进场景注册表（支持 E2E 场景通过 logicAnalyzer.__runEditorScenario 定位并驱动）
+    const unregisterScenario = registerScenarioWebview(
+      {
+        viewType: LACEditorProvider.viewType,
+        uri: document.uri.toString()
+      },
+      webviewPanel.webview,
+      ready
+    );
+
     // 设置webview选项
     webviewPanel.webview.options = {
       enableScripts: true,
@@ -140,8 +158,14 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
 
     // 处理来自webview的消息
     webviewPanel.webview.onDidReceiveMessage(async message => {
+      // 优先由场景测试桥消费（若匹配则无需后续处理）
+      if (completeScenarioRequest(message, webviewPanel.webview)) {
+        return;
+      }
+
       switch (message.type) {
         case 'ready':
+          markReady?.();
           // webview准备就绪，发送初始数据
           await this.sendDocumentToWebview(webviewPanel.webview, document);
           break;
@@ -250,6 +274,11 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
     });
 
     webviewPanel.onDidDispose(() => {
+      unregisterScenario();
+      abortScenarioRequestsForWebview(
+        webviewPanel.webview,
+        'scenario webview was disposed while executing actions'
+      );
       changeDocumentSubscription.dispose();
     });
   }
@@ -315,6 +344,7 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
         // 传递VSCode API给Vue应用
         window.vscode = acquireVsCodeApi();
         window.__FRONTEND_BOOTSTRAP__ = ${bootstrap};
+        window.__scenarioEnabled = ${Boolean(vscode.ExtensionMode && this.context.extensionMode === vscode.ExtensionMode.Test)};
     </script>
 ${webviewScriptTags}
 </body>
@@ -344,10 +374,16 @@ ${webviewScriptTags}
   ): Promise<void> {
     try {
       const lacData = this.parseLACFile(document.getText());
+      const documentPayload = {
+        uri: document.uri.toString(),
+        fileName: path.basename(document.uri.fsPath),
+        content: document.getText(),
+        ...lacData
+      };
       try {
         await webview.postMessage({
           type: 'documentUpdate',
-          data: lacData
+          data: documentPayload
         });
       } catch (postError) {
         console.error('发送文档更新消息失败:', postError);

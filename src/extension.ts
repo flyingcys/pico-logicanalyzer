@@ -11,6 +11,8 @@ import {
   SignalDescriptionLanguage,
   SignalDslParseError
 } from './services/SignalDescriptionLanguage';
+import { resolveScenarioWebview } from './scenario/scenarioRegistry';
+import { postScenarioRequest } from './scenario/scenarioBridge';
 
 interface CaptureWorkflowChannel {
   number: number;
@@ -517,6 +519,52 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
     configureWiFiCommand,
     createSyntheticCaptureCommand
   );
+
+  // ⭐ UI 真机测试：仅在 Test 模式下注册场景驱动命令
+  // 门控 1：发布版 (Production) 与开发版 (Development) 绝不注册此命令
+  // 刻意不在 package.json 中声明，避免暴露给普通用户与污染命令面板
+  if (context.extensionMode === vscode.ExtensionMode.Test) {
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        'logicAnalyzer.__runEditorScenario',
+        async (actions: unknown, target?: unknown) => {
+          if (!Array.isArray(actions)) {
+            throw new Error('__runEditorScenario: actions must be an array');
+          }
+
+          const parsedTarget =
+            target !== null && typeof target === 'object'
+              ? {
+                  viewType: String((target as { viewType?: unknown }).viewType ?? ''),
+                  ...((target as { uri?: unknown }).uri !== undefined
+                    ? { uri: String((target as { uri?: unknown }).uri) }
+                    : {})
+                }
+              : undefined;
+
+          const { webview, ready } = resolveScenarioWebview(parsedTarget);
+
+          // 等待目标面板挂载完成（带 15s 明确超时）
+          await Promise.race([
+            ready,
+            new Promise<void>((_, reject) =>
+              setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      'target scenario webview ready timeout (15000ms) — webview failed to mount or send ready message'
+                    )
+                  ),
+                15000
+              )
+            )
+          ]);
+
+          return postScenarioRequest(webview, actions);
+        }
+      )
+    );
+  }
 
   console.log('VSCode Logic Analyzer插件激活完成');
 }

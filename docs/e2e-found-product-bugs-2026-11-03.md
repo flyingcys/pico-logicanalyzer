@@ -11,6 +11,7 @@
 | [BUG-2](#bug-2数据导出没有-vs-code-命令入口) | 数据导出没有 VS Code 命令入口 | Minor | ✅ **已解决**（改加 CLI `export` 子命令） |
 | [BUG-3](#bug-3udp-广播发现对官方固件是死路插件发了固件不答) | UDP 广播发现对官方固件无效；且固件端口由用户配置、无默认值 | Important | ⏸ 待用户裁定（4 个方案） |
 | [BUG-4](#bug-4webview-传的-timeoutms-与服务的-timeout-字段名对不上静默失效) | webview 传的 `timeoutMs` 与服务的 `timeout` 字段名对不上，静默失效 | Important | ✅ **已修**（变异验证） |
+| ~~BUG-5~~ | ~~Uint8Array 序列化丢样本~~ | — | ❌ **已撤销**（我误判，见下文；`applyDocument` 从 `content` 重新 parse，不读那个字段） |
 
 > **状态口径**：「已修」= 有变异验证证明改坏会红；「待裁定」= 需要用户决定是否做、怎么做。
 > 未提交的修复也算「已修」，但会在提交后补 commit 号。
@@ -325,6 +326,54 @@ src/services/WiFiDeviceDiscovery.ts
 > 所以命令路径永远走 `scanTimeout`，兼容分支不执行。而真正需要兼容的 webview 通道
 > 在宿主侧不可达（README §5.2）。⇒ 这条的**唯一观测面是 unit 测试**，
 > `network-scan` 场景里已如实登记为 `not_exercised` 并点名承接方。
+
+## BUG-5（**已撤销 —— 我判断错了**）
+
+> 2026-11-03：我一度把「UI e2e 里 L2 显示 0 samples」归因为
+> 「`Uint8Array` 经 postMessage 序列化成对象，前端 `normalizeSampleArray` 认不出」。
+>
+> **重新核实后，这个判断不成立。**
+
+### 为什么撤销
+
+前端 `sessionStore.applyDocument`（`sessionStore.ts:333-344`）**根本不读那个 `captureChannels`**：
+
+```ts
+applyDocument(document?: FrontendDocumentData) {
+  const fileName = document?.fileName ?? '';
+  if (!document?.content) { ... return; }
+
+  const rootPayload = readRootPayload(document.content);   // ← 从 content 重新 parse
+  if (!rootPayload) { ... return; }
+
+  const sessionPayload = readSessionPayload(rootPayload);   // ← 用重新 parse 的结果
+  ...
+}
+```
+
+⇒ **`document.content`（原始 JSON 文本）是权威来源**，
+`documentPayload` 里那个已损坏的 `...lacData`（含 `Uint8Array` 序列化后的对象）**从未被使用**。
+
+### 那 L2「0 samples」是什么
+
+是我**加诊断动作之前**的一次跑（`/tmp/ui-l12.log`）。那次我为了二分定位崩溃点，
+把 L3 的 `readCanvasStats` 移除了，同时也导致了别的问题。
+**移除诊断动作、干净重跑后，L2 稳定通过（4 samples），3 次复现全绿。**
+
+⇒ **那次 L2 红是我自己的调试态引入的，不是产品缺陷。**
+
+### 从这次学到的
+
+| 我的错误 | 教训 |
+|---|---|
+| 看到"现象"（samples 传对象）就编出"根因"（前端认不出），**没验证调用链** | 读码推理 ≠ 实证。必须跟到**实际使用点** |
+| 没看到 `applyDocument` 第一行就重新 `JSON.parse(content)` | 查证要**从入口开始读**，不能从中间某处推测 |
+| 差点让 05 去修一个不存在的 bug | **错误的 bug 报告比没有更糟** —— 会浪费对方时间且污染文档 |
+
+### 保留这个条目的理由
+
+按「不做出无痕」纪律：**「一度以为有、核实后没有」也要留痕**，
+否则我下次遇到同样的现象会再走一遍同样的错误推理。
 
 ## 记录规则
 

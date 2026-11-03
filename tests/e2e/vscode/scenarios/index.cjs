@@ -27,4 +27,5 @@ module.exports = [
   require("./common/open-analyzer.scenario.cjs"),
   require("./common/create-synthetic-capture.scenario.cjs"),
   require("./common/network-scan.scenario.cjs"),
+  require("./common/ui-waveform.scenario.cjs"),
 ];

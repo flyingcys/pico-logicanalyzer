@@ -99,10 +99,33 @@ module.exports = {
     }
 
     // ---- 3. 反向：本扩展前缀的命令，manifest 里必须有 ----
-    // 防"注册了影子命令"（extension.ts 加了一条但忘写 manifest ⇒ 用户看不到、e2e 也不该认为它存在）
+    //
+    // 防"注册了影子命令"（extension.ts 加了一条但忘写 manifest ⇒ 用户看不到）。
+    //
+    // ⚠️ **必须排除 VS Code 自动生成的命令**（2026-11-03 踩到）：
+    //    只要 `contributes.viewsContainers.activitybar` 里声明了容器 id `logicAnalyzer`，
+    //    VS Code 就自动生成 4 条：
+    //      logicAnalyzer.launcher.focus / .resetViewLocation / .toggleVisibility / .removeView
+    //    它们**不需要也不该**写进 `contributes.commands`。
+    //    不排除的话，一加 Activity Bar 入口这条判据就假红（实际抓到的不是缺陷）。
+    //
+    // ⚠️ **另一处必须排除：`__` 前缀的内部测试命令**（2026-11-03 踩到）：
+    //    `logicAnalyzer.__runEditorScenario` 只在 `ExtensionMode.Test` 下注册，
+    //    **刻意不写进 `contributes.commands`** —— 否则用户能在命令面板看到它。
+    //    这条是有意为之的「对用户透明」，不是"忘写 manifest"。
+    //    不排除的话，加了 UI e2e 桥这条判据就假红。
+    //
+    // 判据：排除 `.launcher.` 自动命令 与 `__` 内部命令后，剩余的都必须在 manifest 里声明。
     const declaredSet = new Set(declaredCommands);
+    const isInternalTestCommand = cmd => cmd.startsWith(`${DECLARED_PREFIX}__`);
     const shadow = registered.filter(
-      cmd => cmd.startsWith(DECLARED_PREFIX) && !declaredSet.has(cmd)
+      cmd =>
+        cmd.startsWith(DECLARED_PREFIX) &&
+        !declaredSet.has(cmd) &&
+        // ⚠️ `__` 前缀 = 内部测试桥，刻意不声明（见上）
+        !isInternalTestCommand(cmd) &&
+        // VS Code 为 viewsContainers 自动生成的命令，不是本扩展注册的
+        !/\.launcher\.(focus|resetViewLocation|toggleVisibility|removeView)$/.test(cmd)
     );
     if (shadow.length > 0) {
       oracles.record(
@@ -111,7 +134,7 @@ module.exports = {
         `注册了但 manifest 没声明：${shadow.join(", ")} —— 用户看不到这些命令`
       );
     } else {
-      oracles.record("no-shadow-commands", "pass", "无影子命令");
+      oracles.record("no-shadow-commands", "pass", "无影子命令（已排除 viewsContainers 自动生成的 launcher.*）");
     }
 
     // ---- 4. 接线存活：调一个无副作用路径的命令，确认不抛 command not found ----

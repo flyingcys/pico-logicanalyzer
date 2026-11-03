@@ -58,6 +58,12 @@ const resultDir = join(e2eRoot, "artifacts", "latest");
  */
 const VSCODE_VERSION = "1.74.3";
 
+/**
+ * Chromium 在 xvfb 下偶发的 GPU/网络进程崩溃（实测 `code: 15`）不是判据失败，
+ * 允许重试。**只对基础设施崩溃重试，逻辑失败绝不重试**（那会把真失败洗成概率性通过）。
+ */
+const MAX_INFRA_RETRIES = 2;
+
 function parseArgs(argv) {
   const options = { scenarioIds: [], list: false, keepProfile: false, allowIncomplete: false };
   for (let i = 0; i < argv.length; i += 1) {
@@ -127,53 +133,111 @@ async function main() {
   const summary = [];
 
   for (const scenario of selected) {
-    const profileDir = createProfileDir();
-    const resultPath = join(profileDir, "host-result.json");
-    const workspaceDir = join(profileDir, "workspace");
+    let profileDir = createProfileDir();
+    let resultPath = join(profileDir, "host-result.json");
+    let workspaceDir = join(profileDir, "workspace");
     mkdirSync(workspaceDir, { recursive: true });
 
     console.log(`\n▶ 场景 ${scenario.id} —— ${scenario.title || ""}`);
 
-    let launchError = null;
-    try {
-      await runTests({
-        version: VSCODE_VERSION,
-        extensionDevelopmentPath: repoRoot,
-        extensionTestsPath: hostDriverPath,
-        extensionTestsEnv: {
-          LA_E2E_SCENARIO: scenario.id,
-          LA_E2E_RESULT: resultPath,
-          LA_E2E_WORKSPACE: workspaceDir,
-          LA_E2E_DECLARED_COMMANDS: JSON.stringify(declaredCommands),
-          LA_E2E_COMMIT: process.env.LA_E2E_COMMIT || "unknown",
-        },
-        launchArgs: [
-          workspaceDir,
-          `--user-data-dir=${join(profileDir, "user-data")}`,
-          `--extensions-dir=${join(profileDir, "extensions")}`,
-          "--no-sandbox",
-          "--disable-gpu",
-          "--skip-welcome",
-          "--skip-release-notes",
-          "--disable-workspace-trust",
-        ],
-      });
-    } catch (error) {
-      launchError = error;
+    /**
+     * 跑一次真宿主。返回 `{ launchError, hostResult }`。
+     *
+     * ⚠️ 抽成函数是为了**基础设施崩溃时重试**（见下方 `isInfraCrash`）。
+     * 每次重试**必须用全新的 profile** —— 复用一个被崩溃污染的 profile
+     * 会让失败以另一种形态出现，掩盖真因。
+     */
+    async function attemptRun(targetProfileDir, targetResultPath, targetWorkspaceDir) {
+      let runError = null;
+      try {
+        await runTests({
+          version: VSCODE_VERSION,
+          extensionDevelopmentPath: repoRoot,
+          extensionTestsPath: hostDriverPath,
+          extensionTestsEnv: {
+            LA_E2E_SCENARIO: scenario.id,
+            LA_E2E_RESULT: targetResultPath,
+            LA_E2E_WORKSPACE: targetWorkspaceDir,
+            LA_E2E_DECLARED_COMMANDS: JSON.stringify(declaredCommands),
+            LA_E2E_COMMIT: process.env.LA_E2E_COMMIT || "unknown",
+          },
+          launchArgs: [
+            targetWorkspaceDir,
+            `--user-data-dir=${join(targetProfileDir, "user-data")}`,
+            `--extensions-dir=${join(targetProfileDir, "extensions")}`,
+            "--no-sandbox",
+            "--disable-gpu",
+            "--skip-welcome",
+            "--skip-release-notes",
+            "--disable-workspace-trust",
+          ],
+        });
+      } catch (error) {
+        runError = error;
+      }
+      let parsed = null;
+      if (existsSync(targetResultPath)) {
+        try {
+          parsed = JSON.parse(readFileSync(targetResultPath, "utf8"));
+        } catch (error) {
+          parsed = {
+            overall: "fail",
+            oracles: [],
+            hostError: `结果 JSON 不可解析：${error.message}`,
+          };
+        }
+      }
+      return { launchError: runError, hostResult: parsed };
     }
 
-    let hostResult = null;
-    if (existsSync(resultPath)) {
-      try {
-        hostResult = JSON.parse(readFileSync(resultPath, "utf8"));
-      } catch (error) {
-        hostResult = {
-          overall: "fail",
-          oracles: [],
-          hostError: `结果 JSON 不可解析：${error.message}`,
-        };
-      }
+    /** 这次失败「可能只是基础设施崩了」吗？ */
+    function isInfraCrash(runResult) {
+      if (!runResult.launchError) return false;
+      const message = String(runResult.launchError.message || runResult.launchError);
+      // Chromium 在 xvfb 下偶发的 GPU/网络进程崩溃（实测 code 15）
+      const looksLikeCrash = /code:\s*15|renderer process gone|GPU process exited|Network service crashed|Test run failed with code/i.test(
+        message
+      );
+      if (!looksLikeCrash) return false;
+      /**
+       * ⚠️ **只在 oracle 没有任何 fail 时才重试**。
+       *
+       * 如果 oracle 里已经有 fail，那说明场景真的跑到了、断言真的失败了 ——
+       * 重试只会把真实失败洗成概率性通过。**那是同一种假绿。**
+       */
+      const oracles = (runResult.hostResult && runResult.hostResult.oracles) || [];
+      return !oracles.some(o => o.status === "fail");
     }
+
+    let attempt = await attemptRun(profileDir, resultPath, workspaceDir);
+    let retriedForInfraCrash = 0;
+    let retryProfileDir = profileDir;
+    let retryResultPath = resultPath;
+    let retryWorkspaceDir = workspaceDir;
+    while (retriedForInfraCrash < MAX_INFRA_RETRIES && isInfraCrash(attempt)) {
+      retriedForInfraCrash += 1;
+      console.warn(
+        `  ⚠️ 检测到 Chromium 基础设施崩溃（非判据失败），重试 ${retriedForInfraCrash}/${MAX_INFRA_RETRIES}`
+      );
+      // 全新 profile，不复用被污染的
+      reapProfileProcesses(profileDir);
+      removeProfileDir(profileDir);
+      retryProfileDir = createProfileDir();
+      retryResultPath = join(retryProfileDir, "host-result.json");
+      retryWorkspaceDir = join(retryProfileDir, "workspace");
+      mkdirSync(retryWorkspaceDir, { recursive: true });
+      attempt = await attemptRun(retryProfileDir, retryResultPath, retryWorkspaceDir);
+    }
+    if (retriedForInfraCrash > 0) {
+      // 重试后的 profile 才是最终那个
+      reapProfileProcesses(profileDir);
+      removeProfileDir(profileDir);
+      profileDir = retryProfileDir;
+      resultPath = retryResultPath;
+      workspaceDir = retryWorkspaceDir;
+    }
+    const launchError = attempt.launchError;
+    const hostResult = attempt.hostResult;
 
     const reaped = reapProfileProcesses(profileDir);
     let profileRemoved = false;
