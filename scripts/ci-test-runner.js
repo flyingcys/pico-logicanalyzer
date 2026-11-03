@@ -40,9 +40,12 @@ const CI_CONFIG = {
     'tests/performance/benchmarks/LogicAnalyzerDriver.perf.test.ts',     // P2.2: 驱动性能基准
     'tests/performance/benchmarks/LACFileFormat.perf.test.ts'            // P2.2: 文件格式性能基准
   ],
-  e2eTests: [
-    'tests/e2e/scenarios/DataCaptureWorkflow.e2e.test.ts'               // P2.3: 端到端工作流测试
-  ],
+  // ⚠️ 2026-11-03：旧的 `tests/e2e/scenarios/DataCaptureWorkflow.e2e.test.ts` 已删除。
+  // 它是**假 e2e**（mock vscode + 自己 fs.writeFile 造假产物 + 调的 3 个命令 ID 在
+  // package.json 里都不存在）。真正的 e2e 是 `tests/e2e/vscode/`（真宿主），
+  // 但它**不走 jest**（外进程启动真 VS Code，见 tests/e2e/vscode/README.md §六）。
+  // ⇒ 本 CI 分层里 e2eTests 保持为空数组，由 `npm run test:e2e` 单独执行。
+  e2eTests: [],
   stressTests: [
     'tests/stress/load/LargeDataProcessing.stress.test.ts',            // P2.3: 大数据处理压力测试
     'tests/stress/load/IntelligentLoadGeneration.stress.test.ts',      // P2.3: 智能负载生成压力测试
@@ -363,10 +366,32 @@ function runPerformanceTests() {
 // 运行E2E测试 - P2.3新增
 function runE2ETests() {
   console.log('\n🎬 开始运行E2E测试...');
-  
+
+  /**
+   * ⚠️ **空清单不能返回 allPassed: true**（2026-11-03）。
+   *
+   * 假 e2e 被删除后 `e2eTests` 是空数组。原来的实现会让空循环直接
+   * `return { allPassed: true }` ⇒ 分层运行器把「一条 e2e 都没跑」
+   * 报成「e2e 通过」—— 那正是「全 skip 也算 EXIT=0」的形态。
+   *
+   * 真 e2e 是 `tests/e2e/vscode/`（真宿主，**不走 jest**），
+   * 由 `npm run test:e2e` 单独执行。所以这里必须**显式说明**"本次未运行"，
+   * 并用 `skipped: true` 让它与「跑了并通过」在结果里可区分。
+   */
+  if (CI_CONFIG.e2eTests.length === 0) {
+    console.log('⚠️ CI_CONFIG.e2eTests 为空 —— 本层未运行任何 e2e。');
+    console.log('   真宿主 e2e 请用 `npm run test:e2e`（它不在 jest 内，见 tests/e2e/vscode/README.md §六）。');
+    return {
+      allPassed: true,
+      skipped: true,
+      skippedReason: 'e2eTests 清单为空；真宿主 e2e 由 npm run test:e2e 单独执行，不在 jest 分层内',
+      results: []
+    };
+  }
+
   const results = [];
   let allPassed = true;
-  
+
   for (const testFile of CI_CONFIG.e2eTests) {
     // 检查测试文件是否存在
     if (!fs.existsSync(testFile)) {
@@ -755,6 +780,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  CI_CONFIG,
   runCoreTests,
   checkEnvironment,
   installDependencies,

@@ -17,7 +17,7 @@ import {
   TriggerDelays,
   CaptureRequest,
   NetConfig
-} from '../AnalyzerTypes';
+} from '../../../../src/drivers/types/AnalyzerTypes';
 
 describe('AnalyzerTypes', () => {
   describe('AnalyzerChannel', () => {
@@ -281,20 +281,20 @@ describe('AnalyzerTypes', () => {
     it('should clone session with burst data', () => {
       const original = new CaptureSession();
       original.frequency = 24000000;
-      
+
       // 添加突发信息
       const burst1 = new BurstInfo();
       burst1.burstSampleStart = 100;
       burst1.burstSampleEnd = 200;
       burst1.burstSampleGap = 50n;
       burst1.burstTimeGap = 1000n;
-      
+
       const burst2 = new BurstInfo();
       burst2.burstSampleStart = 300;
       burst2.burstSampleEnd = 400;
       burst2.burstSampleGap = 25n;
       burst2.burstTimeGap = 500n;
-      
+
       original.bursts = [burst1, burst2];
 
       const cloned = original.clone();
@@ -356,7 +356,7 @@ describe('AnalyzerTypes', () => {
 
       // 验证序列化的数据不为空且包含预期的结构体数据
       expect(serialized.length).toBeGreaterThan(4); // 至少包含协议头尾
-      
+
       // 验证协议头尾
       expect(serialized[0]).toBe(0x55);
       expect(serialized[1]).toBe(0xaa);
@@ -378,8 +378,8 @@ describe('AnalyzerTypes', () => {
 
       // 验证序列化的数据不为空
       expect(serialized.length).toBeGreaterThan(4);
-      
-      // 验证协议头尾  
+
+      // 验证协议头尾
       expect(serialized[0]).toBe(0x55);
       expect(serialized[1]).toBe(0xaa);
       expect(serialized[serialized.length - 2]).toBe(0xaa);
@@ -397,7 +397,7 @@ describe('AnalyzerTypes', () => {
 
       // 这应该不会抛出异常，长字符串应该被截断
       expect(() => packet.addStruct(netConfig)).not.toThrow();
-      
+
       const serialized = packet.serialize();
       expect(serialized.length).toBeGreaterThan(4);
     });
@@ -464,7 +464,7 @@ describe('AnalyzerTypes', () => {
       const limits16 = driver.getLimits([0, 8]);
       expect(limits16.maxPostSamples).toBe(12000 - 2);
 
-      // 24通道模式  
+      // 24通道模式
       const limits24 = driver.getLimits([0, 16]);
       expect(limits24.maxPostSamples).toBe(6000 - 2);
     });
@@ -484,7 +484,7 @@ describe('AnalyzerTypes', () => {
     it('should handle tag property', () => {
       const driver = new TestAnalyzerDriver();
       const testTag = { customData: 'test' };
-      
+
       driver.tag = testTag;
       expect(driver.tag).toBe(testTag);
     });
@@ -502,7 +502,7 @@ describe('AnalyzerTypes', () => {
     it('should dispose correctly', () => {
       const driver = new TestAnalyzerDriver();
       const removeAllListenersSpy = jest.spyOn(driver, 'removeAllListeners');
-      
+
       driver.dispose();
       expect(removeAllListenersSpy).toHaveBeenCalled();
     });
@@ -520,7 +520,7 @@ describe('AnalyzerTypes', () => {
 
     it('should handle BurstInfo edge time cases', () => {
       const burst = new BurstInfo();
-      
+
       // 边界情况：999ns (应该显示为ns)
       burst.burstTimeGap = 999n;
       expect(burst.getTime()).toBe('999 ns');

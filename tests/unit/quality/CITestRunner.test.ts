@@ -52,11 +52,20 @@ describe('CI 测试运行器配置', () => {
 
   it('应该完成 CI 覆盖测试的旧 utest mock 引用迁移', () => {
     const repoRoot = path.resolve(__dirname, '../../..');
+    /**
+     * ⚠️ 这份清单是**手工挑的子集**（只含"确实 import 了 simple-mocks 的文件"），
+     * 不是 `CI_CONFIG` 的镜像 —— 后者含 coreTests 那批不 import mock 的文件，
+     * 一起拉进来会让 `toContain(新路径)` 必然失败。
+     *
+     * 2026-11-03：原清单里的 `tests/e2e/scenarios/DataCaptureWorkflow.e2e.test.ts`
+     * 已删除（那是假 e2e：mock vscode + 自己 fs.writeFile 造假产物 + 命令 ID 全不存在）。
+     * 真正的 e2e 在 `tests/e2e/vscode/`，**不走 jest**，故不在本清单。
+     * 其余 7 个文件保持不变。
+     */
     const ciCoveredFiles = [
       'tests/integration/core-flows/hardware-capture.integration.test.ts',
       'tests/performance/benchmarks/LogicAnalyzerDriver.perf.test.ts',
       'tests/performance/benchmarks/LACFileFormat.perf.test.ts',
-      'tests/e2e/scenarios/DataCaptureWorkflow.e2e.test.ts',
       'tests/stress/load/LargeDataProcessing.stress.test.ts',
       'tests/stress/load/IntelligentLoadGeneration.stress.test.ts',
       'tests/stress/data-processing/scenarios/MemoryLeakDetection.stress.test.ts',
@@ -64,6 +73,12 @@ describe('CI 测试运行器配置', () => {
     ];
 
     for (const file of ciCoveredFiles) {
+      // ⚠️ 先断存在性：清单指向不存在的文件时，应报"文件不存在"（指向明确），
+      //    而不是在 readFileSync 里抛 ENOENT（归因指向不明）。
+      expect({ file, exists: fs.existsSync(path.join(repoRoot, file)) }).toEqual({
+        file,
+        exists: true
+      });
       const content = fs.readFileSync(path.join(repoRoot, file), 'utf8');
       expect(content).not.toContain('utest/mocks/simple-mocks');
       expect(content).toContain('tests/fixtures/mocks/simple-mocks');
