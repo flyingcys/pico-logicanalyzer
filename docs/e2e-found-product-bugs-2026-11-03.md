@@ -375,6 +375,44 @@ applyDocument(document?: FrontendDocumentData) {
 按「不做出无痕」纪律：**「一度以为有、核实后没有」也要留痕**，
 否则我下次遇到同样的现象会再走一遍同样的错误推理。
 
+## 范围外发现（既有缺陷，不阻塞本轮）
+
+以下是在本轮工作中顺带发现、但**不属于本轮范围**的既有问题。
+按纪律单列，由用户决定是否处理。
+
+### OUT-1：`Extension.coverage.test.ts` 未捕获的 Promise.reject 让 jest 进程崩溃
+
+| 字段 | 内容 |
+|---|---|
+| 发现时间 | 2026-11-03（第 4.4 步追查 `ExtensionMode` mock 时） |
+| 严重度 | **Important**（让整个目录的测试不可用） |
+| 引入方 | **既有**：commit `b691af54 test: 补充 P0 核心符号单元测试并修复进度上报 flaky` |
+| 文件 | `tests/unit/extension/Extension.coverage.test.ts:461` |
+
+**现象**：
+```sh
+$ npx jest tests/unit/extension          # 整个目录
+EXIT=1
+
+Extension.coverage.test.ts:379
+  const device = makeFakeDevice({ sendResult: Promise.reject(new Error('硬件错误')) });
+Error: 硬件错误
+  at Extension.coverage.test.ts:461:66
+Node.js v22.20.0                         # ← worker 进程直接崩
+```
+
+**影响**：
+- `npx jest tests/unit/extension` **整个目录跑不了**
+- 单文件跑正常（`npx jest tests/unit/extension/Extension.test.ts` 可过）
+- 全量 `npm test` 时它崩在 worker 里，主进程继续，**不影响总结果**（所以一直没被发现）
+
+**临时绕法**：验证 extension 相关改动时**跑单文件**，不要跑目录。
+
+**修复方向**：给那个 `Promise.reject` 加 `.catch()`，
+或者用 `expect(...).rejects.toThrow()` 正确消费。
+
+---
+
 ## 记录规则
 
 - 每条 bug 修复后：把状态改为「已修（commit `<sha>`）」并补一条变异验证（改回去 → e2e 必须红）
