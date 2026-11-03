@@ -232,7 +232,7 @@
     "clean": "rimraf out dist coverage .jest-cache",
     "typecheck": "tsc --noEmit",
     "typecheck:watch": "tsc --noEmit --watch",
-    "pretest": "npm run build && npm run lint",
+    "pretest": "npm run check:tmp-leaks && npm run build && npm run lint",
     "test": "jest",
     "test:fast": "jest --testPathIgnorePatterns=tests/stress --testPathIgnorePatterns=tests/performance",
     "test:frontend:smoke": "node tests/unit/frontend/webview-browser-smoke.js",
@@ -293,9 +293,10 @@
     "test:ci:quick": "node scripts/ci-test-runner.js --layer=quick",
     "test:ci:standard": "node scripts/ci-test-runner.js --layer=standard",
     "test:ci:full": "node scripts/ci-test-runner.js --layer=full",
-    "validate:local": "npm run typecheck && npm run typecheck:strict && npm run lint && node scripts/ci-test-runner.js --layer=quick --dry-run",
+    "validate:local": "npm run check:tmp-leaks && npm run typecheck && npm run typecheck:strict && npm run lint && node scripts/ci-test-runner.js --layer=quick --dry-run",
     "validate:ci": "npm run typecheck && npm run typecheck:strict && npm run lint && npm run test:ci:quick",
-    "package:dry": "vsce ls --no-dependencies --no-yarn"
+    "package:dry": "vsce ls --no-dependencies --no-yarn",
+    "check:tmp-leaks": "node scripts/check-tmp-leaks.js"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^5.16.0",

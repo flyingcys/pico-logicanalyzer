@@ -16,7 +16,7 @@
  */
 
 const { execFileSync } = require("node:child_process");
-const { existsSync, mkdtempSync, readdirSync, rmSync } = require("node:fs");
+const { existsSync, mkdtempSync, readdirSync, rmSync, statSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 
@@ -129,12 +129,40 @@ function removeProfileDir(profileDir) {
 }
 
 /**
+ * 残留目录的「最小年龄」—— 比它新的**不碰**。
+ *
+ * ## ⚠️ 为什么必须有这个判据（2026-11-03 实测踩到）
+ *
+ * 原实现只按前缀匹配 + 无活进程就删。**并发跑两个 runner 时会互相删**：
+ *
+ * ```
+ * 场景 A 建目录 → 场景 B 启动 → B 的 sweep 看到 A 的目录
+ *              → A 的进程刚 fork、`/proc/<pid>/cmdline` 还没写全
+ *              → 判为"无进程引用" → 删掉 A 正在用的目录
+ *              → A 变红
+ * ```
+ *
+ * 实测复现：并发跑 `ui-waveform` 与 `open-analyzer`，
+ * `open-analyzer` 日志出现「🧹 清理了 1 个历史 profile 残留目录」，
+ * 而 `ui-waveform` 直接 `overall=fail`。
+ *
+ * ⇒ 年龄判据让「刚建出来的」永远不被别人扫掉。
+ * 1 小时是宽松值：正常一次场景几分钟内就结束，1 小时后必定是孤儿。
+ */
+const MIN_STALE_AGE_MS = 60 * 60 * 1000; // 1 小时
+
+/**
  * 扫掉历史残留的 profile 目录。
  *
- * 为什么需要：上一次跑被 Ctrl-C 打断时 `finally` 不一定执行，
+ * 为什么需要：上一次跑被 SIGKILL / 被 Ctrl-C 打断时清理代码执行不到，
  * 残留目录会一直堆在 /tmp。只删前缀匹配的，**不碰别人的目录**。
+ *
+ * 三条判据（缺一不可）：
+ *   1. 名字以 `PROFILE_PREFIX` 开头（不误删别人的）
+ *   2. **年龄 ≥ 1 小时**（不误删正在跑的 —— 见 MIN_STALE_AGE_MS 注释）
+ *   3. 没有活进程引用它的 `--user-data-dir`（真孤儿）
  */
-function sweepStaleProfileDirs() {
+function sweepStaleProfileDirs(now = Date.now()) {
   const removed = [];
   let entries = [];
   try {
@@ -145,6 +173,17 @@ function sweepStaleProfileDirs() {
   for (const name of entries) {
     if (!name.startsWith(PROFILE_PREFIX)) continue;
     const full = join(tmpdir(), name);
+
+    // 判据 2：太新的不碰（可能是并发跑着的另一个 runner）
+    let stat = null;
+    try {
+      stat = statSync(full);
+    } catch {
+      continue; // 刚被别人删了
+    }
+    if (now - stat.mtimeMs < MIN_STALE_AGE_MS) continue;
+
+    // 判据 3：仍有活进程引用 ⇒ 是正在用的，不删
     reapProfileProcesses(full);
     if (removeProfileDir(full)) removed.push(full);
   }
