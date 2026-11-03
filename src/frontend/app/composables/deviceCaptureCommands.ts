@@ -149,8 +149,13 @@ export function createDeviceCaptureCommands({
 
     deviceStore.setCapturing(true);
     try {
+      // VS Code WebView 的 postMessage 不能克隆 Pinia 的响应式代理。
+      const captureConfig = {
+        ...deviceStore.captureConfig,
+        channels: deviceStore.captureConfig.channels.map(channel => ({ ...channel }))
+      };
       const result = await host.sendCommand('startCapture', {
-        config: deviceStore.captureConfig
+        config: captureConfig
       });
       if (!result.success) {
         reportFailure(result, deviceStore, notify, '采集失败');

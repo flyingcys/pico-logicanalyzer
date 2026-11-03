@@ -46,8 +46,8 @@ export abstract class DecoderBase {
   protected registeredOutputs: Map<DecoderOutputType, number> = new Map();
   protected currentState: Map<number, number> = new Map();
   protected lastState: Map<number, number> = new Map();
-  private executionInputs: Map<string, any[]> | null = null;
-  private executionOutputs: Map<string, any[]> = new Map();
+  private executionInputs: Map<string, unknown[]> | null = null;
+  private executionOutputs: Map<string, unknown[]> = new Map();
 
   /**
    * 主解码方法 - 子类必须实现
@@ -375,7 +375,7 @@ export abstract class DecoderBase {
    * 设置解码树执行上下文。
    * DecoderManager 在执行父子分支前注入输入，并在解码后读取输出。
    */
-  public setExecutionContext(inputs: Map<string, any[]> | null): void {
+  public setExecutionContext(inputs: Map<string, unknown[]> | null): void {
     this.executionInputs = inputs;
     this.executionOutputs = new Map();
   }
@@ -391,14 +391,14 @@ export abstract class DecoderBase {
   /**
    * 获取本次解码产生的 typed outputs。
    */
-  public getExecutionOutputs(): Map<string, any[]> {
+  public getExecutionOutputs(): Map<string, unknown[]> {
     return this.executionOutputs;
   }
 
   /**
    * 读取父级解码器输出。
    */
-  protected getInput(inputName: string): any[] | null {
+  protected getInput(inputName: string): unknown[] | null {
     if (!this.executionInputs || !this.executionInputs.has(inputName)) {
       return null;
     }
@@ -409,7 +409,7 @@ export abstract class DecoderBase {
   /**
    * 输出供子级解码器消费的 typed data。
    */
-  protected addOutput(outputName: string, output: any[]): void {
+  protected addOutput(outputName: string, output: unknown[]): void {
     const existing = this.executionOutputs.get(outputName) || [];
     this.executionOutputs.set(outputName, existing.concat(output));
   }

@@ -9,7 +9,9 @@ import {
   ConnectionParams,
   ConnectionResult,
   DeviceStatus,
-  CaptureMode
+  CaptureMode,
+  HardwareCapabilities,
+  TriggerType
 } from '../models/AnalyzerTypes';
 
 /**
@@ -71,7 +73,9 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
   private _isProcessingCommand: boolean = false;
 
   // 定时器资源追踪
-  private _activeTimeouts: Set<NodeJS.Timeout> = new Set();
+  private _activeTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
+  // 采集监控定时器（setInterval），必须在 stop/dispose 路径清理，防止泄漏
+  private _captureMonitorInterval: ReturnType<typeof setInterval> | undefined = undefined;
 
   constructor(connectionString: string) {
     super();
@@ -206,6 +210,9 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
       return true;
     }
 
+    // 停止采集时立即清理监控定时器，防止泄漏
+    this.clearCaptureMonitor();
+
     try {
       // 发送停止命令
       await this.sendSCPICommand('LA:STOP');
@@ -213,7 +220,18 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
       return true;
     } catch (error) {
       console.error('停止Rigol/Siglent采集失败:', error);
+      this._capturing = false;
       return false;
+    }
+  }
+
+  /**
+   * 清理采集监控定时器，防止 setInterval 泄漏
+   */
+  private clearCaptureMonitor(): void {
+    if (this._captureMonitorInterval !== undefined) {
+      clearInterval(this._captureMonitorInterval);
+      this._captureMonitorInterval = undefined;
     }
   }
 
@@ -495,10 +513,10 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
    * 监控采集状态
    */
   private async monitorCaptureStatus(session: CaptureSession): Promise<void> {
-    const checkInterval = setInterval(async () => {
+    this._captureMonitorInterval = setInterval(async () => {
       try {
         if (!this._capturing) {
-          clearInterval(checkInterval);
+          this.clearCaptureMonitor();
           return;
         }
 
@@ -506,11 +524,11 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
         const status = await this.sendSCPICommand('LA:STAT?');
 
         if (status.includes('STOP') || status.includes('0')) {
-          clearInterval(checkInterval);
+          this.clearCaptureMonitor();
           await this.processCaptureResults(session);
         }
       } catch (error) {
-        clearInterval(checkInterval);
+        this.clearCaptureMonitor();
         this.handleCaptureError(session, `监控采集状态失败: ${error}`);
       }
     }, 500); // 每500ms检查一次状态
@@ -518,7 +536,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
     // 设置超时保护
     const timeoutId = setTimeout(() => {
       if (this._capturing) {
-        clearInterval(checkInterval);
+        this.clearCaptureMonitor();
         this.handleCaptureError(session, '采集超时');
       }
       this._activeTimeouts.delete(timeoutId);
@@ -691,7 +709,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
       });
 
     } catch (error) {
-      reject(error);
+      reject(error instanceof Error ? error : new Error(String(error)));
       this._isProcessingCommand = false;
       setTimeout(() => this.processCommandQueue(), 10);
     }
@@ -713,7 +731,7 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
   /**
    * 构建硬件能力描述
    */
-  private buildCapabilities(): any {
+  private buildCapabilities(): HardwareCapabilities {
     return {
       channels: {
         digital: this._channelCount,
@@ -728,22 +746,20 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
         streamingSupport: false
       },
       triggers: {
-        types: [0, 1, 2], // Edge, Pattern, Complex
+        types: [TriggerType.Edge, TriggerType.Complex, TriggerType.Fast],
         maxChannels: this._channelCount,
         patternWidth: 16,
         sequentialSupport: true,
-        conditions: ['rising', 'falling', 'high', 'low', 'change']
+        conditions: ['rising', 'falling', 'high', 'low']
       },
       connectivity: {
         interfaces: ['ethernet', 'usb'],
-        protocols: ['scpi', 'vxi11']
+        protocols: ['scpi']
       },
       features: {
         signalGeneration: false,
         powerSupply: false,
-        voltageMonitoring: false,
-        mathFunctions: true,
-        protocolDecoding: true
+        voltageMonitoring: false
       }
     };
   }
@@ -752,6 +768,9 @@ export class RigolSiglentDriver extends AnalyzerDriverBase {
    * 资源清理
    */
   override dispose(): void {
+    // 清理采集监控定时器
+    this.clearCaptureMonitor();
+
     // 清理所有活跃的定时器
     for (const timeoutId of this._activeTimeouts) {
       clearTimeout(timeoutId);

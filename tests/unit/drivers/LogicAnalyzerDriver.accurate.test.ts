@@ -40,11 +40,11 @@ describe('LogicAnalyzerDriver 精准业务逻辑测试', () => {
   describe('构造函数和初始状态逻辑', () => {
     it('应该正确初始化网络连接字符串', () => {
       driver = new LogicAnalyzerDriver('192.168.1.100:8080');
-      
-      // 构造函数阶段：_isNetwork 默认为 false
-      expect(driver.isNetwork).toBe(false);
-      expect(driver.driverType).toBe(AnalyzerDriverType.Serial);
-      
+
+      // 构造函数阶段基于连接字符串格式识别网络类型（含 ':' 视为网络地址）
+      expect(driver.isNetwork).toBe(true);
+      expect(driver.driverType).toBe(AnalyzerDriverType.Network);
+
       // 初始设备属性应该为默认值
       expect(driver.channelCount).toBe(0);
       expect(driver.maxFrequency).toBe(0);
@@ -78,9 +78,9 @@ describe('LogicAnalyzerDriver 精准业务逻辑测试', () => {
 
       networkPatterns.forEach(pattern => {
         const driver = new LogicAnalyzerDriver(pattern);
-        // connect()被调用前，应该包含":"但isNetwork仍为false
+        // 构造函数阶段基于格式识别：含 ':' 视为网络地址
         expect(pattern.includes(':')).toBe(true);
-        expect(driver.isNetwork).toBe(false); // 构造函数阶段
+        expect(driver.isNetwork).toBe(true); // 构造函数阶段已识别为网络
       });
     });
 
@@ -147,17 +147,17 @@ describe('LogicAnalyzerDriver 精准业务逻辑测试', () => {
 
     it('应该验证通道数组', () => {
       const validateMethod = (driver as any).validateSettings;
-      
-      // 空通道数组在JavaScript中会通过验证（every()对空数组返回true）
+
+      // 空通道列表无意义，应被拒绝
       testSession.captureChannels = [];
       let result = validateMethod.call(driver, testSession, 5000);
-      expect(result).toBe(true); // 基于源码：空数组的every()返回true
-      
+      expect(result).toBe(false);
+
       // 超出范围的通道应该失败
       testSession.captureChannels = [new AnalyzerChannel(24, 'Invalid')]; // >= 24是无效的
       result = validateMethod.call(driver, testSession, 5000);
       expect(result).toBe(false);
-      
+
       // 有效通道范围应该成功
       testSession.captureChannels = [
         new AnalyzerChannel(0, 'CH0'),

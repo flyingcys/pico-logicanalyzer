@@ -1,0 +1,72 @@
+{
+  "id": "checkpoint-1784731527279-1g5vqo8km",
+  "timestamp": 1784731527279,
+  "processedDataMB": 0,
+  "totalDataMB": 102.4,
+  "currentPhase": "loading",
+  "chunkIndex": 0,
+  "processingState": {
+    "chunkManagerStats": {
+      "totalChunks": 0,
+      "memoryChunks": 0,
+      "diskChunks": 0,
+      "totalMemoryUsage": 0,
+      "cacheHitRate": 0,
+      "spillOvers": 0
+    },
+    "progressState": {
+      "phase": "loading",
+      "totalDataMB": 102.4,
+      "processedDataMB": 0,
+      "progressPercent": 0,
+      "elapsedMs": 0,
+      "etaMs": 0,
+      "currentThroughputMBps": 0,
+      "averageThroughputMBps": 0,
+      "milestones": [
+        {
+          "name": "tracking_started",
+          "timestamp": 1784731527279,
+          "dataProcessed": 0,
+          "phase": "loading",
+          "metrics": {
+            "throughputMBps": 0,
+            "averageLatency": 0,
+            "cpuUsage": 0,
+            "memoryUsage": 86.21,
+            "diskIOps": 0,
+            "errorRate": 0
+          },
+          "notes": "开始处理"
+        },
+        {
+          "name": "phase_loading",
+          "timestamp": 1784731527279,
+          "dataProcessed": 0,
+          "phase": "loading",
+          "metrics": {
+            "throughputMBps": 0,
+            "averageLatency": 0,
+            "cpuUsage": 0,
+            "memoryUsage": 86.31,
+            "diskIOps": 0,
+            "errorRate": 0
+          },
+          "notes": "开始数据生成"
+        }
+      ]
+    },
+    "loadGeneratorStats": {
+      "totalGenerated": 0,
+      "averageSize": 0,
+      "peakSize": 0,
+      "generationRate": 0,
+      "memoryEfficiency": 0,
+      "errorRate": 0
+    }
+  },
+  "errorHistory": [],
+  "metadata": {
+    "testName": "GB级连续数据处理压力测试 (0.1GB)"
+  }
+}

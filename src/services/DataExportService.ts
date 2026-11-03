@@ -4,6 +4,7 @@
  * 支持多种格式导出：LAC、CSV、JSON、VCD、TXT、HTML等
  */
 import { CaptureSession, AnalyzerChannel, SampleRegion } from '../models/CaptureModels';
+import { TriggerType } from '../models/AnalyzerTypes';
 import { LACFileFormat } from '../models/LACFileFormat';
 import { DecoderResult } from '../decoders/types';
 import { exportPerformanceOptimizer, PerformanceConfig } from './ExportPerformanceOptimizer';
@@ -184,6 +185,83 @@ class SimpleZipGenerator {
   }
 }
 
+// 分析报告数据 - 导出报告时传入的分析结果（字段灵活，已知字段标注类型）
+export interface AnalysisReportData {
+  totalSamples?: number;
+  sampleRate?: number;
+  duration?: number;
+  activeChannels?: number;
+  avgFrequency?: number;
+  maxFrequency?: number;
+  dataRate?: number;
+  [key: string]: unknown;
+}
+
+// 导出设备信息子集（与硬件 DeviceInfo 解耦，导出元数据只记录可读信息）
+export interface ExportDeviceInfo {
+  name: string;
+  version?: string;
+  serialNumber?: string;
+}
+
+// 数据格式描述信息
+export interface FormatInfo {
+  name: string;
+  description: string;
+  mimeType: string;
+  extension: string;
+}
+
+// JSON 导出单样本结构
+export interface JsonSample {
+  index: number;
+  time: string;
+  channels: Record<number, number>;
+}
+
+// 解码结果导出条目 - 用于 JSON/TXT 导出
+export interface DecoderExportEntry {
+  annotationType?: unknown;
+  startSample: number;
+  endSample: number;
+  duration: number;
+  values?: unknown;
+  startTime?: number;
+  endTime?: number;
+  rawData?: unknown;
+}
+
+// 统一数据转换后的中间结构
+export interface ConvertedData {
+  session?: CaptureSession;
+  decoderResults?: Map<string, DecoderResult[]>;
+  samples?: Uint8Array[];
+  channels?: AnalyzerChannel[];
+  analysisData?: AnalysisReportData;
+  regions?: SampleRegion[] | unknown[];
+  metadata?: ExportMetadata;
+}
+
+// 宽松的会话输入 - 用于从多种来源构造 CaptureSession
+export interface LooseSessionInput {
+  frequency?: number;
+  sampleRate?: number;
+  preTriggerSamples?: number;
+  postTriggerSamples?: number;
+  captureChannels?: AnalyzerChannel[];
+  channels?: AnalyzerChannel[] | unknown[];
+  triggerType?: number;
+  triggerChannel?: number;
+  triggerInverted?: boolean;
+  triggerBitCount?: number;
+  triggerPattern?: number;
+  loopCount?: number;
+  measureBursts?: boolean;
+  settings?: LooseSessionInput;
+  session?: LooseSessionInput;
+  [key: string]: unknown;
+}
+
 // 导出数据类型 - 增强版本，支持多种格式
 export interface ExportedCapture {
   settings: CaptureSession;
@@ -196,19 +274,19 @@ export interface ExportedCapture {
 export interface UnifiedDataInput {
   session?: CaptureSession;
   captureSession?: CaptureSession; // 别名支持
-  data?: any; // 灵活的数据字段
-  samples?: Uint8Array[] | any[]; // 支持多种样本格式
-  channels?: AnalyzerChannel[] | any[]; // 支持多种通道格式
-  decoderResults?: Map<string, DecoderResult[]> | any;
-  analysisData?: any;
-  regions?: SampleRegion[] | any[];
-  metadata?: any;
+  data?: unknown; // 灵活的数据字段
+  samples?: Uint8Array[] | unknown[]; // 支持多种样本格式
+  channels?: AnalyzerChannel[] | unknown[]; // 支持多种通道格式
+  decoderResults?: Map<string, DecoderResult[]> | unknown;
+  analysisData?: AnalysisReportData;
+  regions?: SampleRegion[] | unknown[];
+  metadata?: ExportMetadata;
 }
 
 // 数据格式转换结果
 export interface DataConversionResult {
   success: boolean;
-  data?: any;
+  data?: ConvertedData;
   format: string;
   error?: string;
   warnings?: string[];
@@ -217,7 +295,7 @@ export interface DataConversionResult {
 export interface ExportMetadata {
   version: string;
   timestamp: string;
-  deviceInfo?: any;
+  deviceInfo?: ExportDeviceInfo;
   sampleRate: number;
   totalSamples: number;
   channels: number;
@@ -276,7 +354,7 @@ export interface ExportResult {
 
 export class DataExportService extends ServiceLifecycleBase {
   private performanceOptimizer = exportPerformanceOptimizer;
-  private dataConverters: Map<string, (input: any) => any> = new Map();
+  private dataConverters: Map<string, (input: unknown) => unknown> = new Map();
   private uiStateManager: UIStateManager;
 
   constructor(uiStateManager?: UIStateManager) {
@@ -329,26 +407,28 @@ export class DataExportService extends ServiceLifecycleBase {
    */
   private initializeDataConverters(): void {
     // CaptureSession转换器
-    this.dataConverters.set('captureSession', (input: any) => {
+    this.dataConverters.set('captureSession', (input: unknown) => {
       if (input && typeof input === 'object') {
+        const obj = input as Record<string, unknown>;
         // 如果已经是CaptureSession格式
-        if (input.frequency && input.captureChannels) {
+        if (obj.frequency && obj.captureChannels) {
           return input as CaptureSession;
         }
+        const settings = obj.settings as Record<string, unknown> | undefined;
         // 如果是其他格式，尝试转换
-        if (input.settings && input.settings.frequency) {
-          return input.settings as CaptureSession;
+        if (settings && settings.frequency) {
+          return obj.settings as CaptureSession;
         }
         // 如果是ExportedCapture格式
-        if (input.settings) {
-          return input.settings as CaptureSession;
+        if (obj.settings) {
+          return obj.settings as CaptureSession;
         }
       }
       throw new Error('无法转换为CaptureSession格式');
     });
 
     // 解码结果转换器
-    this.dataConverters.set('decoderResults', (input: any) => {
+    this.dataConverters.set('decoderResults', (input: unknown) => {
       if (input instanceof Map) {
         return input;
       }
@@ -362,33 +442,35 @@ export class DataExportService extends ServiceLifecycleBase {
     });
 
     // 样本数据转换器
-    this.dataConverters.set('samples', (input: any) => {
+    this.dataConverters.set('samples', (input: unknown) => {
       if (Array.isArray(input)) {
         if (input.length > 0 && input[0] instanceof Uint8Array) {
           return input as Uint8Array[];
         }
         // 转换普通数组为Uint8Array
         return input.map(item =>
-          item instanceof Uint8Array ? item : new Uint8Array(item)
+          item instanceof Uint8Array ? item : new Uint8Array(item as ArrayLike<number>)
         );
       }
       return [];
     });
 
     // 通道数据转换器
-    this.dataConverters.set('channels', (input: any) => {
+    this.dataConverters.set('channels', (input: unknown) => {
       if (Array.isArray(input)) {
         return input.map(ch => {
           if (ch instanceof AnalyzerChannel) {
             return ch;
           }
+          const record = ch as Record<string, unknown>;
+          const numberVal = (record.channelNumber ?? record.number ?? 0) as number;
           // 基本转换 - 创建真正的AnalyzerChannel实例
           const channel = new AnalyzerChannel(
-            ch.channelNumber || ch.number || 0,
-            ch.channelName || ch.name || `Channel ${ch.number || 0}`
+            numberVal,
+            (record.channelName ?? record.name ?? `Channel ${numberVal}`) as string
           );
-          channel.hidden = ch.hidden === true;
-          channel.samples = ch.samples || new Uint8Array(0);
+          channel.hidden = record.hidden === true;
+          channel.samples = (record.samples as Uint8Array) || new Uint8Array(0);
           return channel;
         });
       }
@@ -402,34 +484,34 @@ export class DataExportService extends ServiceLifecycleBase {
   convertUnifiedData(input: UnifiedDataInput): DataConversionResult {
     try {
       const warnings: string[] = [];
-      const result: any = {};
+      const result: ConvertedData = {};
 
       // 转换CaptureSession
       const sessionInput = input.session || input.captureSession || input.data;
       if (sessionInput) {
         try {
-          result.session = this.dataConverters.get('captureSession')!(sessionInput);
+          result.session = this.dataConverters.get('captureSession')!(sessionInput) as CaptureSession;
         } catch (error) {
           warnings.push(`CaptureSession转换警告: ${error}`);
           // 创建默认的CaptureSession
-          result.session = this.createDefaultCaptureSession(sessionInput);
+          result.session = this.createDefaultCaptureSession(sessionInput as LooseSessionInput);
         }
       }
 
       // 转换解码结果
       if (input.decoderResults) {
         try {
-          result.decoderResults = this.dataConverters.get('decoderResults')!(input.decoderResults);
+          result.decoderResults = this.dataConverters.get('decoderResults')!(input.decoderResults) as Map<string, DecoderResult[]>;
         } catch (error) {
           warnings.push(`解码结果转换警告: ${error}`);
-          result.decoderResults = new Map();
+          result.decoderResults = new Map<string, DecoderResult[]>();
         }
       }
 
       // 转换样本数据
       if (input.samples) {
         try {
-          result.samples = this.dataConverters.get('samples')!(input.samples);
+          result.samples = this.dataConverters.get('samples')!(input.samples) as Uint8Array[];
         } catch (error) {
           warnings.push(`样本数据转换警告: ${error}`);
           result.samples = [];
@@ -439,7 +521,7 @@ export class DataExportService extends ServiceLifecycleBase {
       // 转换通道数据
       if (input.channels) {
         try {
-          result.channels = this.dataConverters.get('channels')!(input.channels);
+          result.channels = this.dataConverters.get('channels')!(input.channels) as AnalyzerChannel[];
         } catch (error) {
           warnings.push(`通道数据转换警告: ${error}`);
           result.channels = [];
@@ -476,13 +558,13 @@ export class DataExportService extends ServiceLifecycleBase {
   /**
    * 创建默认的CaptureSession
    */
-  private createDefaultCaptureSession(input: any): CaptureSession {
+  private createDefaultCaptureSession(input: LooseSessionInput): CaptureSession {
     const session = new CaptureSession();
     session.frequency = input.frequency || input.sampleRate || 1000000;
     session.preTriggerSamples = input.preTriggerSamples || 1000;
     session.postTriggerSamples = input.postTriggerSamples || 1000;
-    session.captureChannels = input.captureChannels || input.channels || [];
-    session.triggerType = input.triggerType || 0;
+    session.captureChannels = (input.captureChannels || input.channels || []) as AnalyzerChannel[];
+    session.triggerType = (input.triggerType || 0) as TriggerType;
     session.triggerChannel = input.triggerChannel || 0;
     session.triggerInverted = input.triggerInverted || false;
     session.triggerBitCount = input.triggerBitCount || 1;
@@ -496,7 +578,7 @@ export class DataExportService extends ServiceLifecycleBase {
    * 灵活的导出接口 - 支持多种输入格式
    */
   async exportFlexible(
-    input: UnifiedDataInput | CaptureSession | any,
+    input: UnifiedDataInput | CaptureSession,
     format: string,
     options: ExportOptions
   ): Promise<ExportResult> {
@@ -505,22 +587,23 @@ export class DataExportService extends ServiceLifecycleBase {
       let unifiedInput: UnifiedDataInput;
 
       if (input && typeof input === 'object') {
+        const obj = input as Record<string, unknown>;
         // 检测输入类型
-        if (input.frequency && input.captureChannels) {
+        if (obj.frequency && obj.captureChannels) {
           // 这是一个CaptureSession
           unifiedInput = { session: input as CaptureSession };
-        } else if (input.session || input.captureSession) {
+        } else if (obj.session || obj.captureSession) {
           // 这是一个UnifiedDataInput
           unifiedInput = input as UnifiedDataInput;
         } else {
           // 尝试从任意对象中提取数据
           unifiedInput = {
             data: input,
-            session: input.settings || input.session,
-            decoderResults: input.decoderResults,
-            analysisData: input.analysisData,
-            samples: input.samples,
-            channels: input.channels || input.captureChannels
+            session: (obj.settings || obj.session) as CaptureSession | undefined,
+            decoderResults: obj.decoderResults as Map<string, DecoderResult[]> | undefined,
+            analysisData: obj.analysisData as AnalysisReportData | undefined,
+            samples: obj.samples as Uint8Array[] | unknown[] | undefined,
+            channels: (obj.channels || obj.captureChannels) as AnalyzerChannel[] | unknown[] | undefined
           };
         }
       } else {
@@ -547,6 +630,15 @@ export class DataExportService extends ServiceLifecycleBase {
       }
 
       const convertedData = conversionResult.data;
+      if (!convertedData) {
+        return {
+          success: false,
+          filename: options.filename || 'export',
+          mimeType: 'text/plain',
+          size: 0,
+          error: '数据转换失败: 无转换数据'
+        };
+      }
 
       // 使用转换后的数据进行导出
       if (!convertedData.session) {
@@ -589,7 +681,7 @@ export class DataExportService extends ServiceLifecycleBase {
         case 'complete':
           return this.exportCompleteProject(
             convertedData.session,
-            convertedData.decoderResults || new Map(),
+            convertedData.decoderResults || new Map<string, DecoderResult[]>(),
             convertedData.analysisData || {},
             options
           );
@@ -618,33 +710,36 @@ export class DataExportService extends ServiceLifecycleBase {
   /**
    * 检测输入数据格式
    */
-  detectInputFormat(input: any): string {
+  detectInputFormat(input: unknown): string {
     if (!input || typeof input !== 'object') {
       return 'unknown';
     }
 
+    const obj = input as Record<string, unknown>;
+
     // 检测CaptureSession
-    if (input.frequency && input.captureChannels) {
+    if (obj.frequency && obj.captureChannels) {
       return 'captureSession';
     }
 
     // 检测ExportedCapture
-    if (input.settings && input.settings.frequency) {
+    const settings = obj.settings as Record<string, unknown> | undefined;
+    if (obj.settings && settings?.frequency) {
       return 'exportedCapture';
     }
 
     // 检测UnifiedDataInput
-    if (input.session || input.captureSession) {
+    if (obj.session || obj.captureSession) {
       return 'unifiedData';
     }
 
     // 检测解码结果
-    if (input instanceof Map || (input.decoderResults && typeof input.decoderResults === 'object')) {
+    if (input instanceof Map || (obj.decoderResults && typeof obj.decoderResults === 'object')) {
       return 'decoderResults';
     }
 
     // 检测分析数据
-    if (input.analysisData || input.statistics) {
+    if (obj.analysisData || obj.statistics) {
       return 'analysisData';
     }
 
@@ -661,8 +756,8 @@ export class DataExportService extends ServiceLifecycleBase {
   /**
    * 获取格式信息
    */
-  getFormatInfo(format: string): { name: string; description: string; mimeType: string; extension: string } {
-    const formats: Record<string, any> = {
+  getFormatInfo(format: string): FormatInfo {
+    const formats: Record<string, FormatInfo> = {
       lac: { name: 'LAC格式', description: '原生逻辑分析器格式', mimeType: 'application/octet-stream', extension: '.lac' },
       csv: { name: 'CSV格式', description: '逗号分隔值格式，便于Excel处理', mimeType: 'text/csv', extension: '.csv' },
       json: { name: 'JSON格式', description: '结构化数据格式，便于程序处理', mimeType: 'application/json', extension: '.json' },
@@ -694,7 +789,7 @@ export class DataExportService extends ServiceLifecycleBase {
   /**
    * 添加自定义数据转换器
    */
-  addCustomConverter(name: string, converter: (input: any) => any): void {
+  addCustomConverter(name: string, converter: (input: unknown) => unknown): void {
     this.dataConverters.set(name, converter);
   }
 
@@ -715,7 +810,7 @@ export class DataExportService extends ServiceLifecycleBase {
   /**
    * 验证输入数据
    */
-  validateInput(input: any): { valid: boolean; errors: string[]; warnings: string[] } {
+  validateInput(input: unknown): { valid: boolean; errors: string[]; warnings: string[] } {
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -735,7 +830,11 @@ export class DataExportService extends ServiceLifecycleBase {
     }
 
     // 检查CaptureSession的基本要求
-    const session = input.session || input.captureSession || input.settings || input;
+    const obj = input as Record<string, unknown>;
+    const sessionSource = obj.session || obj.captureSession || obj.settings || input;
+    const session = (typeof sessionSource === 'object' && sessionSource !== null)
+      ? sessionSource as Record<string, unknown>
+      : undefined;
     if (session) {
       if (!session.frequency && !session.sampleRate) {
         warnings.push('缺少采样频率信息');
@@ -875,7 +974,7 @@ export class DataExportService extends ServiceLifecycleBase {
    * 导出分析报告
    */
   async exportAnalysisReport(
-    analysisData: any,
+    analysisData: AnalysisReportData,
     format: string,
     options: ExportOptions
   ): Promise<ExportResult> {
@@ -908,7 +1007,7 @@ export class DataExportService extends ServiceLifecycleBase {
   async exportCompleteProject(
     session: CaptureSession,
     decoderResults: Map<string, DecoderResult[]>,
-    analysisData: any,
+    analysisData: AnalysisReportData,
     options: ExportOptions
   ): Promise<ExportResult> {
     try {
@@ -1144,7 +1243,7 @@ export class DataExportService extends ServiceLifecycleBase {
           enabled: true // AnalyzerChannel没有enabled属性，默认都启用
         };
       }),
-      samples: [] as any[],
+      samples: [] as JsonSample[],
       timebase: {
         sampleRate: session.frequency,
         startSample,
@@ -1161,7 +1260,7 @@ export class DataExportService extends ServiceLifecycleBase {
 
     // 分块处理样本数据以提高性能和内存效率
     let processedSamples = 0;
-    const samples: any[] = [];
+    const samples: JsonSample[] = [];
 
     for (let chunkStart = startSample; chunkStart < endSample; chunkStart += chunkSize) {
       // 检查取消信号
@@ -1176,13 +1275,13 @@ export class DataExportService extends ServiceLifecycleBase {
       }
 
       const chunkEnd = Math.min(chunkStart + chunkSize, endSample);
-      const chunkSamples: any[] = [];
+      const chunkSamples: JsonSample[] = [];
 
       for (let sampleIndex = chunkStart; sampleIndex < chunkEnd; sampleIndex++) {
         const sample = {
           index: sampleIndex,
           time: (sampleIndex / session.frequency * 1000).toFixed(6), // 时间以毫秒为单位
-          channels: {} as any
+          channels: {} as Record<number, number>
         };
 
         for (const channelIndex of selectedChannels) {
@@ -1459,19 +1558,19 @@ export class DataExportService extends ServiceLifecycleBase {
         decoders: selectedDecoders,
         includeDetails: options.includeDetails || []
       },
-      results: {} as any
+      results: {} as Record<string, DecoderExportEntry[]>
     };
 
     for (const decoderId of selectedDecoders) {
       const results = decoderResults.get(decoderId) || [];
       exportData.results[decoderId] = results.map(result => {
-        const exportResult = {
+        const exportResult: DecoderExportEntry = {
           annotationType: result.annotationType,
           startSample: result.startSample,
           endSample: result.endSample,
           duration: result.endSample - result.startSample,
           values: result.values
-        } as any;
+        };
 
         if (options.includeDetails?.includes('timestamps')) {
           exportResult.startTime = result.startSample / 1000000; // ns to ms
@@ -1549,7 +1648,7 @@ export class DataExportService extends ServiceLifecycleBase {
   /**
    * 导出分析报告为HTML
    */
-  private async exportReportToHTML(analysisData: any, options: ExportOptions): Promise<ExportResult> {
+  private async exportReportToHTML(analysisData: AnalysisReportData, options: ExportOptions): Promise<ExportResult> {
     const reportSections = options.reportSections || [];
 
     const html = `
@@ -1597,7 +1696,7 @@ export class DataExportService extends ServiceLifecycleBase {
   /**
    * 导出分析报告为Markdown
    */
-  private async exportReportToMarkdown(analysisData: any, options: ExportOptions): Promise<ExportResult> {
+  private async exportReportToMarkdown(analysisData: AnalysisReportData, options: ExportOptions): Promise<ExportResult> {
     const reportSections = options.reportSections || [];
     const lines: string[] = [];
 
@@ -1632,7 +1731,7 @@ export class DataExportService extends ServiceLifecycleBase {
   /**
    * 导出分析报告为PDF（占位实现）
    */
-  private async exportReportToPDF(analysisData: any, options: ExportOptions): Promise<ExportResult> {
+  private async exportReportToPDF(analysisData: AnalysisReportData, options: ExportOptions): Promise<ExportResult> {
     // 这里应该集成PDF生成库，暂时返回占位内容用于测试
     const placeholderPDF = '%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n/Pages 2 0 R\n>>\nendobj\n% PDF导出功能尚未完全实现';
 
@@ -1798,7 +1897,7 @@ export class DataExportService extends ServiceLifecycleBase {
   /**
    * 生成HTML报告的各个部分
    */
-  private generateOverviewSection(analysisData: any): string {
+  private generateOverviewSection(analysisData: AnalysisReportData): string {
     return `
     <div class="section">
         <h2>概览信息</h2>
@@ -1809,7 +1908,7 @@ export class DataExportService extends ServiceLifecycleBase {
     </div>`;
   }
 
-  private generatePerformanceSection(analysisData: any): string {
+  private generatePerformanceSection(analysisData: AnalysisReportData): string {
     return `
     <div class="section">
         <h2>性能分析</h2>
@@ -1818,7 +1917,7 @@ export class DataExportService extends ServiceLifecycleBase {
     </div>`;
   }
 
-  private generateStatisticsSection(analysisData: any): string {
+  private generateStatisticsSection(analysisData: AnalysisReportData): string {
     return `
     <div class="section">
         <h2>统计数据</h2>
@@ -1831,7 +1930,7 @@ export class DataExportService extends ServiceLifecycleBase {
     </div>`;
   }
 
-  private generateRecommendationsSection(analysisData: any): string {
+  private generateRecommendationsSection(analysisData: AnalysisReportData): string {
     return `
     <div class="section">
         <h2>优化建议</h2>
@@ -1843,7 +1942,7 @@ export class DataExportService extends ServiceLifecycleBase {
     </div>`;
   }
 
-  private generateChartsSection(analysisData: any): string {
+  private generateChartsSection(analysisData: AnalysisReportData): string {
     return `
     <div class="section">
         <h2>图表数据</h2>
@@ -1858,7 +1957,7 @@ export class DataExportService extends ServiceLifecycleBase {
   private async exportProjectToZip(
     session: CaptureSession,
     decoderResults: Map<string, DecoderResult[]>,
-    analysisData: any,
+    analysisData: AnalysisReportData,
     options: ExportOptions
   ): Promise<ExportResult> {
     const startTime = Date.now();
@@ -1988,7 +2087,7 @@ Generated with VSCode Logic Analyzer Extension
   private async exportToProjectFile(
     session: CaptureSession,
     decoderResults: Map<string, DecoderResult[]>,
-    analysisData: any,
+    analysisData: AnalysisReportData,
     options: ExportOptions
   ): Promise<ExportResult> {
     const startTime = Date.now();
@@ -2094,7 +2193,7 @@ Generated with VSCode Logic Analyzer Extension
    * 预览导出信息 - 不执行实际导出
    */
   async previewExport(
-    input: UnifiedDataInput | CaptureSession | any,
+    input: UnifiedDataInput | CaptureSession,
     format: string,
     options: Partial<ExportOptions>
   ): Promise<{
@@ -2114,8 +2213,13 @@ Generated with VSCode Logic Analyzer Extension
     let estimatedTime = 0;
 
     try {
+      // 无效输入（null/undefined）无法转换，抛出以触发估算失败警告（保持无效输入识别行为）
+      if (!input) {
+        throw new Error('输入数据为空');
+      }
       const conversionResult = this.convertUnifiedData(
-        typeof input === 'object' && (input.session || input.captureSession)
+        (typeof input === 'object' && input !== null &&
+          ('session' in input || 'captureSession' in input))
           ? input as UnifiedDataInput
           : { data: input }
       );
@@ -2178,7 +2282,7 @@ Generated with VSCode Logic Analyzer Extension
   /**
    * 清理资源
    */
-  async dispose(options?: ServiceDisposeOptions): Promise<boolean> {
+  override async dispose(options?: ServiceDisposeOptions): Promise<boolean> {
     this.dataConverters.clear();
     return true;
   }
@@ -2189,7 +2293,7 @@ export const dataExportService = new DataExportService();
 
 // 便捷导出函数 - 保持向后兼容
 export async function exportData(
-  input: UnifiedDataInput | CaptureSession | any,
+  input: UnifiedDataInput | CaptureSession,
   format: string,
   options: ExportOptions
 ): Promise<ExportResult> {
@@ -2227,7 +2331,7 @@ export async function exportDecoders(
 }
 
 // 快速检测数据类型
-export function detectDataType(input: any): string {
+export function detectDataType(input: unknown): string {
   return dataExportService.detectInputFormat(input);
 }
 
@@ -2238,7 +2342,7 @@ export function getSupportedExportFormats(): string[] {
 
 // 智能导出函数 - 自动检测最佳格式
 export async function smartExport(
-  input: any,
+  input: UnifiedDataInput | CaptureSession,
   filename: string,
   options?: Partial<ExportOptions>
 ): Promise<ExportResult> {
@@ -2273,7 +2377,7 @@ export async function smartExport(
 // 批量导出函数
 export async function batchExport(
   exports: Array<{
-    input: any;
+    input: UnifiedDataInput | CaptureSession;
     format: string;
     filename: string;
     options?: Partial<ExportOptions>;

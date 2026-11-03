@@ -7,6 +7,10 @@
  */
 
 import { SigrokAdapter } from '../../../src/drivers/SigrokAdapter';
+import { EventEmitter } from 'events';
+import { promises as fs } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { 
   AnalyzerDriverType, 
   CaptureSession, 
@@ -167,9 +171,6 @@ describe('SigrokAdapter 专注业务逻辑测试', () => {
     it('应该正确解析标准扫描输出', () => {
       const parseScanOutput = (adapter as any).parseScanOutput.bind(adapter);
       
-      // 🔍错误驱动学习发现：源码中split('\\n')应该是split('\n')，导致解析失败
-      // 源码存在问题：第298行使用了错误的转义字符
-      // 这里验证当前错误的实现行为
       const mockOutput = `The following devices were found:
 fx2lafw:conn=1.2.3 - FX2 Logic Analyzer
 saleae-logic16:conn=4.5.6 - Saleae Logic16 Logic Analyzer
@@ -177,8 +178,11 @@ kingst-la2016:conn=usb.7.8 - Kingst LA2016 Logic Analyzer`;
       
       const devices = parseScanOutput(mockOutput);
       
-      // 由于源码split('\\n')错误，无法正确分割行，解析失败
-      expect(devices.length).toBe(0);
+      expect(devices).toEqual([
+        { driver: 'fx2lafw', id: 'conn=1.2.3', description: 'FX2 Logic Analyzer' },
+        { driver: 'saleae-logic16', id: 'conn=4.5.6', description: 'Saleae Logic16 Logic Analyzer' },
+        { driver: 'kingst-la2016', id: 'conn=usb.7.8', description: 'Kingst LA2016 Logic Analyzer' }
+      ]);
     });
 
     it('应该正确处理空扫描输出', () => {
@@ -200,8 +204,10 @@ hantek-dso:conn=usb:bus.device - Hantek DSO-2090`;
       
       const devices = parseScanOutput(complexOutput);
       
-      // 🔍错误驱动学习：由于源码split('\\n')错误，解析失败
-      expect(devices.length).toBe(0);
+      expect(devices).toEqual([
+        { driver: 'rigol-ds', id: 'conn=tcp-raw:192.168.1.100:5555', description: 'Rigol DS1104Z' },
+        { driver: 'hantek-dso', id: 'conn=usb:bus.device', description: 'Hantek DSO-2090' }
+      ]);
     });
 
     it('应该正确过滤无效行', () => {
@@ -215,8 +221,10 @@ saleae-logic16:conn=4.5.6 - Saleae Logic16`;
       
       const devices = parseScanOutput(outputWithInvalid);
       
-      // 🔍错误驱动学习：由于源码split('\\n')错误，解析失败
-      expect(devices.length).toBe(0);
+      expect(devices).toEqual([
+        { driver: 'fx2lafw', id: 'conn=1.2.3', description: 'FX2 Logic Analyzer' },
+        { driver: 'saleae-logic16', id: 'conn=4.5.6', description: 'Saleae Logic16' }
+      ]);
     });
 
     it('应该正确处理包含特殊字符的描述', () => {
@@ -227,8 +235,10 @@ custom-device:conn=serial:/dev/ttyUSB0 - Custom Device v1.0 - Professional Editi
       
       const devices = parseScanOutput(specialOutput);
       
-      // 🔍错误驱动学习：由于源码split('\\n')错误，解析失败
-      expect(devices.length).toBe(0);
+      expect(devices).toEqual([
+        { driver: 'fx2lafw', id: 'conn=1.2.3', description: 'FX2 Logic Analyzer (USB 2.0)' },
+        { driver: 'custom-device', id: 'conn=serial:/dev/ttyUSB0', description: 'Custom Device v1.0 - Professional Edition' }
+      ]);
     });
   });
 
@@ -327,9 +337,10 @@ limit_samples: 10000000`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：源码中正则表达式转义字符错误，无法匹配
-      // 源码问题：第384行/channels:\\s*(\\d+)/应为/channels:\s*(\d+)/
-      expect(adapter.channelCount).toBe(8); // 保持默认值
+      expect(adapter.channelCount).toBe(16);
+      expect(adapter.maxFrequency).toBe(100000000);
+      expect(adapter.blastFrequency).toBe(100000000);
+      expect(adapter.bufferSize).toBe(10000000);
     });
 
     it('应该正确解析采样率（MHz单位）', () => {
@@ -339,9 +350,8 @@ limit_samples: 10000000`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：正则表达式转义问题，无法匹配
-      expect(adapter.maxFrequency).toBe(24000000); // 保持默认值
-      expect(adapter.blastFrequency).toBe(100000000); // 默认值
+      expect(adapter.maxFrequency).toBe(100000000);
+      expect(adapter.blastFrequency).toBe(100000000);
     });
 
     it('应该正确解析采样率（kHz单位）', () => {
@@ -351,8 +361,7 @@ limit_samples: 10000000`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：正则表达式转义问题，无法匹配
-      expect(adapter.maxFrequency).toBe(24000000); // 保持默认值
+      expect(adapter.maxFrequency).toBe(500000);
     });
 
     it('应该正确解析采样率（GHz单位）', () => {
@@ -362,8 +371,7 @@ limit_samples: 10000000`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：正则表达式转义问题，无法匹配
-      expect(adapter.maxFrequency).toBe(24000000); // 保持默认值
+      expect(adapter.maxFrequency).toBe(2500000000);
     });
 
     it('应该正确解析采样率（Hz单位）', () => {
@@ -373,8 +381,7 @@ limit_samples: 10000000`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：正则表达式转义问题，无法匹配
-      expect(adapter.maxFrequency).toBe(24000000); // 保持默认值
+      expect(adapter.maxFrequency).toBe(1000000);
     });
 
     it('应该正确解析缓冲区样本数', () => {
@@ -384,8 +391,7 @@ limit_samples: 10000000`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：正则表达式转义问题，无法匹配
-      expect(adapter.bufferSize).toBe(2000000); // 保持默认值
+      expect(adapter.bufferSize).toBe(50000000);
     });
 
     it('应该正确解析完整配置信息', () => {
@@ -399,10 +405,9 @@ other_config: some_value`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：所有解析都失败，保持默认值
-      expect(adapter.channelCount).toBe(8);
-      expect(adapter.maxFrequency).toBe(24000000);
-      expect(adapter.bufferSize).toBe(2000000);
+      expect(adapter.channelCount).toBe(32);
+      expect(adapter.maxFrequency).toBe(200000000);
+      expect(adapter.bufferSize).toBe(32000000);
     });
 
     it('应该正确处理小数采样率', () => {
@@ -412,8 +417,7 @@ other_config: some_value`;
       
       parseDeviceConfig(mockConfigOutput);
       
-      // 🔍错误驱动学习：正则表达式转义问题，无法匹配
-      expect(adapter.maxFrequency).toBe(24000000); // 保持默认值
+      expect(adapter.maxFrequency).toBe(12500000);
     });
 
     it('应该忽略无效的配置行', () => {
@@ -429,6 +433,97 @@ no colon here`;
       
       // 应该保持原有值不变
       expect(adapter.channelCount).toBe(originalChannelCount);
+    });
+  });
+
+  describe('sigrok-cli 参数与 CSV 解析', () => {
+    it('应该跳过元数据并解析 logic 位域列', async () => {
+      adapter = new SigrokAdapter();
+      const tempDir = await fs.mkdtemp(join(tmpdir(), 'sigrok-csv-'));
+      (adapter as any)._tempDir = tempDir;
+
+      const session = {
+        frequency: 1000000,
+        preTriggerSamples: 0,
+        postTriggerSamples: 4,
+        get totalSamples() { return this.preTriggerSamples + this.postTriggerSamples; },
+        triggerType: TriggerType.Edge,
+        triggerChannel: 0,
+        triggerInverted: false,
+        loopCount: 0,
+        measureBursts: false,
+        captureChannels: [
+          { channelNumber: 0, channelName: 'D0', textualChannelNumber: '0', hidden: false },
+          { channelNumber: 1, channelName: 'D1', textualChannelNumber: '1', hidden: false }
+        ],
+        clone: function() { return this; },
+        cloneSettings: function() { return this; }
+      } as CaptureSession;
+
+      await fs.writeFile(join(tempDir, 'capture.csv'), `; CSV, generated by libsigrok\n; Sample rate: 1 MHz\n; Channels (2/0): D0,D1\ntime,logic\n0,0\n1,1\n2,2\n3,3\n`);
+      const convertSrToCSV = jest.spyOn(adapter as any, 'convertSrToCSV').mockResolvedValue(undefined);
+
+      try {
+        await (adapter as any).processSigrokResults(session, join(tempDir, 'capture.sr'));
+
+        expect(session.captureChannels[0].samples).toEqual(new Uint8Array([0, 1, 0, 1]));
+        expect(session.captureChannels[1].samples).toEqual(new Uint8Array([0, 0, 1, 1]));
+      } finally {
+        convertSrToCSV.mockRestore();
+        await fs.rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('查询设备信息时应将连接串合并到 driver 参数', async () => {
+      adapter = new SigrokAdapter('fx2lafw', 'conn=1.2.3');
+      const runSigrokCommand = jest.spyOn(adapter as any, 'runSigrokCommand').mockResolvedValue('');
+
+      try {
+        await (adapter as any).queryDeviceInfo();
+
+        expect(runSigrokCommand).toHaveBeenCalledWith([
+          '--driver=fx2lafw:conn=1.2.3',
+          '--show'
+        ]);
+      } finally {
+        runSigrokCommand.mockRestore();
+      }
+    });
+
+    it('采集时不应传递独立的 conn 参数', async () => {
+      adapter = new SigrokAdapter('fx2lafw', 'conn=1.2.3');
+      const process = new EventEmitter() as any;
+      process.stdout = new EventEmitter();
+      process.stderr = new EventEmitter();
+      const spawn = jest.spyOn(require('child_process'), 'spawn').mockReturnValue(process);
+      const processSigrokResults = jest.spyOn(adapter as any, 'processSigrokResults').mockResolvedValue(undefined);
+      const session = {
+        frequency: 1000000,
+        preTriggerSamples: 10,
+        postTriggerSamples: 10,
+        get totalSamples() { return this.preTriggerSamples + this.postTriggerSamples; },
+        triggerType: TriggerType.Edge,
+        triggerChannel: undefined,
+        triggerInverted: false,
+        loopCount: 0,
+        measureBursts: false,
+        captureChannels: [{ channelNumber: 0, channelName: 'D0', textualChannelNumber: '0', hidden: false }],
+        clone: function() { return this; },
+        cloneSettings: function() { return this; }
+      } as CaptureSession;
+
+      try {
+        const capture = (adapter as any).startSigrokCapture(session);
+        process.emit('close', 0);
+        await capture;
+
+        const args = spawn.mock.calls[0][1] as string[];
+        expect(args).toContain('--driver=fx2lafw:conn=1.2.3');
+        expect(args).not.toContain('--conn');
+      } finally {
+        processSigrokResults.mockRestore();
+        spawn.mockRestore();
+      }
     });
   });
 
@@ -625,23 +720,22 @@ no colon here`;
       
       // 验证触发能力
       expect(capabilities.triggers).toBeDefined();
-      expect(capabilities.triggers.types).toEqual([0, 1]); // Edge, Pattern
+      expect(capabilities.triggers.types).toEqual([0, 1]); // Edge, Complex
       expect(capabilities.triggers.maxChannels).toBe(8);
       expect(capabilities.triggers.patternWidth).toBe(8);
       expect(capabilities.triggers.sequentialSupport).toBe(false);
-      expect(capabilities.triggers.conditions).toEqual(['rising', 'falling', 'high', 'low', 'change']);
-      
+      expect(capabilities.triggers.conditions).toEqual(['rising', 'falling', 'high', 'low']);
+
       // 验证连接能力
       expect(capabilities.connectivity).toBeDefined();
       expect(capabilities.connectivity.interfaces).toEqual(['usb', 'serial']);
       expect(capabilities.connectivity.protocols).toEqual(['sigrok']);
-      
+
       // 验证功能特性
       expect(capabilities.features).toBeDefined();
       expect(capabilities.features.signalGeneration).toBe(false);
       expect(capabilities.features.powerSupply).toBe(false);
       expect(capabilities.features.voltageMonitoring).toBe(false);
-      expect(capabilities.features.protocolDecoding).toBe(true); // sigrok强大的协议解码
     });
 
     it('应该根据设备配置调整能力参数', () => {
@@ -652,12 +746,11 @@ no colon here`;
       const buildCapabilities = (adapter as any).buildCapabilities.bind(adapter);
       const capabilities = buildCapabilities();
       
-      // 🔍错误驱动学习：由于正则表达式转义问题，解析失败，保持默认值
-      expect(capabilities.channels.digital).toBe(8); // 默认值
-      expect(capabilities.sampling.maxRate).toBe(24000000); // 默认值
-      expect(capabilities.sampling.bufferSize).toBe(2000000); // 默认值
-      expect(capabilities.triggers.maxChannels).toBe(8); // 默认值
-      expect(capabilities.triggers.patternWidth).toBe(8); // 默认值
+      expect(capabilities.channels.digital).toBe(16);
+      expect(capabilities.sampling.maxRate).toBe(200000000);
+      expect(capabilities.sampling.bufferSize).toBe(50000000);
+      expect(capabilities.triggers.maxChannels).toBe(16);
+      expect(capabilities.triggers.patternWidth).toBe(16);
     });
   });
 
@@ -829,8 +922,217 @@ no colon here`;
       const customAdapter = new SigrokAdapter('fx2lafw', undefined, customPath);
       
       expect((customAdapter as any)._sigrokCliPath).toBe(customPath);
-      
+
       customAdapter.dispose();
+    });
+  });
+
+  /**
+   * Task 4 追加：spawn 错误、重复 close/error、临时目录清理
+   *
+   * 覆盖 startSigrokCapture 的 error 事件分支、close/error 互相竞争时的稳定性、
+   * 以及 spawn 失败后临时目录的清理保证（当前实现 startCapture 失败不清理临时目录，
+   * 测试驱动修复：在 startCapture 的 catch 分支触发临时目录清理）。
+   */
+  describe('spawn 错误与资源清理（Task 4 追加）', () => {
+    /** 构造一个最小可用的 CaptureSession */
+    function makeMinimalSession(): CaptureSession {
+      return {
+        frequency: 1000000,
+        preTriggerSamples: 10,
+        postTriggerSamples: 10,
+        get totalSamples() { return this.preTriggerSamples + this.postTriggerSamples; },
+        triggerType: TriggerType.Edge,
+        triggerChannel: undefined,
+        triggerInverted: false,
+        loopCount: 0,
+        measureBursts: false,
+        captureChannels: [{ channelNumber: 0, channelName: 'D0', textualChannelNumber: '0', hidden: false }],
+        clone: function() { return this; },
+        cloneSettings: function() { return this; }
+      } as CaptureSession;
+    }
+
+    /** 构造一个 mock child_process.spawn 返回的假进程（EventEmitter + stdout/stderr） */
+    function makeFakeProcess() {
+      const fake = new EventEmitter() as any;
+      fake.stdout = new EventEmitter();
+      fake.stderr = new EventEmitter();
+      fake.kill = jest.fn();
+      return fake;
+    }
+
+    /**
+     * 轮询等待 startCapture 内部完成 spawn 并注册事件监听器。
+     *
+     * 背景：startCapture 入口有 `await fs.mkdir(_tempDir, {recursive:true})`，
+     * 该 I/O 在真实 fs 上完成需要若干 tick。spawn 与 error/close 监听器在
+     * mkdir 完成后的同一同步帧内注册（Promise 构造体同步执行）。测试若在
+     * 调 startCapture 后立即 emit('error')，会因监听器未注册触发 EventEmitter
+     * 默认行为（无 error listener 时抛错）。轮询 _currentProcess 非 null 是
+     * spawn 已执行、监听器已注册的可靠信号。
+     */
+    async function waitForCaptureSpawn(adapter: SigrokAdapter, timeoutMs = 1000): Promise<void> {
+      const deadline = Date.now() + timeoutMs;
+      while ((adapter as any)._currentProcess === null && Date.now() < deadline) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
+      if ((adapter as any)._currentProcess === null) {
+        throw new Error('startCapture 未在超时内完成 spawn（_currentProcess 仍为 null）');
+      }
+    }
+
+    it('spawn error 事件使 startSigrokCapture 拒绝，消息含原始错误，_currentProcess 被重置', async () => {
+      adapter = new SigrokAdapter();
+      const fakeProcess = makeFakeProcess();
+      const spawn = jest.spyOn(require('child_process'), 'spawn').mockReturnValue(fakeProcess);
+
+      try {
+        const capturePromise = (adapter as any).startSigrokCapture(makeMinimalSession());
+        // 触发 spawn error 事件（例如 sigrok-cli 二进制不存在）
+        fakeProcess.emit('error', new Error('spawn failed'));
+
+        await expect(capturePromise).rejects.toThrow(/spawn failed/);
+        expect((adapter as any)._currentProcess).toBeNull();
+      } finally {
+        spawn.mockRestore();
+      }
+    });
+
+    it('startCapture 在 spawn error 时返回 UnexpectedError 并重置采集状态', async () => {
+      adapter = new SigrokAdapter();
+      (adapter as any)._isConnected = true;
+      const fakeProcess = makeFakeProcess();
+      const spawn = jest.spyOn(require('child_process'), 'spawn').mockReturnValue(fakeProcess);
+
+      try {
+        const resultPromise = adapter.startCapture(makeMinimalSession());
+        // startCapture 入口有 await fs.mkdir，需等 I/O 完成、spawn listener 注册后才能 emit
+        await waitForCaptureSpawn(adapter);
+        fakeProcess.emit('error', new Error('spawn failed'));
+        const result = await resultPromise;
+
+        expect(result).toBe(CaptureError.UnexpectedError);
+        expect(adapter.isCapturing).toBe(false);
+      } finally {
+        spawn.mockRestore();
+      }
+    });
+
+    it('close 0 resolve 后再触发 error 不会改变 promise 状态、不产生二次回调', async () => {
+      adapter = new SigrokAdapter();
+      const fakeProcess = makeFakeProcess();
+      const spawn = jest.spyOn(require('child_process'), 'spawn').mockReturnValue(fakeProcess);
+      const processSigrokResults = jest.spyOn(adapter as any, 'processSigrokResults').mockResolvedValue(undefined);
+
+      try {
+        const capturePromise = (adapter as any).startSigrokCapture(makeMinimalSession());
+        // 先正常 close 0：processSigrokResults mock 立即 resolve，promise resolves
+        fakeProcess.emit('close', 0);
+        await capturePromise;
+
+        // promise 已 settle 为 resolved；再触发 error 不应改变状态、
+        // 不应二次调用 processSigrokResults、不应抛未处理 rejection
+        fakeProcess.emit('error', new Error('late error'));
+        // 让 microtask 队列清空，确保任何潜在 reject 已被吞掉
+        await new Promise(resolve => setImmediate(resolve));
+
+        expect(processSigrokResults).toHaveBeenCalledTimes(1);
+      } finally {
+        processSigrokResults.mockRestore();
+        spawn.mockRestore();
+      }
+    });
+
+    it('非零退出码使 startSigrokCapture 拒绝并包含 stderr 输出', async () => {
+      adapter = new SigrokAdapter();
+      const fakeProcess = makeFakeProcess();
+      const spawn = jest.spyOn(require('child_process'), 'spawn').mockReturnValue(fakeProcess);
+
+      try {
+        const capturePromise = (adapter as any).startSigrokCapture(makeMinimalSession());
+        // 先写入 stderr 数据，再非零退出
+        fakeProcess.stderr.emit('data', Buffer.from('device not found'));
+        fakeProcess.emit('close', 2);
+
+        await expect(capturePromise).rejects.toThrow(/device not found/);
+        expect((adapter as any)._currentProcess).toBeNull();
+      } finally {
+        spawn.mockRestore();
+      }
+    });
+
+    it('spawn 失败后临时目录应被清理（startCapture 失败分支触发清理）', async () => {
+      adapter = new SigrokAdapter();
+      (adapter as any)._isConnected = true;
+      // 用真实 fs.mkdtemp 创建一个真实存在的临时目录
+      const realTempDir = await fs.mkdtemp(join(tmpdir(), 'sigrok-cleanup-'));
+      (adapter as any)._tempDir = realTempDir;
+
+      const fakeProcess = makeFakeProcess();
+      const spawn = jest.spyOn(require('child_process'), 'spawn').mockReturnValue(fakeProcess);
+
+      try {
+        // 目录真实存在
+        await expect(fs.stat(realTempDir)).resolves.toBeTruthy();
+
+        const resultPromise = adapter.startCapture(makeMinimalSession());
+        // startCapture 入口有 await fs.mkdir，需等 I/O 完成、spawn listener 注册后才能 emit
+        await waitForCaptureSpawn(adapter);
+        fakeProcess.emit('error', new Error('spawn failed'));
+        const result = await resultPromise;
+
+        expect(result).toBe(CaptureError.UnexpectedError);
+        // 修复后：startCapture 失败分支触发临时目录清理
+        await expect(fs.stat(realTempDir)).rejects.toThrow(/ENOENT/);
+      } finally {
+        spawn.mockRestore();
+        // 兜底清理（测试失败时也别泄漏）
+        await fs.rm(realTempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('startCapture 失败清理 _tempDir 后，重试应幂等重建目录并正常启动', async () => {
+      // 回归用例：catch 分支清理 _tempDir 后，若调用方不 reconnect 直接重试，
+      // startCapture 入口必须幂等重建目录，否则 sigrok-cli 写文件再次失败。
+      adapter = new SigrokAdapter();
+      (adapter as any)._isConnected = true;
+      const realTempDir = await fs.mkdtemp(join(tmpdir(), 'sigrok-retry-'));
+      (adapter as any)._tempDir = realTempDir;
+
+      const fakeProcessFail = makeFakeProcess();
+      const fakeProcessOk = makeFakeProcess();
+      const spawn = jest.spyOn(require('child_process'), 'spawn')
+        .mockReturnValueOnce(fakeProcessFail)
+        .mockReturnValueOnce(fakeProcessOk);
+      const processSigrokResults = jest.spyOn(adapter as any, 'processSigrokResults').mockResolvedValue(undefined);
+
+      try {
+        // 第一次：spawn error → 返回 UnexpectedError，catch 清理 _tempDir
+        const result1Promise = adapter.startCapture(makeMinimalSession());
+        // startCapture 入口有 await fs.mkdir，需等 I/O 完成、spawn listener 注册后才能 emit
+        await waitForCaptureSpawn(adapter);
+        fakeProcessFail.emit('error', new Error('spawn failed'));
+        const result1 = await result1Promise;
+        expect(result1).toBe(CaptureError.UnexpectedError);
+        expect(adapter.isCapturing).toBe(false);
+        // 目录被清理
+        await expect(fs.stat(realTempDir)).rejects.toThrow(/ENOENT/);
+
+        // 第二次：不 reconnect 直接重试，入口幂等重建目录，close 0 正常完成
+        const result2Promise = adapter.startCapture(makeMinimalSession());
+        // 同样需等 mkdir + listener 注册
+        await waitForCaptureSpawn(adapter);
+        fakeProcessOk.emit('close', 0);
+        const result2 = await result2Promise;
+        expect(result2).toBe(CaptureError.None);
+        // 目录被重建（mkdir recursive 幂等）
+        await expect(fs.stat(realTempDir)).resolves.toBeTruthy();
+      } finally {
+        processSigrokResults.mockRestore();
+        spawn.mockRestore();
+        await fs.rm(realTempDir, { recursive: true, force: true });
+      }
     });
   });
 });

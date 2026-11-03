@@ -171,19 +171,20 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
    * 处理单个数据块
    */
   protected async processChunk(
-    chunk: any,
+    chunk: unknown,
     sampleRate: number,
     options: DecoderOptionValue[],
     _selectedChannels: DecoderSelectedChannel[]
   ): Promise<DecoderResult[]> {
     const results: DecoderResult[] = [];
+    const c = chunk as Record<string, unknown>;
 
     // 获取通道数据
-    const sclData = this.getChannelData(chunk.channelData, this.channels.scl);
-    const sdaData = this.getChannelData(chunk.channelData, this.channels.sda);
+    const sclData = this.getChannelData(c.channelData as ChannelData[], this.channels.scl);
+    const sdaData = this.getChannelData(c.channelData as ChannelData[], this.channels.sda);
 
     if (!sclData || !sdaData) {
-      console.warn(`⚠️ I2C解码器: 块 ${chunk.index} 缺少必需的通道数据`);
+      console.warn(`⚠️ I2C解码器: 块 ${c.index} 缺少必需的通道数据`);
       return results;
     }
 
@@ -191,12 +192,12 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
     const chunkState = { ...this.globalState };
 
     // 逐样本处理
-    for (let i = chunk.overlapSize; i < minLength; i++) {
+    for (let i = (c.overlapSize as number); i < minLength; i++) {
       if (this.shouldStop) {
         throw new Error('用户停止处理');
       }
 
-      const sampleIndex = chunk.startSample + i - chunk.overlapSize;
+      const sampleIndex = (c.startSample as number) + i - (c.overlapSize as number);
       const scl = sclData[i];
       const sda = sdaData[i];
 
@@ -544,7 +545,7 @@ export class StreamingI2CDecoder extends StreamingDecoderBase {
   /**
    * 获取选项值
    */
-  private getOptionValue(options: DecoderOptionValue[], optionIndex: number, defaultValue: any): any {
+  private getOptionValue(options: DecoderOptionValue[], optionIndex: number, defaultValue: unknown): unknown {
     const option = options.find(opt => opt.optionIndex === optionIndex);
     return option ? option.value : defaultValue;
   }

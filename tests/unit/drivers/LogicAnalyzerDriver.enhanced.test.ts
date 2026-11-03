@@ -260,8 +260,9 @@ describe('LogicAnalyzerDriver 增强测试', () => {
     it('应该生成正确的采集请求', async () => {
       // Mock写入方法
       const mockWriteData = jest.spyOn(driver as any, 'writeData').mockResolvedValue(undefined);
+      jest.spyOn(driver as any, 'waitForResponse').mockResolvedValue('CAPTURE_STARTED');
       jest.spyOn(driver as any, 'startDataReading').mockImplementation(() => {});
-      
+
       const result = await driver.startCapture(testSession);
       
       expect(result).toBe(CaptureError.None);

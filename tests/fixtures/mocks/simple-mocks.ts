@@ -4,14 +4,19 @@
  */
 
 // 1. VSCode Mock - 增强版本，支持ConfigurationManager测试
+//    补充 LACEditorProvider.resolveCustomTextEditor 链路所需 API（只增不改，兼容既有引用）
 export const mockVSCode = {
   workspace: {
     workspaceFolders: [{ uri: { fsPath: '/test/workspace' } }],
-    getConfiguration: jest.fn(() => ({ 
+    getConfiguration: jest.fn(() => ({
       get: jest.fn(),
       update: jest.fn().mockResolvedValue(undefined)
     })),
-    onDidChangeConfiguration: jest.fn()
+    onDidChangeConfiguration: jest.fn(),
+    // Custom Editor / 文档变更监听（Provider resolve 时注册）
+    onDidChangeTextDocument: jest.fn(() => ({ dispose: jest.fn() })),
+    applyEdit: jest.fn(),
+    fs: { readFile: jest.fn(), writeFile: jest.fn() }
   },
   commands: {
     registerCommand: jest.fn(),
@@ -25,8 +30,28 @@ export const mockVSCode = {
   },
   window: {
     showInformationMessage: jest.fn(),
-    showErrorMessage: jest.fn()
+    showErrorMessage: jest.fn(),
+    // 对话框/QuickPick 与自定义编辑器注册
+    showWarningMessage: jest.fn(),
+    showSaveDialog: jest.fn(),
+    showInputBox: jest.fn(),
+    showQuickPick: jest.fn(),
+    registerCustomEditorProvider: jest.fn()
   },
+  // Uri/Range/WorkspaceEdit：resolveCustomTextEditor / getHtmlForWebview / saveLACFile 使用
+  Uri: {
+    joinPath: jest.fn((...parts: unknown[]) => ({
+      fsPath: parts
+        .map(p => (typeof p === 'object' && p !== null ? (p as { fsPath?: string }).fsPath : String(p)))
+        .join('/'),
+      toString: () => parts.join('/')
+    })),
+    file: jest.fn((filePath: string) => ({ fsPath: filePath, toString: () => `file://${filePath}` }))
+  },
+  Range: jest.fn((startLine: number, startChar: number, endLine: number, endChar: number) => ({
+    startLine, startChar, endLine, endChar
+  })),
+  WorkspaceEdit: jest.fn(() => ({ replace: jest.fn() })),
   ConfigurationTarget: {
     Global: 1,
     Workspace: 2,

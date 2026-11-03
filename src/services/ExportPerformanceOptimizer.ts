@@ -71,9 +71,9 @@ export class ExportPerformanceOptimizer {
   /**
    * 处理大数据集导出
    */
-  async processLargeDataset(
-    data: any[],
-    processor: (chunk: any[], chunkIndex: number) => Promise<string>,
+  async processLargeDataset<T>(
+    data: T[],
+    processor: (chunk: T[], chunkIndex: number) => Promise<string>,
     onProgress?: (progress: number, metrics: PerformanceMetrics) => void
   ): Promise<string[]> {
     const startTime = Date.now();
@@ -256,7 +256,7 @@ class MemoryMonitor {
     this.lastCheck = now;
 
     if ('memory' in performance) {
-      const memInfo = (performance as any).memory;
+      const memInfo = (performance as { memory: { usedJSHeapSize: number; totalJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
       const usedMB = memInfo.usedJSHeapSize / (1024 * 1024);
 
       if (usedMB > this.maxMemoryMB * 0.9) {
@@ -268,7 +268,7 @@ class MemoryMonitor {
 
   getCurrentUsage(): number {
     if ('memory' in performance) {
-      const memInfo = (performance as any).memory;
+      const memInfo = (performance as { memory: { usedJSHeapSize: number; totalJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
       return memInfo.usedJSHeapSize / (1024 * 1024);
     }
     return 0;
@@ -276,8 +276,9 @@ class MemoryMonitor {
 
   private triggerGarbageCollection(): void {
     // 建议垃圾回收 (仅在Chrome DevTools中有效)
-    if ('gc' in window && typeof (window as any).gc === 'function') {
-      (window as any).gc();
+    const gc = (window as { gc?: () => void }).gc;
+    if (typeof gc === 'function') {
+      gc();
     }
   }
 }

@@ -9,7 +9,9 @@ import { MultiAnalyzerDriver } from './MultiAnalyzerDriver';
 import { VersionValidator } from './VersionValidator';
 import {
   AnalyzerDriverType,
-  AnalyzerDeviceInfo
+  AnalyzerDeviceInfo,
+  DeviceInfo,
+  ConnectionParams
 } from '../models/AnalyzerTypes';
 
 /**
@@ -132,6 +134,11 @@ const DISCOVERY_PROFILES: DiscoveryProfile[] = [
 ];
 
 /**
+ * 驱动构造函数类型 — 收口各驱动不同构造签名
+ */
+type DriverConstructor = new (...args: any[]) => AnalyzerDriverBase;
+
+/**
  * 驱动注册信息
  */
 export interface DriverRegistration {
@@ -139,7 +146,7 @@ export interface DriverRegistration {
   name: string; // 驱动名称
   description: string; // 驱动描述
   version: string; // 驱动版本
-  driverClass: typeof AnalyzerDriverBase; // 驱动类
+  driverClass: DriverConstructor; // 驱动类
   supportedDevices: string[]; // 支持的设备类型
   priority: number; // 优先级 (数值越大优先级越高)
 }
@@ -162,6 +169,7 @@ export class HardwareDriverManager extends EventEmitter {
   private detectors: IDeviceDetector[] = [];
   private detectionCache = new Map<string, DetectedDevice[]>();
   private cacheTimeout = 30000; // 30秒缓存超时
+  private detectorTimeout = 5000; // 单个检测器超时阈值
   private currentDevice: AnalyzerDriverBase | null = null;
   private connectedDeviceInfo: DetectedDevice | null = null;
   private knownDevices = new Map<string, DetectedDevice>();
@@ -184,7 +192,7 @@ export class HardwareDriverManager extends EventEmitter {
       name: 'Pico Logic Analyzer',
       description: 'Raspberry Pi Pico based logic analyzer driver',
       version: '1.0.0',
-      driverClass: LogicAnalyzerDriver as any,
+      driverClass: LogicAnalyzerDriver,
       supportedDevices: ['pico', 'rp2040', 'logic-analyzer', 'analyzer'],
       priority: 100
     });
@@ -195,7 +203,7 @@ export class HardwareDriverManager extends EventEmitter {
       name: 'Saleae Logic Analyzer',
       description: 'Saleae Logic series compatible driver',
       version: '1.0.0',
-      driverClass: SaleaeLogicDriver as any,
+      driverClass: SaleaeLogicDriver,
       supportedDevices: ['saleae', 'logic16', 'logic8', 'logic-pro'],
       priority: 90
     });
@@ -206,7 +214,7 @@ export class HardwareDriverManager extends EventEmitter {
       name: 'Rigol/Siglent Logic Analyzer',
       description: 'Rigol and Siglent instruments with logic analyzer capability',
       version: '1.0.0',
-      driverClass: RigolSiglentDriver as any,
+      driverClass: RigolSiglentDriver,
       supportedDevices: ['rigol', 'siglent', 'ds1000z', 'ds2000', 'sds'],
       priority: 80
     });
@@ -217,7 +225,7 @@ export class HardwareDriverManager extends EventEmitter {
       name: 'Sigrok Universal Adapter',
       description: 'Universal adapter for 80+ sigrok-supported devices',
       version: '1.0.0',
-      driverClass: SigrokAdapter as any,
+      driverClass: SigrokAdapter,
       supportedDevices: ['fx2lafw', 'hantek', 'kingst', 'chronovu', 'openbench'],
       priority: 70
     });
@@ -228,7 +236,7 @@ export class HardwareDriverManager extends EventEmitter {
       name: 'Network Logic Analyzer',
       description: 'Generic network-based logic analyzer driver',
       version: '1.0.0',
-      driverClass: NetworkLogicAnalyzerDriver as any,
+      driverClass: NetworkLogicAnalyzerDriver,
       supportedDevices: ['network', 'tcp', 'udp', 'wifi', 'ethernet'],
       priority: 60
     });
@@ -339,10 +347,20 @@ export class HardwareDriverManager extends EventEmitter {
 
   /**
    * 安全执行设备检测
+   * 对单个检测器设置超时，避免永不 resolve 的检测器阻塞整体检测流程
    */
   private async safeDetect(detector: IDeviceDetector): Promise<DetectedDevice[]> {
     try {
-      return await detector.detect();
+      return await Promise.race([
+        detector.detect(),
+        new Promise<DetectedDevice[]>((resolve) => {
+          const timer = setTimeout(() => {
+            console.warn(`Detector ${detector.name} timed out`);
+            resolve([]);
+          }, this.detectorTimeout);
+          timer.unref?.();
+        })
+      ]);
     } catch (error) {
       console.warn(`Detector ${detector.name} failed:`, error);
       return [];
@@ -450,17 +468,17 @@ export class HardwareDriverManager extends EventEmitter {
    * 创建驱动实例的内部方法
    */
   private createDriverInstance(
-    DriverClass: typeof AnalyzerDriverBase,
+    DriverClass: DriverConstructor,
     connectionString: string
   ): AnalyzerDriverBase {
     // 特殊处理不同类型的驱动
-    if (DriverClass === NetworkLogicAnalyzerDriver as any) {
+    if (DriverClass === NetworkLogicAnalyzerDriver) {
       // 网络驱动需要解析host:port
       const parts = connectionString.split(':');
       const host = parts[0] || 'localhost';
       const port = parseInt(parts[1] || '24000', 10);
       return new NetworkLogicAnalyzerDriver(host, port);
-    } else if (DriverClass === SigrokAdapter as any) {
+    } else if (DriverClass === SigrokAdapter) {
       // Sigrok适配器需要解析driver:connection
       const parts = connectionString.split(':');
       const driver = parts[0] || 'fx2lafw';
@@ -468,7 +486,7 @@ export class HardwareDriverManager extends EventEmitter {
       return new SigrokAdapter(driver, deviceId);
     } else {
       // 其他驱动使用标准构造函数
-      return new (DriverClass as any)(connectionString);
+      return new DriverClass(connectionString);
     }
   }
 
@@ -635,7 +653,11 @@ export class HardwareDriverManager extends EventEmitter {
   /**
    * 连接到指定设备
    */
-  async connectToDevice(deviceId: string, params?: any): Promise<{ success: boolean; deviceInfo?: any; error?: string }> {
+  async connectToDevice(deviceId: string, params?: unknown): Promise<{ success: boolean; deviceInfo?: DeviceInfo; error?: string }> {
+    if (!deviceId || deviceId.trim() === '') {
+      return { success: false, error: '设备不存在或无法识别' };
+    }
+
     try {
       // 如果已有设备连接，先断开
       if (this.currentDevice) {
@@ -655,11 +677,14 @@ export class HardwareDriverManager extends EventEmitter {
         device = devices[0];
       } else if (deviceId === 'network') {
         // 网络连接
-        if (!params?.networkConfig) {
+        const paramsObj = params as Record<string, unknown> | undefined;
+        if (!paramsObj?.networkConfig) {
           return { success: false, error: '缺少网络配置参数' };
         }
 
-        const { host, port } = params.networkConfig;
+        const networkConfig = paramsObj.networkConfig as Record<string, unknown>;
+        const host = networkConfig.host as string;
+        const port = networkConfig.port as number;
         device = {
           id: 'network',
           name: 'Network Device',
@@ -675,12 +700,13 @@ export class HardwareDriverManager extends EventEmitter {
 
         if (!device) {
           // 尝试直接作为连接字符串处理
+          const isNetworkConnection = deviceId.includes(':');
           device = {
             id: deviceId,
-            name: 'Manual Device',
-            type: deviceId.includes(':') ? 'network' : 'serial',
+            name: isNetworkConnection ? 'Network Device' : 'Serial Device',
+            type: isNetworkConnection ? 'network' : 'serial',
             connectionString: deviceId,
-            driverType: deviceId.includes(':') ? AnalyzerDriverType.Network : AnalyzerDriverType.Serial,
+            driverType: isNetworkConnection ? AnalyzerDriverType.Network : AnalyzerDriverType.Serial,
             confidence: 0.6
           };
         }
@@ -694,7 +720,7 @@ export class HardwareDriverManager extends EventEmitter {
       const driver = await this.createDriver(device);
 
       // 尝试连接
-      const result = await driver.connect(params);
+      const result = await driver.connect(params as ConnectionParams);
 
       if (result.success) {
         this.currentDevice = driver;
@@ -809,7 +835,7 @@ export class SerialDetector implements IDeviceDetector {
     }
   }
 
-  static fromSerialPorts(ports: any[]): DetectedDevice[] {
+  static fromSerialPorts(ports: Record<string, unknown>[]): DetectedDevice[] {
     return ports
       .map((port, index) => ({ device: SerialDetector.classifyPort(port), index }))
       .filter((entry): entry is { device: DetectedDevice; index: number } => entry.device !== null)
@@ -817,11 +843,11 @@ export class SerialDetector implements IDeviceDetector {
       .map(entry => entry.device);
   }
 
-  private static classifyPort(port: any): DetectedDevice | null {
-    const vendorId = SerialDetector.normalizeUsbId(port.vendorId);
-    const productId = SerialDetector.normalizeUsbId(port.productId);
-    const serialNumber = port.serialNumber || SerialDetector.extractSerialNumber(port.pnpId);
-    const parentId = SerialDetector.extractParentId(port.pnpId);
+  private static classifyPort(port: Record<string, unknown>): DetectedDevice | null {
+    const vendorId = SerialDetector.normalizeUsbId(port.vendorId as string);
+    const productId = SerialDetector.normalizeUsbId(port.productId as string);
+    const serialNumber = (port.serialNumber as string) || SerialDetector.extractSerialNumber(port.pnpId as string);
+    const parentId = SerialDetector.extractParentId(port.pnpId as string);
     const isOriginalAnalyzer = vendorId === '1209' && productId === '3020';
     const isRaspberryPiPico = vendorId === '2E8A' && productId === '0003';
     const manufacturer = String(port.manufacturer || '');
@@ -834,20 +860,21 @@ export class SerialDetector implements IDeviceDetector {
     const confidence = isOriginalAnalyzer ? 100 : isRaspberryPiPico ? 45 : 35;
     const verificationRequired = !isOriginalAnalyzer;
     const deviceName = isOriginalAnalyzer ? 'Pico Logic Analyzer' : 'Raspberry Pi Pico Candidate';
+    const portPath = port.path as string;
 
     return {
-      id: serialNumber ? `serial-${vendorId}-${productId}-${serialNumber}` : `serial-${port.path}`,
-      name: `${deviceName} (${port.path})`,
+      id: serialNumber ? `serial-${vendorId}-${productId}-${serialNumber}` : `serial-${portPath}`,
+      name: `${deviceName} (${portPath})`,
       type: 'serial',
-      connectionString: port.path,
-      connectionPath: port.path,
+      connectionString: portPath,
+      connectionPath: portPath,
       driverType: AnalyzerDriverType.Serial,
       confidence,
       vendorId,
       productId: productId || product,
       serialNumber,
       parentId,
-      devicePath: port.path,
+      devicePath: portPath,
       verificationRequired,
       discoveredBy: 'serial'
     };

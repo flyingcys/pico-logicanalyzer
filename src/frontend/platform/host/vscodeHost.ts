@@ -4,6 +4,7 @@ import type {
   FrontendCapabilities,
   FrontendDocumentData,
   HostAdapter,
+  HostCommandName,
   HostCommandResult,
   HostMessageHandler,
   VsCodeApiLike
@@ -50,7 +51,7 @@ export function createVsCodeHost(): HostAdapter {
   const pendingCommands = new Map<
     string,
     {
-      resolve: (result: HostCommandResult<any>) => void;
+      resolve: (result: HostCommandResult<unknown>) => void;
       timeoutId: ReturnType<typeof setTimeout>;
     }
   >();
@@ -116,7 +117,7 @@ export function createVsCodeHost(): HostAdapter {
     startCapture() {
       return postVsCodeMessage({ type: 'startCapture' });
     },
-    sendCommand<T = unknown>(command, payload) {
+    sendCommand<T = unknown>(command: HostCommandName | string, payload?: unknown) {
       const windowLike = getWindowLike();
       if (!windowLike?.vscode?.postMessage) {
         return Promise.resolve({

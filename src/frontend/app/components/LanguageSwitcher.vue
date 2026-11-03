@@ -37,7 +37,7 @@
 
     try {
       // 切换语言
-      switchLocale(languageCode);
+      switchLocale(languageCode as 'zh-CN' | 'en-US');
 
       // 显示成功消息
       const language = availableLanguages.value.find(lang => lang.code === languageCode);

@@ -4,6 +4,7 @@
   import { createWaveformService } from '../../core/services/waveformService';
   import { useSessionStore } from '../../core/stores/sessionStore';
   import { useWaveformStore } from '../../core/stores/waveformStore';
+  import type { AnalyzerChannel } from '../../../models/CaptureModels';
 
   const sessionStore = useSessionStore();
   const waveformStore = useWaveformStore();
@@ -82,12 +83,16 @@
       channel => channel.samples && channel.samples.length > 0
     );
     if (!sessionStore.hasData || !hasRenderableSamples) {
+      waveformStore.loadCaptureContext({
+        sampleRate: 0,
+        channels: []
+      });
       return;
     }
 
     waveformStore.loadCaptureContext({
       sampleRate: sessionStore.sampleRate,
-      channels: sessionStore.channels as any,
+      channels: sessionStore.channels as unknown as AnalyzerChannel[],
       totalSamples: sessionStore.totalSamples,
       preTriggerSamples: sessionStore.preTriggerSamples,
       bursts: sessionStore.bursts ?? undefined
@@ -555,13 +560,25 @@
 <style scoped>
   .waveform-stage {
     position: relative;
+    display: grid;
+    grid-template-areas:
+      'toolbar'
+      'canvas'
+      'preview';
+    grid-template-rows: auto minmax(0, 1fr) 28px;
+    gap: 8px;
     min-height: 100%;
+    padding: 12px;
+    box-sizing: border-box;
     overflow: hidden;
     background: #111827;
   }
 
   .waveform-stage__canvas {
+    grid-area: canvas;
     display: block;
+    min-width: 0;
+    min-height: 0;
     width: 100%;
     height: 100%;
   }
@@ -576,13 +593,13 @@
     font-size: 14px;
     background: linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(17, 24, 39, 0.9));
     pointer-events: none;
+    z-index: 3;
   }
 
   .waveform-stage__toolbar {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    right: 12px;
+    grid-area: toolbar;
+    position: static;
+    min-width: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -643,10 +660,9 @@
   }
 
   .waveform-stage__preview {
-    position: absolute;
-    left: 12px;
-    right: 12px;
-    bottom: 12px;
+    grid-area: preview;
+    position: relative;
+    width: 100%;
     height: 28px;
   }
 

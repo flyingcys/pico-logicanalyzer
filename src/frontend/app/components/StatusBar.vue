@@ -5,15 +5,15 @@
 -->
 
 <script setup lang="ts">
-  import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+  import { ref, computed, onMounted, onUnmounted, watch, type Component } from 'vue';
   import {
     Connection,
-    Disconnect,
+    SwitchButton,
     DataLine,
     Grid,
     Cpu,
     Monitor,
-    MemoryCard,
+    Box,
     Clock,
     Document,
     ZoomIn,
@@ -82,17 +82,33 @@
     show: boolean;
     type: 'success' | 'warning' | 'error' | 'info';
     message: string;
-    icon: any;
+    icon: Component;
+  }
+
+  interface StatusBarSampleData {
+    totalSamples?: number;
+    sampleRate?: number;
+    duration?: number;
+  }
+
+  interface StatusBarChannel {
+    hidden?: boolean;
+    hasData?: boolean;
+  }
+
+  interface StatusBarDecoder {
+    active?: boolean;
+    resultCount?: number;
   }
 
   // Props
   interface Props {
     deviceConnected?: boolean;
     deviceName?: string;
-    captureState?: any;
-    sampleData?: any;
-    channels?: any[];
-    decoders?: any[];
+    captureState?: CaptureInfo['status'];
+    sampleData?: StatusBarSampleData;
+    channels?: StatusBarChannel[];
+    decoders?: StatusBarDecoder[];
     fileName?: string;
     fileModified?: boolean;
     showPerformance?: boolean;
@@ -183,7 +199,7 @@
 
   // 计算属性
   const deviceStatusIcon = computed(() => {
-    return props.deviceConnected ? Connection : Disconnect;
+    return props.deviceConnected ? Connection : SwitchButton;
   });
 
   const deviceStatusText = computed(() => {
@@ -550,7 +566,7 @@
           placement="top"
         >
           <div class="perf-item">
-            <el-icon><MemoryCard /></el-icon>
+            <el-icon><Box /></el-icon>
             <span class="perf-value">{{ formatBytes(performanceInfo.memory) }}</span>
           </div>
         </el-tooltip>
@@ -687,7 +703,7 @@
     color: #67c23a;
   }
 
-  .device-status .el-icon.Disconnect {
+  .device-status .el-icon.SwitchButton {
     color: #f56c6c;
   }
 

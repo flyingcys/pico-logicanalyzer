@@ -386,7 +386,7 @@ export class CANDecoder extends DecoderBase {
     startBit: number,
     endBit: number,
     values: string[],
-    rawData?: any
+    rawData?: unknown
   ): void {
     this.put(this.sampleForBit(startBit), this.sampleForBit(endBit), {
       type: DecoderOutputType.ANNOTATION,
@@ -396,7 +396,7 @@ export class CANDecoder extends DecoderBase {
     });
   }
 
-  private warn(startBit: number, endBit: number, values: string[], rawData?: any): void {
+  private warn(startBit: number, endBit: number, values: string[], rawData?: unknown): void {
     this.emit(8, startBit, endBit, values, rawData);
   }
 

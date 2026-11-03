@@ -37,7 +37,8 @@
     "src/frontend/core/stores/decoderMappingHelpers.ts",
     "src/frontend/core/stores/sessionStore.ts",
     "src/frontend/core/stores/waveformStore.ts",
-    "src/frontend/core/stores/uiStore.ts"
+    "src/frontend/core/stores/uiStore.ts",
+    "src/extension.ts"
   ],
   "exclude": [
     "node_modules",

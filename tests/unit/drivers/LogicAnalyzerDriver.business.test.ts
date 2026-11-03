@@ -56,13 +56,12 @@ describe('LogicAnalyzerDriver 业务逻辑测试', () => {
     
     it('应该正确识别和解析网络连接字符串', () => {
       const driver = new LogicAnalyzerDriver('192.168.1.100:8080');
-      
-      // 根据源码分析：网络类型在连接前默认是Serial，连接后才设置为Network
-      expect(driver.driverType).toBe(AnalyzerDriverType.Serial);
-      expect(driver.isNetwork).toBe(false);
-      
-      // 模拟连接成功后的状态
-      (driver as any)._isNetwork = true;
+
+      // 构造时即通过连接字符串中的冒号识别为网络类型
+      expect(driver.driverType).toBe(AnalyzerDriverType.Network);
+      expect(driver.isNetwork).toBe(true);
+
+      // 验证网络类型一致性
       expect(driver.driverType).toBe(AnalyzerDriverType.Network);
     });
     
@@ -246,14 +245,9 @@ describe('LogicAnalyzerDriver 业务逻辑测试', () => {
       const serialDriver = new LogicAnalyzerDriver('/dev/ttyUSB0');
       expect(serialDriver.driverType).toBe(AnalyzerDriverType.Serial);
       expect(serialDriver.isNetwork).toBe(false);
-      
+
       const networkDriver = new LogicAnalyzerDriver('192.168.1.100:8080');
-      // 构造时网络驱动也默认为Serial类型
-      expect(networkDriver.driverType).toBe(AnalyzerDriverType.Serial);
-      expect(networkDriver.isNetwork).toBe(false);
-      
-      // 连接成功后才设置为网络类型
-      (networkDriver as any)._isNetwork = true;
+      // 构造时即通过连接字符串中的冒号识别为网络类型
       expect(networkDriver.driverType).toBe(AnalyzerDriverType.Network);
       expect(networkDriver.isNetwork).toBe(true);
     });
@@ -271,13 +265,8 @@ describe('LogicAnalyzerDriver 业务逻辑测试', () => {
   describe('网络地址解析的边界情况', () => {
     it('应该识别标准IP地址格式但需连接后确认类型', () => {
       const driver = new LogicAnalyzerDriver('192.168.1.100:8080');
-      
-      // 构造时默认为Serial类型
-      expect(driver.driverType).toBe(AnalyzerDriverType.Serial);
-      expect(driver.isNetwork).toBe(false);
-      
-      // 模拟连接成功后的状态
-      (driver as any)._isNetwork = true;
+
+      // 构造时即通过连接字符串中的冒号识别为网络类型
       expect(driver.driverType).toBe(AnalyzerDriverType.Network);
       expect(driver.isNetwork).toBe(true);
     });
@@ -285,14 +274,8 @@ describe('LogicAnalyzerDriver 业务逻辑测试', () => {
     it('应该处理边界端口号格式', () => {
       const driver1 = new LogicAnalyzerDriver('192.168.1.100:1');
       const driver2 = new LogicAnalyzerDriver('192.168.1.100:65535');
-      
-      // 构造时都是Serial类型
-      expect(driver1.driverType).toBe(AnalyzerDriverType.Serial);
-      expect(driver2.driverType).toBe(AnalyzerDriverType.Serial);
-      
-      // 模拟连接成功后能正确识别为网络类型
-      (driver1 as any)._isNetwork = true;
-      (driver2 as any)._isNetwork = true;
+
+      // 构造时即通过连接字符串中的冒号识别为网络类型
       expect(driver1.driverType).toBe(AnalyzerDriverType.Network);
       expect(driver2.driverType).toBe(AnalyzerDriverType.Network);
     });

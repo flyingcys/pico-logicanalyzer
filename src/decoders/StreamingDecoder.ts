@@ -83,7 +83,7 @@ export interface StreamingResult {
 /**
  * 数据块
  */
-interface DataChunk {
+export interface DataChunk {
   /** 数据块索引 */
   index: number;
   /** 开始样本位置 */
@@ -106,6 +106,8 @@ export abstract class StreamingDecoderBase {
   protected startTime = 0;
   protected processedSamples = 0;
   protected totalSamples = 0;
+  /** 当前并发处理器引用，用于 stop/异常路径清理 setImmediate */
+  private currentProcessor: ConcurrentChunkProcessor | null = null;
 
   /** 进度回调函数 */
   public onProgress?: (_progress: StreamingProgress) => void;
@@ -164,12 +166,12 @@ export abstract class StreamingDecoderBase {
       decoderDebugLog(`📊 开始流式解码: ${chunks.length}个数据块, 总样本数: ${this.totalSamples}`);
 
       // 并发处理数据块
-      const concurrentProcessor = new ConcurrentChunkProcessor(
+      this.currentProcessor = new ConcurrentChunkProcessor(
         this.config.maxConcurrentChunks,
         this.config.processingInterval
       );
 
-      await concurrentProcessor.processChunks(
+      await this.currentProcessor.processChunks(
         chunks,
         async (chunk: DataChunk) => {
           if (this.shouldStop) {
@@ -227,18 +229,25 @@ export abstract class StreamingDecoderBase {
       };
 
     } catch (error) {
-      if (error instanceof Error && error.message === '用户停止处理') {
-        decoderDebugLog('❌ 流式解码失败:', error);
+      // 用户主动停止：stop() 置 shouldStop 并经 dispose() 以 '已中止' reject，
+      // 或 processor 内显式抛出 '用户停止处理'——两者统一识别为停止语义。
+      const stopped =
+        this.shouldStop || (error instanceof Error && error.message === '用户停止处理');
+      if (stopped) {
+        decoderDebugLog('🛑 流式解码已停止');
       } else {
         console.error('❌ 流式解码失败:', error);
       }
       return {
         success: false,
-        error: error instanceof Error ? error.message : '未知错误',
+        error: stopped ? '用户停止处理' : error instanceof Error ? error.message : '未知错误',
         results: allResults,
         statistics
       };
     } finally {
+      // 清理并发处理器及其残留的 setImmediate，避免停止/异常路径泄漏定时器
+      this.currentProcessor?.dispose();
+      this.currentProcessor = null;
       this.isProcessing = false;
       await this.finalizeDecoding();
     }
@@ -249,6 +258,8 @@ export abstract class StreamingDecoderBase {
    */
   public stop(): void {
     this.shouldStop = true;
+    // 立即清理并发处理器中已调度的 setImmediate，避免停止后残留回调
+    this.currentProcessor?.dispose();
     decoderDebugLog('🛑 流式解码停止请求已发送');
   }
 
@@ -347,14 +358,54 @@ export abstract class StreamingDecoderBase {
 /**
  * 并发数据块处理器
  */
-class ConcurrentChunkProcessor {
+export class ConcurrentChunkProcessor {
   private maxConcurrency: number;
   private processingInterval: number;
   private activeProcessors = 0;
+  private aborted = false;
+  /** 已调度但尚未执行的 setImmediate 句柄，用于 dispose/clearImmediate 清理 */
+  private pendingImmediates: Set<ReturnType<typeof setImmediate>> = new Set();
+  /** processChunks 的 reject 函数，用于 dispose 时主动中止 Promise */
+  private rejectFn: ((error: Error) => void) | null = null;
 
   constructor(maxConcurrency: number, processingInterval: number) {
     this.maxConcurrency = maxConcurrency;
     this.processingInterval = processingInterval;
+  }
+
+  /**
+   * 清理所有已调度的 setImmediate，并中止 processChunks 的 Promise，
+   * 确保异常/停止路径不残留定时器与挂起的回调。
+   */
+  dispose(): void {
+    this.aborted = true;
+    this.clearPendingImmediates();
+    if (this.rejectFn) {
+      const reject = this.rejectFn;
+      this.rejectFn = null;
+      reject(new Error('ConcurrentChunkProcessor 已中止'));
+    }
+  }
+
+  private clearPendingImmediates(): void {
+    for (const handle of this.pendingImmediates) {
+      clearImmediate(handle);
+    }
+    this.pendingImmediates.clear();
+  }
+
+  /**
+   * 调度下一次 processNext，跟踪句柄以便异常路径 clearImmediate。
+   */
+  private scheduleNext(fn: () => void): void {
+    if (this.aborted) {
+      return;
+    }
+    const handle = setImmediate(() => {
+      this.pendingImmediates.delete(handle);
+      fn();
+    });
+    this.pendingImmediates.add(handle);
   }
 
   /**
@@ -368,10 +419,21 @@ class ConcurrentChunkProcessor {
     let chunkIndex = 0;
 
     return new Promise((resolve, reject) => {
+      this.rejectFn = reject;
+      const settle = (fn: () => void): void => {
+        this.rejectFn = null;
+        fn();
+      };
+
       const processNext = async () => {
+        // 已中止（dispose/reject）后不再处理任何数据块
+        if (this.aborted) {
+          return;
+        }
+
         if (chunkIndex >= chunks.length) {
           if (this.activeProcessors === 0) {
-            resolve(results);
+            settle(() => resolve(results));
           }
           return;
         }
@@ -386,18 +448,26 @@ class ConcurrentChunkProcessor {
         try {
           // 添加处理间隔以避免阻塞UI
           await new Promise(resolve => setTimeout(resolve, this.processingInterval));
+          if (this.aborted) {
+            return;
+          }
 
           const result = await processor(chunk);
           results[chunk.index] = result;
 
         } catch (error) {
-          reject(error);
+          // 标记中止并清理已调度的 setImmediate，避免 reject 后残留回调继续执行
+          this.aborted = true;
+          this.clearPendingImmediates();
+          settle(() => reject(error as Error));
           return;
         } finally {
           this.activeProcessors--;
 
-          // 继续处理下一个块
-          setTimeout(processNext, 0);
+          // 仅在未中止时继续调度下一个块
+          if (!this.aborted) {
+            this.scheduleNext(processNext);
+          }
         }
       };
 

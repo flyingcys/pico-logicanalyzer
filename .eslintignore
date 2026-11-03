@@ -9,6 +9,9 @@ coverage/
 # 依赖
 node_modules/
 
+# 独立子工程(自管 tsconfig/eslint,不被根 typecheck/lint 覆盖)
+src/web-app/
+
 # 配置文件
 webpack.config.js
 jest.config.js

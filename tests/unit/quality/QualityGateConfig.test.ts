@@ -32,6 +32,81 @@ describe('质量门禁配置', () => {
     expect(preCommit).toContain('npm run validate:local');
   });
 
+  it('单元/集成/压力测试应分层独立，压力不进常规 PR 门禁', () => {
+    const packageJson = readJson('package.json');
+    const workflow = readText('.github/workflows/quality-gate.yml');
+
+    // 单元门禁只匹配 tests/unit，不含压力/性能/e2e
+    expect(packageJson.scripts['test:unit']).toContain('tests/unit');
+    expect(packageJson.scripts['test:unit']).not.toContain('stress');
+    expect(packageJson.scripts['test:unit']).not.toContain('performance');
+    expect(packageJson.scripts['test:unit']).not.toContain('e2e');
+
+    // 集成门禁只匹配 tests/integration
+    expect(packageJson.scripts['test:integration']).toContain('tests/integration');
+
+    // 压力门禁独立存在，供夜间/手动运行
+    expect(packageJson.scripts['test:stress']).toContain('tests/stress');
+
+    // CI 常规 PR 依次执行单元（带覆盖率门禁）、集成、Web 覆盖率；不执行压力
+    expect(workflow).toContain('npm run test:unit');
+    expect(workflow).toContain('--coverage');
+    expect(workflow).toContain('npm run test:integration');
+    expect(workflow).toContain('test:coverage');
+    expect(workflow).not.toContain('npm run test:stress');
+
+    // 常规 PR 不应有裸 test:ci 全量步（会拾取 stress/performance/e2e，违背分层）。
+    // 用 run 步骤行级匹配，避免与 test:ci:quick 误匹配。
+    const runSteps = workflow
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('run:'));
+    expect(runSteps).not.toContain('run: npm run test:ci');
+  });
+
+  it('Jest 覆盖率应净化分母并锁定关键路径阈值', () => {
+    // jest.config.js 为 CJS；用 require 读取，避免 eval
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const jestConfig = require('../../../jest.config.js') as {
+      collectCoverageFrom: string[];
+      coverageThreshold: Record<string, Record<string, number>>;
+    };
+
+    // web-app 走 Vitest 门禁，不得污染 Jest 覆盖率分母
+    expect(jestConfig.collectCoverageFrom).toEqual(
+      expect.arrayContaining(['!src/web-app/**', '!src/**/*-self-test.ts'])
+    );
+
+    // 不用低全局值伪装质量；只锁稳定关键路径
+    expect(jestConfig.coverageThreshold.global).toBeUndefined();
+
+    const lac = jestConfig.coverageThreshold['./src/models/LACFileFormat.ts'];
+    expect(lac.lines).toBeGreaterThanOrEqual(85);
+    expect(lac.statements).toBeGreaterThanOrEqual(85);
+    expect(lac.functions).toBeGreaterThanOrEqual(85);
+    expect(lac.branches).toBeGreaterThanOrEqual(78);
+
+    const lockedPaths = [
+      './src/decoders/ChannelMapping.ts',
+      './src/decoders/DecoderManager.ts',
+      './src/drivers/SigrokAdapter.ts',
+      './src/frontend/app/main-html.ts',
+      './src/frontend/app/main-vscode.ts',
+      './src/decoders/protocols/I2CDecoder.ts',
+      './src/decoders/protocols/SPIDecoder.ts'
+    ];
+    for (const p of lockedPaths) {
+      expect(jestConfig.coverageThreshold[p]).toEqual(
+        expect.objectContaining({
+          lines: expect.any(Number),
+          statements: expect.any(Number),
+          functions: expect.any(Number),
+          branches: expect.any(Number)
+        })
+      );
+    }
+  });
+
   it('应该提供功能状态矩阵和真实硬件认证矩阵', () => {
     const featureMatrix = readText('docs/功能状态矩阵.md');
     const hardwareMatrix = readText('docs/真实硬件认证矩阵.md');
@@ -54,6 +129,32 @@ describe('质量门禁配置', () => {
 
     expect(JSON.stringify(packageJson)).not.toContain('github.com/your-repo');
     expect(readme).not.toContain('github.com/your-repo');
+  });
+
+  it('应该在 Activity Bar 提供逻辑分析器快捷入口', () => {
+    const packageJson = readJson('package.json');
+    const activityBarContainers = packageJson.contributes.viewsContainers.activitybar;
+    const container = activityBarContainers.find(
+      (item: { id?: string }) => item.id === 'logicAnalyzer'
+    );
+    const views = packageJson.contributes.views.logicAnalyzer;
+    const launcherView = views.find(
+      (item: { id?: string }) => item.id === 'logicAnalyzer.launcher'
+    );
+    const icon = readText('resources/logic-analyzer.svg');
+
+    expect(container).toEqual(expect.objectContaining({
+      title: 'Logic Analyzer',
+      icon: 'resources/logic-analyzer.svg'
+    }));
+    expect(launcherView).toEqual(expect.objectContaining({
+      name: 'Logic Analyzer'
+    }));
+    expect(packageJson.contributes.viewsWelcome).toContainEqual(expect.objectContaining({
+      view: 'logicAnalyzer.launcher',
+      contents: expect.stringContaining('command:logicAnalyzer.openAnalyzer')
+    }));
+    expect(icon).toContain('M6 3v18h12');
   });
 
   it('VSIX 发布清单应该排除开发、CI 和本地恢复文件', () => {

@@ -234,10 +234,10 @@ describe('NetworkLogicAnalyzerDriver 简化核心测试', () => {
         const parseCSVData = (driver as any).parseCSVData.bind(driver);
         parseCSVData(testSession, csvData);
 
-        // 错误驱动学习发现：源码使用split('\\\\n')导致解析失败，返回空数组
-        expect(testSession.captureChannels[0].samples).toEqual(new Uint8Array(0));
-        expect(testSession.captureChannels[1].samples).toEqual(new Uint8Array(0));
-        expect(testSession.captureChannels[2].samples).toEqual(new Uint8Array(0));
+        // 源码已修复：parseCSVData 使用真换行 split('\n') 正确分割解析
+        expect(testSession.captureChannels[0].samples).toEqual(new Uint8Array([1, 0, 1]));
+        expect(testSession.captureChannels[1].samples).toEqual(new Uint8Array([0, 1, 1]));
+        expect(testSession.captureChannels[2].samples).toEqual(new Uint8Array([1, 1, 0]));
       });
 
       it('应该处理缺少列的CSV数据', () => {
@@ -248,8 +248,8 @@ describe('NetworkLogicAnalyzerDriver 简化核心测试', () => {
         const parseCSVData = (driver as any).parseCSVData.bind(driver);
         
         expect(() => parseCSVData(testSession, csvData)).not.toThrow();
-        // 错误驱动学习发现：同样因为split('\\\\n')问题导致解析失败
-        expect(testSession.captureChannels[0].samples).toEqual(new Uint8Array(0));
+        // 源码已修复：CH0 列存在，正确解析为 [1, 0]
+        expect(testSession.captureChannels[0].samples).toEqual(new Uint8Array([1, 0]));
       });
 
       it('应该处理空CSV数据', () => {
@@ -268,15 +268,15 @@ describe('NetworkLogicAnalyzerDriver 简化核心测试', () => {
         expect(() => parseCSVData(testSession, csvData)).not.toThrow();
       });
 
-      it('应该验证CSV分割逻辑问题 - 错误驱动学习发现', () => {
-        // 验证源码中split('\\\\n')的问题
+      it('应该验证CSV分割使用真换行 - 源码已修复', () => {
+        // 源码已修复：parseCSVData 使用真换行分割，字面反斜杠n不再被当作分隔符
         const csvDataWithDoubleBackslash = 'Time,CH0\\\\n0.000,1\\\\n0.001,0';
-        
+
         const parseCSVData = (driver as any).parseCSVData.bind(driver);
         parseCSVData(testSession, csvDataWithDoubleBackslash);
-        
-        // 这种格式可以被正确分割，因为源码使用了split('\\\\n')
-        expect(testSession.captureChannels[0].samples.length).toBeGreaterThan(0);
+
+        // 数据无真换行，lines.length < 2 直接返回，samples 保持空
+        expect(testSession.captureChannels[0].samples.length).toBe(0);
       });
     });
 
@@ -393,8 +393,8 @@ describe('NetworkLogicAnalyzerDriver 简化核心测试', () => {
       expect(capabilities.sampling.minRate).toBeDefined();
       expect(capabilities.sampling.streamingSupport).toBe(true);
       expect(capabilities.triggers.types).toEqual([0, 1, 2, 3]);
-      expect(capabilities.connectivity.interfaces).toEqual(['ethernet', 'wifi']);
-      expect(capabilities.features.remoteControl).toBe(true);
+      expect(capabilities.connectivity.interfaces).toEqual(['ethernet']);
+      expect(capabilities.features.remoteControl).toBeUndefined();
     });
 
     it('应该根据数据格式设置正确的配置', () => {

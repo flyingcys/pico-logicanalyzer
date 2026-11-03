@@ -339,7 +339,7 @@ export class CaptureRequestBuilder {
    * 构建采集请求的二进制数据
    */
   public static buildCaptureRequest(session: CaptureSession): Uint8Array {
-    const buffer = new ArrayBuffer(64); // 预分配足够的空间
+    const buffer = new ArrayBuffer(48);
     const view = new DataView(buffer);
     let offset = 0;
 
@@ -347,6 +347,7 @@ export class CaptureRequestBuilder {
     view.setUint8(offset++, session.triggerType); // triggerType: byte
     view.setUint8(offset++, session.triggerChannel); // trigger: byte
     view.setUint8(offset++, session.triggerInverted ? 1 : 0); // invertedOrCount: byte
+    offset++; // Pico C ABI 对齐 triggerValue
     view.setUint16(offset, session.triggerPattern, true); // triggerValue: ushort, little endian
     offset += 2;
 
@@ -362,6 +363,7 @@ export class CaptureRequestBuilder {
     }
 
     view.setUint8(offset++, session.captureChannels.length); // channelCount: byte
+    offset++; // Pico C ABI 对齐 frequency
     view.setUint32(offset, session.frequency, true); // frequency: uint32, little endian
     offset += 4;
     view.setUint32(offset, session.preTriggerSamples, true); // preSamples: uint32, little endian
@@ -377,7 +379,7 @@ export class CaptureRequestBuilder {
                        (maxChannel < 16 ? CaptureMode.Channels_16 : CaptureMode.Channels_24);
     view.setUint8(offset++, captureMode); // captureMode: byte
 
-    return new Uint8Array(buffer, 0, offset);
+    return new Uint8Array(buffer);
   }
 
   /**

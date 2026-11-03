@@ -12,7 +12,9 @@ import {
   ConnectionParams,
   ConnectionResult,
   DeviceStatus,
-  CaptureMode
+  CaptureMode,
+  HardwareCapabilities,
+  TriggerType
 } from '../models/AnalyzerTypes';
 
 /**
@@ -155,6 +157,13 @@ export class SigrokAdapter extends AnalyzerDriverBase {
     }
 
     // 清理临时目录
+    await this.cleanupTempDir();
+  }
+
+  /**
+   * 清理临时目录（容错：失败仅告警，不抛错）
+   */
+  private async cleanupTempDir(): Promise<void> {
     try {
       await fs.rm(this._tempDir, { recursive: true, force: true });
     } catch (error) {
@@ -191,6 +200,10 @@ export class SigrokAdapter extends AnalyzerDriverBase {
     try {
       this._capturing = true;
 
+      // 幂等重建临时目录：上次采集失败可能在 catch 中清理了目录，
+      // 此处确保每次采集前目录存在，支持失败后重试。
+      await fs.mkdir(this._tempDir, { recursive: true });
+
       // 设置捕获完成处理器
       if (captureCompletedHandler) {
         this.once('captureCompleted', captureCompletedHandler);
@@ -203,6 +216,9 @@ export class SigrokAdapter extends AnalyzerDriverBase {
     } catch (error) {
       this._capturing = false;
       console.error('sigrok采集启动失败:', error);
+      // 采集启动失败时清理临时目录，避免残留
+      // （disconnect/dispose 也会清理，此处提前释放资源）
+      await this.cleanupTempDir();
       return CaptureError.UnexpectedError;
     }
   }
@@ -295,14 +311,14 @@ export class SigrokAdapter extends AnalyzerDriverBase {
    */
   private parseScanOutput(output: string): Array<{ id: string; driver: string; description: string }> {
     const devices: Array<{ id: string; driver: string; description: string }> = [];
-    const lines = output.split('\\n');
+    const lines = output.split('\n');
 
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('The following')) continue;
 
       // 解析格式: "driver:conn=value - Description"
-      const match = trimmed.match(/^([^:]+):([^-]+)\\s*-\\s*(.+)$/);
+      const match = trimmed.match(/^([^:]+):(.+?)\s+-\s+(.+)$/);
       if (match) {
         const driver = match[1].trim();
         const connection = match[2].trim();
@@ -350,8 +366,7 @@ export class SigrokAdapter extends AnalyzerDriverBase {
     try {
       // 查询设备配置信息
       const configOutput = await this.runSigrokCommand([
-        '--driver', this._deviceDriver,
-        '--conn', this._deviceId,
+        this.getDriverArgument(),
         '--show'
       ]);
 
@@ -370,18 +385,24 @@ export class SigrokAdapter extends AnalyzerDriverBase {
     }
   }
 
+  private getDriverArgument(): string {
+    return this._deviceId
+      ? `--driver=${this._deviceDriver}:${this._deviceId}`
+      : `--driver=${this._deviceDriver}`;
+  }
+
   /**
    * 解析设备配置
    */
   private parseDeviceConfig(output: string): void {
-    const lines = output.split('\\n');
+    const lines = output.split('\n');
 
     for (const line of lines) {
       const trimmed = line.trim();
 
       // 解析通道数
       if (trimmed.includes('channels:')) {
-        const channelMatch = trimmed.match(/channels:\\s*(\\d+)/);
+        const channelMatch = trimmed.match(/channels:\s*(\d+)/);
         if (channelMatch) {
           this._channelCount = parseInt(channelMatch[1], 10);
         }
@@ -389,7 +410,7 @@ export class SigrokAdapter extends AnalyzerDriverBase {
 
       // 解析采样率
       if (trimmed.includes('samplerate:')) {
-        const rateMatch = trimmed.match(/samplerate:\\s*([0-9.]+)\\s*([kMG]?Hz)/);
+        const rateMatch = trimmed.match(/samplerate:\s*([0-9.]+)\s*([kMG]?Hz)/);
         if (rateMatch) {
           let rate = parseFloat(rateMatch[1]);
           const unit = rateMatch[2];
@@ -413,7 +434,7 @@ export class SigrokAdapter extends AnalyzerDriverBase {
 
       // 解析缓冲区大小
       if (trimmed.includes('limit_samples:')) {
-        const sampleMatch = trimmed.match(/limit_samples:\\s*(\\d+)/);
+        const sampleMatch = trimmed.match(/limit_samples:\s*(\d+)/);
         if (sampleMatch) {
           this._bufferSize = parseInt(sampleMatch[1], 10);
         }
@@ -430,8 +451,7 @@ export class SigrokAdapter extends AnalyzerDriverBase {
 
     // 构建sigrok-cli命令参数
     const args: string[] = [
-      '--driver', this._deviceDriver,
-      '--conn', this._deviceId,
+      this.getDriverArgument(),
       '--config', `samplerate=${session.frequency}`,
       '--samples', totalSamples.toString(),
       '--output-file', outputFile,
@@ -530,15 +550,27 @@ export class SigrokAdapter extends AnalyzerDriverBase {
 
       // 读取CSV数据
       const csvData = await fs.readFile(csvFile, 'utf-8');
-      const lines = csvData.split('\\n');
+      const lines = csvData.split('\n');
+      const headerIndex = lines.findIndex(line => {
+        const trimmed = line.trim();
+        return trimmed.length > 0 && !trimmed.startsWith(';');
+      });
 
-      if (lines.length < 2) {
+      if (headerIndex < 0) {
         throw new Error('采集数据为空');
       }
 
       // 解析CSV头部（通道名称）
-      const headers = lines[0].split(',').map(h => h.trim());
-      const dataLines = lines.slice(1).filter(line => line.trim());
+      const headers = lines[headerIndex].split(',').map(h => h.trim());
+      const logicColumnIndex = headers.findIndex(header => header.toLowerCase() === 'logic');
+      const dataLines = lines.slice(headerIndex + 1).filter(line => {
+        const trimmed = line.trim();
+        return trimmed.length > 0 && !trimmed.startsWith(';');
+      });
+
+      if (dataLines.length === 0) {
+        throw new Error('采集数据为空');
+      }
 
       // 初始化通道数据
       for (const channel of session.captureChannels) {
@@ -551,11 +583,18 @@ export class SigrokAdapter extends AnalyzerDriverBase {
 
         for (const channel of session.captureChannels) {
           const channelName = `D${channel.channelNumber}`;
-          const columnIndex = headers.indexOf(channelName);
+          const columnIndex = headers.findIndex(header => header.toLowerCase() === channelName.toLowerCase());
 
           if (columnIndex >= 0 && columnIndex < values.length) {
             const value = values[columnIndex].trim();
             channel.samples![rowIndex] = value === '1' ? 1 : 0;
+          } else if (logicColumnIndex >= 0 && logicColumnIndex < values.length) {
+            try {
+              const logicValue = BigInt(values[logicColumnIndex].trim());
+              channel.samples![rowIndex] = Number((logicValue >> BigInt(channel.channelNumber)) & 1n);
+            } catch {
+              channel.samples![rowIndex] = 0;
+            }
           }
         }
       }
@@ -649,7 +688,7 @@ export class SigrokAdapter extends AnalyzerDriverBase {
   /**
    * 构建硬件能力描述
    */
-  private buildCapabilities(): any {
+  private buildCapabilities(): HardwareCapabilities {
     return {
       channels: {
         digital: this._channelCount,
@@ -664,11 +703,11 @@ export class SigrokAdapter extends AnalyzerDriverBase {
         streamingSupport: false
       },
       triggers: {
-        types: [0, 1], // Edge, Pattern
+        types: [TriggerType.Edge, TriggerType.Complex],
         maxChannels: this._channelCount,
         patternWidth: this._channelCount,
         sequentialSupport: false,
-        conditions: ['rising', 'falling', 'high', 'low', 'change']
+        conditions: ['rising', 'falling', 'high', 'low']
       },
       connectivity: {
         interfaces: ['usb', 'serial'],
@@ -677,8 +716,7 @@ export class SigrokAdapter extends AnalyzerDriverBase {
       features: {
         signalGeneration: false,
         powerSupply: false,
-        voltageMonitoring: false,
-        protocolDecoding: true // sigrok有强大的协议解码功能
+        voltageMonitoring: false
       }
     };
   }
@@ -698,8 +736,11 @@ export class SigrokAdapter extends AnalyzerDriverBase {
   /**
    * 资源清理
    */
-  override dispose(): void {
-    this.disconnect();
+  override async dispose(): Promise<void> {
+    // 等待 disconnect（含临时目录清理）完成后再移除监听器，
+    // 避免 fire-and-forget 清理与 removeAllListeners 的竞态。
+    // 基类签名为 void，此处依赖 TS void 返回协变（子类可返回 Promise）。
+    await this.disconnect();
     super.dispose();
   }
 }

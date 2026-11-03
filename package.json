@@ -102,6 +102,29 @@
         "icon": "$(symbol-event)"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "logicAnalyzer",
+          "title": "Logic Analyzer",
+          "icon": "resources/logic-analyzer.svg"
+        }
+      ]
+    },
+    "views": {
+      "logicAnalyzer": [
+        {
+          "id": "logicAnalyzer.launcher",
+          "name": "Logic Analyzer"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "logicAnalyzer.launcher",
+        "contents": "[打开逻辑分析器](command:logicAnalyzer.openAnalyzer)"
+      }
+    ],
     "customEditors": [
       {
         "viewType": "logicAnalyzer.lacEditor",
@@ -212,22 +235,22 @@
     "pretest": "npm run build && npm run lint",
     "test": "jest",
     "test:fast": "jest --testPathIgnorePatterns=tests/stress --testPathIgnorePatterns=tests/performance",
-    "test:webview:unit": "jest --selectProjects jsdom",
-    "test:webview:smoke": "node tests/unit/webview/webview-browser-smoke.js",
+    "test:frontend:smoke": "node tests/unit/frontend/webview-browser-smoke.js",
     "test:watch": "jest --watch",
     "test:watchAll": "jest --watchAll",
     "test:coverage": "jest --coverage",
     "test:coverage:open": "jest --coverage && open coverage/lcov-report/index.html",
-    "test:unit": "jest --testPathPattern=unit",
-    "test:integration": "jest --testPathPattern=integration --runInBand",
+    "test:unit": "jest --testPathPattern=tests/unit",
+    "test:integration": "jest --testPathPattern=tests/integration --runInBand",
     "test:e2e": "xvfb-run -a node tests/e2e/vscode/lib/runner.cjs",
     "test:e2e:noxvfb": "node tests/e2e/vscode/lib/runner.cjs",
     "test:e2e:list": "node tests/e2e/vscode/lib/runner.cjs --list",
+    "test:stress": "jest --testPathPattern=tests/stress --runInBand",
     "test:performance": "jest --testPathPattern=performance --runInBand --forceExit",
     "test:cli": "jest tests/unit/cli",
     "test:drivers": "jest --testPathPattern=drivers",
     "test:decoders": "jest --testPathPattern=decoders",
-    "test:webview": "jest --testPathPattern=webview",
+    "test:frontend": "jest --testPathPattern=frontend",
     "test:extensions": "jest tests/unit/extension --runInBand",
     "test:debug": "node --inspect-brk node_modules/.bin/jest --runInBand",
     "test:debug:chrome": "node --inspect-brk=0.0.0.0:9229 node_modules/.bin/jest --runInBand",
@@ -236,6 +259,7 @@
     "test:lint": "eslint 'src/tests/**/*.{ts,tsx}' --fix",
     "test:type-check": "tsc --project tsconfig.json --noEmit",
     "test:ci": "jest --ci --coverage --watchAll=false --maxWorkers=2",
+    "test:web:coverage": "npm --prefix src/web-app run test:coverage",
     "test:ci:performance": "jest --testPathPattern=performance --ci --maxWorkers=1",
     "test:report": "jest --coverage && open coverage/html-report/report.html",
     "test:badges": "npx coverage-badges-cli --output coverage/badges",

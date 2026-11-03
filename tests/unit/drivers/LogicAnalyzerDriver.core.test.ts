@@ -70,13 +70,8 @@ describe('LogicAnalyzerDriver 核心功能测试', () => {
   describe('网络地址格式识别', () => {
     it('应该正确识别网络地址格式', async () => {
       const networkDriver = new LogicAnalyzerDriver('192.168.1.100:8080');
-      
-      // 网络类型只有在连接时才确定，构造时都是false
-      expect(networkDriver.isNetwork).toBe(false);
-      expect(networkDriver.driverType).toBe(AnalyzerDriverType.Serial);
-      
-      // 模拟网络连接成功后的状态
-      (networkDriver as any)._isNetwork = true;
+
+      // 构造时即通过连接字符串中的冒号识别为网络类型
       expect(networkDriver.isNetwork).toBe(true);
       expect(networkDriver.driverType).toBe(AnalyzerDriverType.Network);
     });

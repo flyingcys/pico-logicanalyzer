@@ -33,7 +33,7 @@ export interface ConnectionQuality {
 export interface NetworkEvent {
   type: 'connected' | 'disconnected' | 'error' | 'quality_changed' | 'reconnecting';
   timestamp: Date;
-  data?: any;
+  data?: unknown;
   message?: string;
 }
 
@@ -81,9 +81,9 @@ export class NetworkStabilityService extends EventEmitter {
   private currentConfig: ConnectionConfig;
   private connectionQuality: ConnectionQuality;
   private networkEvents: NetworkEvent[] = [];
-  private heartbeatTimer?: NodeJS.Timeout;
-  private qualityTimer?: NodeJS.Timeout;
-  private reconnectTimer?: NodeJS.Timeout;
+  private heartbeatTimer?: ReturnType<typeof setInterval>;
+  private qualityTimer?: ReturnType<typeof setInterval>;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
   private retryCount: number = 0;
   private lastHeartbeatTime: number = 0;
   private responseTimeHistory: number[] = [];
@@ -180,6 +180,14 @@ export class NetworkStabilityService extends EventEmitter {
 
     this.emitNetworkEvent('disconnected');
     console.log('网络连接已断开');
+  }
+
+  /**
+   * 释放所有资源 - 显式清理入口
+   * 停止所有命名定时器（心跳、质量监控、重连）并关闭连接
+   */
+  async dispose(): Promise<void> {
+    await this.disconnect();
   }
 
   /**
@@ -551,7 +559,7 @@ export class NetworkStabilityService extends EventEmitter {
    */
   private emitNetworkEvent(
     type: NetworkEvent['type'],
-    data?: any,
+    data?: unknown,
     message?: string
   ): void {
     const event: NetworkEvent = {

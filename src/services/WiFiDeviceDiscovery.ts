@@ -308,6 +308,12 @@ export class WiFiDeviceDiscovery {
         return;
       }
 
+      // ⚠️ 收窄到 const：`let udpSocket` 的类型是 `X | undefined`，
+      // TypeScript 不会把上面的 `if (!udpSocket)` 收窄带进下面的闭包
+      // （闭包可能在赋值前被执行，TS 保守处理）⇒ 闭包里用会报 TS18048。
+      // 用 const 绑定后，闭包内类型稳定为 X。
+      const socket = udpSocket;
+
       // 设置超时：广播等待不超过连接超时，且至多等待 1000ms 避免侵占 IP 扫描预算
       const broadcastWaitMs = Math.min(config.connectionTimeout || config.timeout || 1000, 1000);
       const timeout = setTimeout(() => {
@@ -319,7 +325,7 @@ export class WiFiDeviceDiscovery {
         resolve(devices);
       }, broadcastWaitMs);
 
-      udpSocket.on('message', async (msg, rinfo) => {
+      socket.on('message', async (msg, rinfo) => {
         try {
           // 尝试解析广播响应
           const response = JSON.parse(msg.toString());
@@ -358,16 +364,16 @@ export class WiFiDeviceDiscovery {
         }
       });
 
-      udpSocket.on('error', (error) => {
+      socket.on('error', (error) => {
         console.warn('UDP广播发现错误:', error);
         clearTimeout(timeout);
-        udpSocket.close();
+        socket.close();
         resolve(devices);
       });
 
       // 绑定并发送广播
-      udpSocket.bind(() => {
-        udpSocket.setBroadcast(true);
+      socket.bind(() => {
+        socket.setBroadcast(true);
 
         // 发送发现广播消息
         const discoveryMessage = JSON.stringify({
@@ -380,7 +386,7 @@ export class WiFiDeviceDiscovery {
         const broadcastAddresses = ['255.255.255.255', '192.168.1.255', '192.168.0.255'];
 
         for (const addr of broadcastAddresses) {
-          udpSocket.send(discoveryMessage, 4046, addr, (error) => {
+          socket.send(discoveryMessage, 4046, addr, (error) => {
             if (error) {
               console.warn(`广播发送失败 ${addr}:`, error.message);
             }

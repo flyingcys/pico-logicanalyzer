@@ -239,15 +239,15 @@ describe('CaptureModels 核心功能测试', () => {
       const view = new DataView(requestData.buffer);
       expect(view.getUint8(0)).toBe(TriggerType.Edge); // triggerType
       expect(view.getUint8(1)).toBe(2); // triggerChannel
-      expect(view.getUint16(3, true)).toBe(0x1234); // triggerPattern
+      expect(view.getUint16(4, true)).toBe(0x1234); // triggerPattern
     });
 
     it('应该正确设置通道配置', () => {
       const requestData = CaptureRequestBuilder.buildCaptureRequest(session);
       const view = new DataView(requestData.buffer);
       
-      // 通道数组从偏移5开始，长度24字节
-      const channelArray = new Uint8Array(requestData.buffer, 5, 24);
+      // 通道数组从偏移6开始，长度24字节
+      const channelArray = new Uint8Array(requestData.buffer, 6, 24);
       
       expect(Array.from(channelArray.slice(0, 3))).toEqual([0, 1, 7]); // C#协议按顺序写入通道号列表
       expect(channelArray[3]).toBe(0); // 未使用槽位补0
@@ -263,8 +263,8 @@ describe('CaptureModels 核心功能测试', () => {
       const requestData = CaptureRequestBuilder.buildCaptureRequest(session);
       const view = new DataView(requestData.buffer);
       
-      // captureMode在最后一个字节
-      const captureMode = view.getUint8(requestData.length - 1);
+      // captureMode位于末尾填充字节之前
+      const captureMode = view.getUint8(requestData.length - 2);
       expect(captureMode).toBe(CaptureMode.Channels_8);
     });
   });

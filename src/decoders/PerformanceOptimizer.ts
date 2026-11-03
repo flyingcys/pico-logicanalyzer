@@ -75,6 +75,10 @@ export class PerformanceOptimizer {
   private gcTriggerThreshold = 0.9; // 90% 触发垃圾回收
   private compressionOptions: CompressionOptions;
   private batchConfig: BatchConfig;
+  /** 进行中的延迟定时器句柄，用于 dispose/异常路径 clearTimeout */
+  private delayTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 进行中 delay 的 resolver，dispose 时释放等待方 */
+  private delayResolver: (() => void) | null = null;
 
   constructor(
     compressionOptions: Partial<CompressionOptions> = {},
@@ -93,6 +97,33 @@ export class PerformanceOptimizer {
       maxBatches: 10,
       ...batchConfig
     };
+  }
+
+  /**
+   * 清理进行中的延迟定时器，避免异常/停止路径残留 setTimeout。
+   */
+  public dispose(): void {
+    clearTimeout(this.delayTimer);
+    this.delayTimer = undefined;
+    if (this.delayResolver) {
+      const resolve = this.delayResolver;
+      this.delayResolver = null;
+      resolve();
+    }
+  }
+
+  /**
+   * 可清理的延迟：记录 timer 与 resolver，便于 dispose 中断等待。
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise<void>(resolve => {
+      this.delayResolver = resolve;
+      this.delayTimer = setTimeout(() => {
+        this.delayTimer = undefined;
+        this.delayResolver = null;
+        resolve();
+      }, ms);
+    });
   }
 
   /**
@@ -311,35 +342,44 @@ export class PerformanceOptimizer {
 
     console.log(`🔄 开始批处理: ${batches.length}个批次, 每批${this.batchConfig.batchSize}项`);
 
-    for (let i = 0; i < batches.length && i < this.batchConfig.maxBatches; i++) {
-      const batch = batches[i];
-      const batchResults: DecoderResult[] = [];
+    try {
+      for (let i = 0; i < batches.length && i < this.batchConfig.maxBatches; i++) {
+        const batch = batches[i];
+        const batchResults: DecoderResult[] = [];
 
-      for (const item of batch) {
-        const results = await processor(item);
-        batchResults.push(...results);
+        for (const item of batch) {
+          const results = await processor(item);
+          batchResults.push(...results);
+        }
+
+        allResults.push(...batchResults);
+
+        if (onBatchComplete) {
+          onBatchComplete(batchResults, i);
+        }
+
+        // 检查内存使用并在需要时暂停
+        if (this.shouldOptimizeMemory()) {
+          console.log('⚠️ 内存使用过高，暂停批处理进行优化...');
+          await this.performMemoryOptimization();
+        }
+
+        // 批次间延迟（使用可清理的 delay，避免异常路径残留 setTimeout）
+        if (i < batches.length - 1) {
+          await this.delay(this.batchConfig.batchInterval);
+        }
       }
 
-      allResults.push(...batchResults);
-
-      if (onBatchComplete) {
-        onBatchComplete(batchResults, i);
-      }
-
-      // 检查内存使用并在需要时暂停
-      if (this.shouldOptimizeMemory()) {
-        console.log('⚠️ 内存使用过高，暂停批处理进行优化...');
-        await this.performMemoryOptimization();
-      }
-
-      // 批次间延迟
-      if (i < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, this.batchConfig.batchInterval));
-      }
+      console.log(`✅ 批处理完成: 处理了${batches.length}个批次, 产生${allResults.length}个结果`);
+      return allResults;
+    } catch (error) {
+      // 异常路径清理悬挂的批次间定时器
+      this.dispose();
+      throw error;
+    } finally {
+      // 防御性清理：无论成功/失败都释放可能残留的定时器
+      this.dispose();
     }
-
-    console.log(`✅ 批处理完成: 处理了${batches.length}个批次, 产生${allResults.length}个结果`);
-    return allResults;
   }
 
   /**
@@ -364,13 +404,14 @@ export class PerformanceOptimizer {
     console.log(`🧹 开始内存优化: 当前使用 ${(beforeStats.usedHeapSize / 1024 / 1024).toFixed(1)}MB`);
 
     // 建议垃圾回收
-    if (this.suggestGarbageCollection() && (global as any).gc) {
-      (global as any).gc();
+    const manualGc = (global as unknown as { gc?: () => void }).gc;
+    if (this.suggestGarbageCollection() && manualGc) {
+      manualGc();
       console.log('♻️ 手动触发垃圾回收');
     }
 
-    // 等待一段时间让垃圾回收完成
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // 等待一段时间让垃圾回收完成（可清理的 delay）
+    await this.delay(100);
 
     const afterStats = this.getMemoryStats();
     const memorySaved = beforeStats.usedHeapSize - afterStats.usedHeapSize;

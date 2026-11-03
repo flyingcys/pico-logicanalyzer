@@ -384,8 +384,9 @@ describe('SessionManager 精准业务逻辑测试', () => {
     it('应该正确初始化服务', async () => {
       const manager = new SessionManager();
       const result = await manager.initialize();
-      
-      expect(result).toBe(true);
+
+      // initialize 返回 ServiceInitResult 对象（基类契约），验证其 success 字段
+      expect(result.success).toBe(true);
       await manager.dispose();
     });
 
@@ -400,11 +401,11 @@ describe('SessionManager 精准业务逻辑测试', () => {
     it('应该防止重复初始化', async () => {
       const manager = new SessionManager();
       await manager.initialize();
-      
+
       // 重复初始化应该成功但不产生副作用
       const secondInit = await manager.initialize();
-      expect(secondInit).toBe(true);
-      
+      expect(secondInit.success).toBe(true);
+
       await manager.dispose();
     });
   });

@@ -7,9 +7,10 @@ import {
   CaptureCompletedHandler,
   ConnectionParams,
   ConnectionResult,
-  DeviceStatus
+  DeviceStatus,
+  HardwareCapabilities
 } from '../../models/AnalyzerTypes';
-import { ProtocolHelper } from '../tools/ProtocolHelper';
+import { ProtocolHelper, SerialConfig } from '../tools/ProtocolHelper';
 
 /**
  * 串口驱动模板
@@ -19,6 +20,48 @@ import { ProtocolHelper } from '../tools/ProtocolHelper';
  * 该类提供串口连接、命令队列和错误处理外壳，设备协议解析与采集数据格式
  * 仍需由派生驱动实现并通过真实硬件或 fixture 验证。
  */
+
+/**
+ * 串口实例的最小结构契约（隔离可选依赖 serialport 的类型不确定性）
+ */
+interface SerialPortLike {
+  isOpen: boolean;
+  open(callback: (error: Error | null) => void): void;
+  close(callback?: (error?: Error | null) => void): void;
+  write(data: Buffer, callback?: (error: Error | null) => void): void;
+  on(event: 'data', listener: (data: Buffer) => void): this;
+  on(event: 'error', listener: (error: Error) => void): this;
+  on(event: 'close', listener: () => void): this;
+}
+
+/**
+ * 模板内部构建的硬件能力描述（示例形状，含协议占位值）
+ */
+interface TemplateCapabilities {
+  channels: { digital: number; maxVoltage: number; inputImpedance: number };
+  sampling: {
+    maxRate: number;
+    minRate: number;
+    supportedRates: number[];
+    bufferSize: number;
+    streamingSupport: boolean;
+  };
+  triggers: {
+    types: number[];
+    maxChannels: number;
+    patternWidth: number;
+    sequentialSupport: boolean;
+    conditions: string[];
+  };
+  connectivity: { interfaces: string[]; protocols: string[] };
+  features: {
+    signalGeneration: boolean;
+    powerSupply: boolean;
+    voltageMonitoring: boolean;
+    protocolDecoding: boolean;
+  };
+}
+
 export class SerialDriverTemplate extends AnalyzerDriverBase {
   // 设备属性
   get deviceVersion(): string | null {
@@ -61,9 +104,9 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
   private _bufferSize: number = 1000000; // 1M samples
   private _capturing: boolean = false;
   private _portPath: string;
-  private _serialPort: any = null; // SerialPort实例
+  private _serialPort: SerialPortLike | null = null; // SerialPort实例
   private _isConnected: boolean = false;
-  private _serialConfig: any;
+  private _serialConfig: SerialConfig;
 
   // 通信相关
   private _commandQueue: Array<{
@@ -111,9 +154,13 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
       await this.openSerialPort();
 
       // 设置数据接收处理器
-      this._serialPort.on('data', this.handleSerialData.bind(this));
-      this._serialPort.on('error', this.handleSerialError.bind(this));
-      this._serialPort.on('close', this.handleSerialClose.bind(this));
+      const serialPort = this._serialPort;
+      if (!serialPort) {
+        throw new Error('串口实例创建失败');
+      }
+      serialPort.on('data', this.handleSerialData.bind(this));
+      serialPort.on('error', this.handleSerialError.bind(this));
+      serialPort.on('close', this.handleSerialClose.bind(this));
 
       // 初始化设备
       await this.initializeDevice();
@@ -131,7 +178,7 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
           type: this.driverType,
           connectionPath: this._portPath,
           isNetwork: false,
-          capabilities: this.buildCapabilities()
+          capabilities: this.buildCapabilities() as unknown as HardwareCapabilities
         }
       };
     } catch (error) {
@@ -145,9 +192,10 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
   /**
    * 动态加载serialport库
    */
-  private async loadSerialPort(): Promise<any> {
+  private async loadSerialPort(): Promise<{ SerialPort: new (config: unknown) => SerialPortLike }> {
     try {
-      return await import('serialport');
+      const mod = await import('serialport');
+      return mod as unknown as { SerialPort: new (config: unknown) => SerialPortLike };
     } catch (error) {
       throw new Error('serialport库未安装。请运行: npm install serialport');
     }
@@ -158,6 +206,10 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
    */
   private async openSerialPort(): Promise<void> {
     return new Promise((resolve, reject) => {
+      if (!this._serialPort) {
+        reject(new Error('串口实例未创建'));
+        return;
+      }
       this._serialPort.open((error: Error | null) => {
         if (error) {
           reject(new Error(`串口打开失败: ${error.message}`));
@@ -330,8 +382,9 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
     this._commandQueue = [];
 
     if (this._serialPort && this._serialPort.isOpen) {
+      const port = this._serialPort;
       return new Promise((resolve) => {
-        this._serialPort.close(() => {
+        port.close(() => {
           this._isConnected = false;
           this._serialPort = null;
           resolve();
@@ -644,7 +697,7 @@ export class SerialDriverTemplate extends AnalyzerDriverBase {
   /**
    * 构建硬件能力描述
    */
-  private buildCapabilities(): any {
+  private buildCapabilities(): TemplateCapabilities {
     return {
       channels: {
         digital: this._channelCount,

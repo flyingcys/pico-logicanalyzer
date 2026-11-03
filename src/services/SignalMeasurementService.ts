@@ -100,6 +100,13 @@ export interface TimingRelationship {
   confidence: number; // 置信度 (%)
 }
 
+// 信号测量分析选项
+export interface SignalMeasurementOptions {
+  enableCrossChannelAnalysis?: boolean;
+  enableSignalQuality?: boolean;
+  glitchDetectionThreshold?: number; // ns
+}
+
 export class SignalMeasurementService {
 
   /**
@@ -109,11 +116,7 @@ export class SignalMeasurementService {
   async performMeasurement(
     channels: AnalyzerChannel[],
     sampleRate: number,
-    options?: {
-      enableCrossChannelAnalysis?: boolean;
-      enableSignalQuality?: boolean;
-      glitchDetectionThreshold?: number; // ns
-    }
+    options?: SignalMeasurementOptions
   ): Promise<MeasurementResult> {
     const readTime = () => typeof performance !== 'undefined' && typeof performance.now === 'function'
       ? performance.now()
@@ -154,7 +157,7 @@ export class SignalMeasurementService {
   private async analyzeChannel(
     channel: AnalyzerChannel,
     sampleRate: number,
-    options?: any
+    options?: SignalMeasurementOptions
   ): Promise<ChannelMeasurementResult> {
     const samples = channel.samples!;
 
@@ -418,7 +421,7 @@ export class SignalMeasurementService {
   private analyzeSignalQuality(
     samples: Uint8Array,
     sampleRate: number,
-    options: any
+    options: SignalMeasurementOptions
   ): SignalQuality {
     const recommendations: string[] = [];
 

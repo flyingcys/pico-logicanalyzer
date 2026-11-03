@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { hardwareDriverManager } from '../drivers/HardwareDriverManager';
 import { CaptureError, TriggerType } from '../models/AnalyzerTypes';
 import { AnalyzerChannel, CaptureSession } from '../models/CaptureModels';
-import { LACFileFormat } from '../models/LACFileFormat';
+import { LACFileFormat, ExportedCapture } from '../models/LACFileFormat';
 import { DecoderManager, type DecoderExecutionResult } from '../decoders/DecoderManager';
 import type {
   ChannelData,
@@ -368,7 +368,7 @@ ${webviewScriptTags}
   /**
    * 解析.lac文件内容
    */
-  private parseLACFile(content: string): any {
+  private parseLACFile(content: string): ExportedCapture {
     try {
       return LACFileFormat.parse(content);
     } catch (error) {
@@ -379,14 +379,23 @@ ${webviewScriptTags}
   /**
    * 保存.lac文件
    */
-  private async saveLACFile(document: vscode.TextDocument, data: any): Promise<void> {
+  private async saveLACFile(document: vscode.TextDocument, data: ExportedCapture): Promise<void> {
     try {
       const edit = new vscode.WorkspaceEdit();
       const lacContent = JSON.stringify(data, null, 2);
 
       edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), lacContent);
 
-      await vscode.workspace.applyEdit(edit);
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (!applied) {
+        throw new Error('无法更新捕获文档');
+      }
+
+      const saved = await document.save();
+      if (!saved) {
+        throw new Error('无法写入捕获文件');
+      }
+
       vscode.window.showInformationMessage('文件保存成功');
     } catch (error) {
       vscode.window.showErrorMessage(`保存文件失败: ${error}`);
@@ -997,7 +1006,7 @@ ${webviewScriptTags}
       .map(channel => ({
         channelNumber: channel.channelNumber,
         channelName: channel.channelName || channel.textualChannelNumber,
-        samples: new Uint8Array(channel.samples),
+        samples: new Uint8Array(channel.samples!),
         hidden: channel.hidden
       }));
   }
@@ -1088,7 +1097,7 @@ ${webviewScriptTags}
     };
   }
 
-  private toJsonSafeValue(value: unknown, seen = new WeakSet<object>()): any {
+  private toJsonSafeValue(value: unknown, seen = new WeakSet<object>()): unknown {
     if (
       value === null ||
       typeof value === 'string' ||
@@ -1272,7 +1281,7 @@ ${webviewScriptTags}
 
     this.lastCaptureConfig = this.cloneCaptureConfig(config);
     const session = await this.captureWithDevice(config);
-    const lacData = LACFileFormat.createFromCaptureSession(session);
+    const lacData = LACFileFormat.createFromCaptureSession(session, undefined, true);
     await this.saveLACFile(document, lacData);
     const capturedDocument = {
       uri: document.uri.toString(),

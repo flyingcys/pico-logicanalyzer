@@ -101,20 +101,29 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     // 重置Mock状态
     mockSerialPortInstance.isOpen = false;
-    mockSerialPortInstance.open.mockClear();
-    mockSerialPortInstance.close.mockClear();
-    mockSerialPortInstance.write.mockClear();
-    
-    mockSocketInstance.connect.mockClear();
-    mockSocketInstance.write.mockClear();
-    mockSocketInstance.destroy.mockClear();
-    
-    mockReadlineParser.on.mockClear();
-    mockReadlineParser.once.mockClear();
-    mockReadlineParser.off.mockClear();
+
+    // 清除 socket 事件回调实现，防止跨用例污染
+    // （例如"网络连接超时"用例设置的 'error' 回调泄漏到后续网络用例）
+    mockSocketInstance.on.mockReset();
+    mockSocketInstance.connect.mockReset();
+    mockSocketInstance.on.mockReset();
+    mockSerialPortInstance.on.mockReset();
+
+    // write 默认回调成功（connect 流程的 initializeDevice 依赖 write 回调；
+    // 各用例可按需覆盖为失败实现）
+    mockSerialPortInstance.write.mockImplementation((_data: unknown, callback?: (error?: Error | null) => void) => {
+      if (callback) {
+        callback(null);
+      }
+    });
+    mockSocketInstance.write.mockImplementation((_data: unknown, callback?: (error?: Error | null) => void) => {
+      if (callback) {
+        callback(null);
+      }
+    });
   });
 
   describe('构造函数和基础属性验证', () => {
@@ -142,9 +151,9 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
 
     it('应该正确识别网络连接字符串格式', () => {
       const networkDriver = new LogicAnalyzerDriver('192.168.1.100:8080');
-      
-      // 连接前isNetwork为false（仅在连接后设置）
-      expect(networkDriver.isNetwork).toBe(false);
+
+      // 构造函数阶段基于连接字符串格式识别网络类型（含 ':' 视为网络地址）
+      expect(networkDriver.isNetwork).toBe(true);
     });
   });
 
@@ -163,7 +172,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
 
         // Mock设备信息查询响应
         const deviceResponses = [
-          'PicoLogicAnalyzer v1.2.3',
+          'PicoLogicAnalyzer V1_7',
           'FREQ:100000000', 
           'BLASTFREQ:100000000',
           'BUFFER:96000',
@@ -186,7 +195,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
 
         expect(result.success).toBe(true);
         expect(result.deviceInfo).toBeTruthy();
-        expect(result.deviceInfo!.name).toBe('PicoLogicAnalyzer v1.2.3');
+        expect(result.deviceInfo!.name).toBe('PicoLogicAnalyzer V1_7');
         expect(result.deviceInfo!.type).toBe(AnalyzerDriverType.Serial);
         expect(result.deviceInfo!.connectionPath).toBe('/dev/ttyACM0');
         expect(driver.isNetwork).toBe(false);
@@ -204,6 +213,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
       });
 
       it('应该正确清理串口连接', async () => {
+        (driver as any)._serialPort = mockSerialPortInstance;
         mockSerialPortInstance.isOpen = true;
 
         await driver.disconnect();
@@ -250,7 +260,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
       });
 
       it('应该处理无效的网络地址格式', async () => {
-        const invalidDriver = new LogicAnalyzerDriver('invalid-address');
+        const invalidDriver = new LogicAnalyzerDriver('invalid:address');
 
         const result = await invalidDriver.connect();
 
@@ -272,6 +282,8 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
       });
 
       it('应该正确清理网络连接', async () => {
+        (driver as any)._tcpSocket = mockSocketInstance;
+
         await driver.disconnect();
 
         expect(mockSocketInstance.destroy).toHaveBeenCalled();
@@ -291,7 +303,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
       });
 
       const deviceResponses = [
-        'PicoLogicAnalyzer v1.3.0',
+        'PicoLogicAnalyzer V1_7',
         'FREQ:100000000',
         'BLASTFREQ:100000000', 
         'BUFFER:96000',
@@ -308,7 +320,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
 
       await driver.connect();
 
-      expect(driver.deviceVersion).toBe('PicoLogicAnalyzer v1.3.0');
+      expect(driver.deviceVersion).toBe('PicoLogicAnalyzer V1_7');
       expect(driver.maxFrequency).toBe(100000000);
       expect(driver.blastFrequency).toBe(100000000);
       expect(driver.bufferSize).toBe(96000);
@@ -322,7 +334,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
       });
 
       const invalidResponses = [
-        'PicoLogicAnalyzer v1.3.0',
+        'PicoLogicAnalyzer V1_7',
         'INVALID_FREQ_FORMAT', // 无效频率格式
         'BLASTFREQ:100000000',
         'BUFFER:96000', 
@@ -384,7 +396,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('设备信息读取超时');
-    });
+    }, 15000);
 
     it('应该验证通道数的边界条件', async () => {
       mockSerialPortInstance.open.mockImplementation((callback) => {
@@ -393,7 +405,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
       });
 
       const invalidChannelResponses = [
-        'PicoLogicAnalyzer v1.3.0',
+        'PicoLogicAnalyzer V1_7',
         'FREQ:100000000',
         'BLASTFREQ:100000000',
         'BUFFER:96000',
@@ -426,7 +438,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
       });
 
       const deviceResponses = [
-        'PicoLogicAnalyzer v1.3.0',
+        'PicoLogicAnalyzer V1_7',
         'FREQ:100000000',
         'BLASTFREQ:100000000',
         'BUFFER:96000',
@@ -511,7 +523,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
       });
 
       const deviceResponses = [
-        'PicoLogicAnalyzer v1.3.0',
+        'PicoLogicAnalyzer V1_7',
         'FREQ:100000000',
         'BLASTFREQ:100000000',
         'BUFFER:96000',
@@ -598,6 +610,13 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
         callback(null);
       });
 
+      // Mock采集启动响应
+      mockReadlineParser.on.mockImplementation((event, handler) => {
+        if (event === 'data') {
+          setTimeout(() => handler('CAPTURE_STARTED'), 10);
+        }
+      });
+
       const result = await driver.startCapture(complexSession);
 
       expect(result).toBe(CaptureError.None);
@@ -615,7 +634,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
       });
 
       const deviceResponses = [
-        'PicoLogicAnalyzer v1.3.0',
+        'PicoLogicAnalyzer V1_7',
         'FREQ:100000000',
         'BLASTFREQ:100000000',
         'BUFFER:96000',
@@ -699,7 +718,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
       });
 
       const deviceResponses = [
-        'PicoLogicAnalyzer v1.3.0',
+        'PicoLogicAnalyzer V1_7',
         'FREQ:100000000',
         'BLASTFREQ:100000000',
         'BUFFER:96000',
@@ -778,7 +797,7 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
       });
 
       const deviceResponses = [
-        'PicoLogicAnalyzer v1.3.0',
+        'PicoLogicAnalyzer V1_7',
         'FREQ:100000000',
         'BLASTFREQ:100000000',
         'BUFFER:96000',

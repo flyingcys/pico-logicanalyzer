@@ -30,7 +30,7 @@ export interface DecoderOption {
   /** 选项描述 */
   desc: string;
   /** 默认值 */
-  default?: any;
+  default?: unknown;
   /** 可选值列表 */
   values?: string[];
   /** 选项类型 */
@@ -45,7 +45,7 @@ export interface DecoderOptionValue {
   /** 选项索引 */
   optionIndex: number;
   /** 选项值 */
-  value: any;
+  value: unknown;
 }
 
 /**
@@ -131,7 +131,7 @@ export interface DecoderOutput {
   /** 输出值数组 */
   values: string[];
   /** 原始数据 */
-  rawData?: any;
+  rawData?: unknown;
 }
 
 /**
@@ -150,7 +150,7 @@ export interface DecoderResult {
   /** 显示值数组（从详细到简化） */
   values: string[];
   /** 原始数据 */
-  rawData?: any;
+  rawData?: unknown;
   /** 形状类型 */
   shape?: 'hexagon' | 'rectangle' | 'diamond';
 }

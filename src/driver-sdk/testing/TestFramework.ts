@@ -406,7 +406,7 @@ export class TestFramework {
     ];
 
     for (const feature of basicFeatures) {
-      if (typeof (driver as any)[feature] === 'function') {
+      if (typeof (driver as unknown as Record<string, unknown>)[feature] === 'function') {
         supportedFeatures.push(feature);
       } else {
         missingFeatures.push(feature);
@@ -419,7 +419,7 @@ export class TestFramework {
     ];
 
     for (const feature of advancedFeatures) {
-      if (typeof (driver as any)[feature] === 'function') {
+      if (typeof (driver as unknown as Record<string, unknown>)[feature] === 'function') {
         supportedFeatures.push(feature);
       }
     }
@@ -440,7 +440,7 @@ export class TestFramework {
    */
   private detectAPIVersion(driver: AnalyzerDriverBase): string {
     // 基于驱动类型和支持的功能推断API版本
-    if (typeof (driver as any).sendNetworkConfig === 'function') {
+    if (typeof (driver as unknown as Record<string, unknown>).sendNetworkConfig === 'function') {
       return '2.0';
     } else if (typeof driver.enterBootloader === 'function') {
       return '1.1';
@@ -591,6 +591,14 @@ export class TestFramework {
 /**
  * 测试数据生成器
  */
+/**
+ * 边界测试用例参数
+ */
+interface BoundaryTestCase {
+  frequency?: number;
+  samples?: number;
+}
+
 class TestDataGenerator {
   generateTestSession(): CaptureSession {
     return {
@@ -624,7 +632,7 @@ class TestDataGenerator {
     };
   }
 
-  generateBoundaryTestSession(driver: AnalyzerDriverBase, testCase: any): CaptureSession {
+  generateBoundaryTestSession(driver: AnalyzerDriverBase, testCase: BoundaryTestCase): CaptureSession {
     const session = this.generateTestSession();
 
     if (testCase.frequency) {

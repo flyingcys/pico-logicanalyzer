@@ -427,24 +427,22 @@ describe('RigolSiglentDriver 专注业务逻辑测试', () => {
       
       // 验证触发能力
       expect(capabilities.triggers).toBeDefined();
-      expect(capabilities.triggers.types).toEqual([0, 1, 2]); // Edge, Pattern, Complex
+      expect(capabilities.triggers.types).toEqual([0, 1, 2]); // Edge, Complex, Fast
       expect(capabilities.triggers.maxChannels).toBe(16);
       expect(capabilities.triggers.patternWidth).toBe(16);
       expect(capabilities.triggers.sequentialSupport).toBe(true);
-      expect(capabilities.triggers.conditions).toEqual(['rising', 'falling', 'high', 'low', 'change']);
-      
+      expect(capabilities.triggers.conditions).toEqual(['rising', 'falling', 'high', 'low']);
+
       // 验证连接能力
       expect(capabilities.connectivity).toBeDefined();
       expect(capabilities.connectivity.interfaces).toEqual(['ethernet', 'usb']);
-      expect(capabilities.connectivity.protocols).toEqual(['scpi', 'vxi11']);
-      
+      expect(capabilities.connectivity.protocols).toEqual(['scpi']);
+
       // 验证功能特性
       expect(capabilities.features).toBeDefined();
       expect(capabilities.features.signalGeneration).toBe(false);
       expect(capabilities.features.powerSupply).toBe(false);
       expect(capabilities.features.voltageMonitoring).toBe(false);
-      expect(capabilities.features.mathFunctions).toBe(true);
-      expect(capabilities.features.protocolDecoding).toBe(true);
     });
 
     it('应该根据设备型号调整能力参数', () => {

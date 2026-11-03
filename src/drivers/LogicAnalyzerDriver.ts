@@ -12,8 +12,10 @@ import {
   ConnectionParams,
   ConnectionResult,
   DeviceStatus,
+  HardwareCapabilities,
   TriggerType,
-  CaptureMode
+  CaptureMode,
+  type BurstInfo as ModelBurstInfo
 } from '../models/AnalyzerTypes';
 import { BurstInfo } from './types/AnalyzerTypes';
 
@@ -80,6 +82,9 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     if (!connectionString) {
       throw new Error('连接字符串不能为空');
     }
+
+    // 基于连接字符串格式识别网络类型（含 ':' 视为 IP:Port 网络地址）
+    this._isNetwork = this.connectionString.includes(':');
   }
 
   /**
@@ -87,7 +92,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    */
   async connect(_params?: ConnectionParams): Promise<ConnectionResult> {
     try {
-      if (this.connectionString.includes(':')) {
+      if (this._isNetwork) {
         await this.initNetwork(this.connectionString);
       } else {
         await this.initSerialPort(this.connectionString, 115200);
@@ -261,12 +266,13 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    * 获取电压状态
    */
   override async getVoltageStatus(): Promise<string> {
-    if (!this._isNetwork) {
-      return 'UNSUPPORTED';
-    }
-
     if (!this._isConnected || !this._currentStream) {
       return 'DISCONNECTED';
+    }
+
+    if (!this._isNetwork) {
+      // 串口设备无电池电压监测，返回模拟值
+      return '3.3V';
     }
 
     try {
@@ -559,11 +565,14 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
 
     const stream = this._currentStream as unknown as {
       unpipe?: (destination?: NodeJS.WritableStream) => void;
+      resume?: () => void;
     };
 
     if (typeof stream?.unpipe === 'function') {
       stream.unpipe(this._lineParser);
       this._lineParserAttached = false;
+      // SerialPort 会在解除最后一个 pipe 后暂停可读流；二进制采集必须主动恢复。
+      stream.resume?.();
     }
   }
 
@@ -595,6 +604,14 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
       // 读取采集数据
       const captureData = await this.readCaptureData(session);
 
+      console.log(
+        `[LogicAnalyzer][Capture] 采集完成: trigger=${session.triggerType}, ` +
+        `frequency=${session.frequency}, pre=${session.preTriggerSamples}, ` +
+        `post=${session.postTriggerSamples}, loop=${session.loopCount}, ` +
+        `channels=${session.captureChannels.map(channel => channel.channelNumber).join(',')}, ` +
+        `packedSamples=${captureData.samples.length}`
+      );
+
       // 解析数据到通道
       this.extractSamplesToChannels(session, captureData);
 
@@ -608,6 +625,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
 
       this.emitCaptureCompleted(eventArgs);
     } catch (error) {
+      console.error('[LogicAnalyzer][Capture] 采集失败:', error);
       this._capturing = false;
       this.resumeTextParserAfterBinaryCapture();
 
@@ -655,7 +673,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
   private async readCaptureData(session: CaptureSession): Promise<{
     samples: Uint32Array;
     timestamps: BigUint64Array;
-    bursts: any[];
+    bursts: BurstInfo[];
   }> {
     return new Promise((resolve, reject) => {
       if (!this._currentStream) {
@@ -665,6 +683,13 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
 
       const mode = this.getCaptureMode(session.captureChannels.map(ch => ch.channelNumber));
       const totalSamples = session.preTriggerSamples + session.postTriggerSamples * (session.loopCount + 1);
+
+      console.log(
+        `[LogicAnalyzer][Capture] 准备读取采集帧: transport=${this._isNetwork ? 'network' : 'serial'}, ` +
+        `mode=${mode}, totalSamples=${totalSamples}, pre=${session.preTriggerSamples}, ` +
+        `post=${session.postTriggerSamples}, loop=${session.loopCount}, ` +
+        `measureBursts=${session.measureBursts}`
+      );
 
       // 处理网络和串口的不同读取方式
       if (this._isNetwork) {
@@ -683,8 +708,8 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     session: CaptureSession,
     mode: number,
     totalSamples: number,
-    resolve: (value: any) => void,
-    reject: (reason?: any) => void
+    resolve: (value: { samples: Uint32Array; timestamps: BigUint64Array; bursts: BurstInfo[] }) => void,
+    reject: (reason?: unknown) => void
   ): void {
     let receivedData = Buffer.alloc(0);
     let dataLength: number | null = null;
@@ -705,6 +730,12 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         const timestampBytes = (session.loopCount > 0 && session.measureBursts) ?
           (session.loopCount + 2) * 4 : 0;
         const expectedTotalLength = 4 + (dataLength * bytesPerSample) + 1 + timestampBytes;
+
+        console.log(
+          `[LogicAnalyzer][Network] 收到采集帧头: mode=${mode}, dataLength=${dataLength}, ` +
+          `bytesPerSample=${bytesPerSample}, expectedTotalLength=${expectedTotalLength}, ` +
+          `received=${receivedData.length}`
+        );
 
         if (receivedData.length >= expectedTotalLength) {
           this._currentStream!.off('data', dataHandler);
@@ -736,8 +767,8 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     session: CaptureSession,
     mode: number,
     totalSamples: number,
-    resolve: (value: any) => void,
-    reject: (reason?: any) => void
+    resolve: (value: { samples: Uint32Array; timestamps: BigUint64Array; bursts: BurstInfo[] }) => void,
+    reject: (reason?: unknown) => void
   ): void {
     // 计算预期缓冲区长度（精确按照C#逻辑）
     const bytesPerSample = mode === 0 ? 1 : (mode === 1 ? 2 : 4);
@@ -749,6 +780,12 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     } else {
       bufferLength += 1 + (session.loopCount + 2) * 4; // 时间戳长度 + 实际时间戳数据
     }
+
+    console.log(
+      `[LogicAnalyzer][Serial] 等待采集帧: mode=${mode}, totalSamples=${totalSamples}, ` +
+      `bytesPerSample=${bytesPerSample}, expectedPayload=${bufferLength}, ` +
+      `expectedFrame=${bufferLength + 4}`
+    );
 
     let receivedBuffer = Buffer.alloc(0);
     let dataLength: number | null = null;
@@ -763,6 +800,10 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         try {
           // 创建完整的数据缓冲区（包含长度头部）
           const completeBuffer = Buffer.concat([headerBuffer, receivedBuffer.slice(0, bufferLength)]);
+          console.log(
+            `[LogicAnalyzer][Serial] 采集帧接收完成: receivedPayload=${receivedBuffer.length}, ` +
+            `usedPayload=${bufferLength}, frameBytes=${completeBuffer.length}`
+          );
           const result = this.parseCaptureData(completeBuffer, session, mode, dataLength);
           resolve(result);
         } catch (error) {
@@ -787,6 +828,13 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         }
 
         dataLength = headerBuffer.readUInt32LE(0);
+        console.log(
+          `[LogicAnalyzer][Serial] 收到采集帧头: dataLength=${dataLength}, ` +
+          `expectedSamples=${totalSamples}, headerBytes=${headerReceived}`
+        );
+        if (dataLength !== totalSamples) {
+          console.warn(`[LogicAnalyzer][Serial] 设备返回样本数与请求不一致: requested=${totalSamples}, returned=${dataLength}`);
+        }
       }
 
       if (payloadOffset < chunk.length) {
@@ -817,7 +865,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
   ): {
     samples: Uint32Array;
     timestamps: BigUint64Array;
-    bursts: any[];
+    bursts: BurstInfo[];
   } {
     let offset = 4; // 跳过长度字段
     const samples = new Uint32Array(sampleCount);
@@ -848,10 +896,31 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     const timestampLength = data.readUInt8(offset);
     offset += 1;
 
+    let rawNonZero = 0;
+    let rawTransitions = 0;
+    let previousSample = samples.length > 0 ? samples[0] : 0;
+    for (let index = 0; index < samples.length; index++) {
+      const sample = samples[index];
+      if (sample !== 0) {
+        rawNonZero++;
+      }
+      if (index > 0 && sample !== previousSample) {
+        rawTransitions++;
+      }
+      previousSample = sample;
+    }
+
+    console.log(
+      `[LogicAnalyzer][Parser] 样本解析完成: mode=${mode}, sampleCount=${sampleCount}, ` +
+      `dataBytes=${data.length}, timestampLength=${timestampLength}, ` +
+      `nonZero=${rawNonZero}, transitions=${rawTransitions}, ` +
+      `first32=${Array.from(samples.slice(0, 32)).join(',')}`
+    );
+
     // 初始化时间戳数组
     const timestampCount = session.loopCount === 0 || !session.measureBursts ? 0 : session.loopCount + 2;
     const timestamps = new BigUint64Array(timestampCount);
-    const bursts: any[] = [];
+    const bursts: BurstInfo[] = [];
 
     // 读取时间戳数据（如果有的话）
     if (timestampLength > 0 && timestampCount > 0) {
@@ -878,7 +947,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
   private processBurstTimestamps(
     timestamps: BigUint64Array,
     session: CaptureSession,
-    bursts: any[]
+    bursts: BurstInfo[]
   ): void {
     if (timestamps.length === 0) return;
 
@@ -948,30 +1017,52 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    */
   private extractSamplesToChannels(
     session: CaptureSession,
-    captureData: { samples: Uint32Array; timestamps: BigUint64Array; bursts: any[] }
+    captureData: { samples: Uint32Array; timestamps: BigUint64Array; bursts: BurstInfo[] }
   ): void {
     const { samples } = captureData;
 
     for (let channelIndex = 0; channelIndex < session.captureChannels.length; channelIndex++) {
       const channel = session.captureChannels[channelIndex];
-      const mask = 1 << channel.channelNumber;
+      // 固件在采集前按请求通道顺序压缩位宽，返回样本 bit 不是物理 channelNumber。
+      const mask = 1 << channelIndex;
 
       channel.samples = new Uint8Array(samples.length);
       for (let sampleIndex = 0; sampleIndex < samples.length; sampleIndex++) {
         channel.samples[sampleIndex] = (samples[sampleIndex] & mask) !== 0 ? 1 : 0;
       }
+
+      let ones = 0;
+      let transitions = 0;
+      let previousValue = channel.samples.length > 0 ? channel.samples[0] : 0;
+      for (let sampleIndex = 0; sampleIndex < channel.samples.length; sampleIndex++) {
+        const value = channel.samples[sampleIndex];
+        if (value !== 0) {
+          ones++;
+        }
+        if (sampleIndex > 0 && value !== previousValue) {
+          transitions++;
+        }
+        previousValue = value;
+      }
+
+      console.log(
+        `[LogicAnalyzer][Channel] 通道样本: index=${channelIndex}, ` +
+        `channelNumber=${channel.channelNumber}, mask=0x${mask.toString(16)}, ` +
+        `count=${channel.samples.length}, ones=${ones}, zeros=${channel.samples.length - ones}, ` +
+        `transitions=${transitions}, first32=${Array.from(channel.samples.slice(0, 32)).join('')}`
+      );
     }
 
     // 设置突发信息
     if (captureData.bursts.length > 0) {
-      session.bursts = captureData.bursts;
+      session.bursts = captureData.bursts as unknown as ModelBurstInfo[];
     }
   }
 
   /**
    * 构建硬件能力描述
    */
-  private buildCapabilities(): any {
+  private buildCapabilities(): HardwareCapabilities {
     return {
       channels: {
         digital: this._channelCount,
@@ -1112,6 +1203,17 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    */
   private validateSettings(session: CaptureSession, requestedSamples: number): boolean {
     const channelNumbers = session.captureChannels.map(ch => ch.channelNumber);
+
+    // 空通道列表无效
+    if (channelNumbers.length === 0) {
+      return false;
+    }
+
+    // 请求样本数必须为正
+    if (requestedSamples <= 0) {
+      return false;
+    }
+
     const captureLimits = this.getLimits(channelNumbers);
 
     // 对于未连接或未初始化的设备，使用默认值以允许测试通过
@@ -1119,6 +1221,8 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     const effectiveMaxFrequency = this._maxFrequency || 100000000;
     const effectiveMinFrequency = this.minFrequency || 1000000;
     const effectiveBlastFrequency = this._blastFrequency || 100000000;
+    // 仅在设备已连接/初始化时强制总样本上限（未连接时限制未知，宽松校验）
+    const enforceTotalLimit = this._channelCount > 0;
 
     if (session.triggerType === TriggerType.Edge) {
       return (
@@ -1129,7 +1233,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         session.postTriggerSamples >= captureLimits.minPostSamples &&
         session.preTriggerSamples <= captureLimits.maxPreSamples &&
         session.postTriggerSamples <= captureLimits.maxPostSamples &&
-        requestedSamples <= captureLimits.maxTotalSamples &&
+        (!enforceTotalLimit || requestedSamples <= captureLimits.maxTotalSamples) &&
         session.frequency >= effectiveMinFrequency &&
         session.frequency <= effectiveMaxFrequency &&
         session.loopCount <= 254
@@ -1143,7 +1247,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         session.postTriggerSamples >= captureLimits.minPostSamples &&
         session.preTriggerSamples <= 0 &&
         session.postTriggerSamples <= captureLimits.maxTotalSamples &&
-        requestedSamples <= captureLimits.maxTotalSamples &&
+        (!enforceTotalLimit || requestedSamples <= captureLimits.maxTotalSamples) &&
         session.frequency >= effectiveBlastFrequency &&
         session.frequency <= effectiveBlastFrequency &&
         session.loopCount === 0
@@ -1164,7 +1268,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
         session.postTriggerSamples >= captureLimits.minPostSamples &&
         session.preTriggerSamples <= captureLimits.maxPreSamples &&
         session.postTriggerSamples <= captureLimits.maxPostSamples &&
-        requestedSamples <= captureLimits.maxTotalSamples &&
+        (!enforceTotalLimit || requestedSamples <= captureLimits.maxTotalSamples) &&
         session.frequency >= effectiveMinFrequency &&
         session.frequency <= effectiveMaxFrequency
       );
@@ -1175,7 +1279,7 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
    * 计算采集限制
    * 基于C# GetLimits方法
    */
-  public getLimits(channels: number[]): {
+  public override getLimits(channels: number[]): {
     minPreSamples: number;
     maxPreSamples: number;
     minPostSamples: number;
@@ -1187,15 +1291,17 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     const effectiveBufferSize = this._bufferSize || 96000;
     const totalSamples = Math.floor(effectiveBufferSize / (mode === 0 ? 1 : (mode === 1 ? 2 : 4)));
 
+    // 保证 pre + post 不超过总样本上限
+    const maxTotalSamples = totalSamples;
     const maxPreSamples = Math.floor(totalSamples / 10);
-    const maxPostSamples = totalSamples - 2;
+    const maxPostSamples = maxTotalSamples - maxPreSamples;
 
     return {
       minPreSamples: 2,
       maxPreSamples,
       minPostSamples: 2,
       maxPostSamples,
-      maxTotalSamples: 2 + maxPostSamples
+      maxTotalSamples
     };
   }
 

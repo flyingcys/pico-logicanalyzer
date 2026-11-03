@@ -1,7 +1,21 @@
-import { HardwareCompatibilityDatabase } from './HardwareCompatibilityDatabase';
+import { HardwareCompatibilityDatabase, DeviceCompatibilityEntry } from './HardwareCompatibilityDatabase';
 import { DatabaseManager } from './DatabaseManager';
 import { DeviceInfo } from '../models/AnalyzerTypes';
 // import { AnalyzerDriverBase } from '../drivers/AnalyzerDriverBase'; // 暂时注释掉未使用的导入
+
+/**
+ * 兼容性摘要信息（用于设备发现结果展示）
+ */
+interface CompatibilitySummary {
+  deviceId: string;
+  manufacturer: string;
+  model: string;
+  compatibilityLevel: 'full' | 'partial' | 'experimental';
+  validationScore: number;
+  userRating: number;
+  knownIssues: string[];
+  workarounds: string[];
+}
 
 /**
  * 数据库集成工具
@@ -54,7 +68,7 @@ export class DatabaseIntegration {
    */
   async enhancedDeviceDiscovery(deviceInfo: Partial<DeviceInfo>): Promise<{
     recommendedDrivers: string[];
-    compatibilityInfo: any[];
+    compatibilityInfo: CompatibilitySummary[];
     confidence: number;
     connectionStrings: string[];
     setupInstructions: string[];
@@ -65,7 +79,7 @@ export class DatabaseIntegration {
     const matchResult = await this.manager.smartDeviceMatching(deviceInfo);
 
     const recommendedDrivers: string[] = [];
-    const compatibilityInfo: any[] = [];
+    const compatibilityInfo: CompatibilitySummary[] = [];
     const connectionStrings: string[] = [];
     const setupInstructions: string[] = [];
 
@@ -115,7 +129,7 @@ export class DatabaseIntegration {
   /**
    * 生成设置说明
    */
-  private generateSetupInstructions(deviceEntry: any): string[] {
+  private generateSetupInstructions(deviceEntry: DeviceCompatibilityEntry): string[] {
     const instructions: string[] = [];
 
     // 基于设备类别生成说明
@@ -460,7 +474,7 @@ export class DatabaseIntegration {
   /**
    * 批量导入设备数据
    */
-  async batchImportDevices(devices: any[], validateBeforeImport: boolean = true): Promise<{
+  async batchImportDevices(devices: DeviceCompatibilityEntry[], validateBeforeImport: boolean = true): Promise<{
     imported: number;
     skipped: number;
     errors: string[];

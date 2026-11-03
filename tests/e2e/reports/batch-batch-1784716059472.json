@@ -1,0 +1,108 @@
+{
+  "batchId": "batch-1784716059472",
+  "totalScenarios": 4,
+  "completedScenarios": 4,
+  "successfulScenarios": 4,
+  "failedScenarios": 0,
+  "parallelGroups": 2,
+  "totalDuration": 1835,
+  "results": [
+    {
+      "scenario": "新手用户入门流程",
+      "success": true,
+      "executedSteps": 11,
+      "totalSteps": 11,
+      "duration": 1123,
+      "errors": [],
+      "artifacts": {
+        "logs": [
+          "开始预处理场景: 新手用户入门流程",
+          "步骤 1: 打开欢迎页面",
+          "步骤 2: 等待欢迎页面加载",
+          "步骤 3: 自动检测设备",
+          "步骤 4: 验证扩展已激活",
+          "步骤 5: 选择Mock测试设备",
+          "步骤 6: 连接到设备",
+          "步骤 7: 等待设备连接建立",
+          "步骤 8: 配置采集参数",
+          "步骤 9: 开始数据采集",
+          "步骤 10: 等待数据采集完成",
+          "步骤 11: 保存采集数据",
+          "开始后处理场景: 新手用户入门流程"
+        ],
+        "screenshots": [],
+        "dataFiles": []
+      }
+    },
+    {
+      "scenario": "专家用户高级配置",
+      "success": true,
+      "executedSteps": 8,
+      "totalSteps": 8,
+      "duration": 819,
+      "errors": [],
+      "artifacts": {
+        "logs": [
+          "开始预处理场景: 专家用户高级配置",
+          "步骤 1: 打开高级设置",
+          "步骤 2: 配置高级触发参数",
+          "步骤 3: 添加I2C协议解码器",
+          "步骤 4: 添加SPI协议解码器",
+          "步骤 5: 开始高级数据采集",
+          "步骤 6: 等待复杂数据采集完成",
+          "步骤 7: 运行协议分析",
+          "步骤 8: 导出分析结果",
+          "开始后处理场景: 专家用户高级配置"
+        ],
+        "screenshots": [],
+        "dataFiles": []
+      }
+    },
+    {
+      "scenario": "错误恢复处理",
+      "success": true,
+      "executedSteps": 7,
+      "totalSteps": 7,
+      "duration": 717,
+      "errors": [],
+      "artifacts": {
+        "logs": [
+          "开始预处理场景: 错误恢复处理",
+          "步骤 1: 尝试连接无效设备",
+          "步骤 2: 等待连接超时",
+          "步骤 3: 验证错误提示显示",
+          "步骤 4: 点击重试按钮",
+          "步骤 5: 选择有效的备用设备",
+          "步骤 6: 连接到备用设备",
+          "步骤 7: 开始采集验证恢复",
+          "开始后处理场景: 错误恢复处理"
+        ],
+        "screenshots": [],
+        "dataFiles": []
+      }
+    },
+    {
+      "scenario": "多设备并发操作",
+      "success": true,
+      "executedSteps": 7,
+      "totalSteps": 7,
+      "duration": 710,
+      "errors": [],
+      "artifacts": {
+        "logs": [
+          "开始预处理场景: 多设备并发操作",
+          "步骤 1: 打开设备管理器",
+          "步骤 2: 添加主设备",
+          "步骤 3: 添加辅助设备",
+          "步骤 4: 开始同步采集",
+          "步骤 5: 等待多设备采集完成",
+          "步骤 6: 数据关联分析",
+          "步骤 7: 保存多设备会话",
+          "开始后处理场景: 多设备并发操作"
+        ],
+        "screenshots": [],
+        "dataFiles": []
+      }
+    }
+  ]
+}

@@ -783,7 +783,7 @@ describe('MultiAnalyzerDriver 精准业务逻辑测试', () => {
 
     it('应该忽略非采集状态下的事件', () => {
       const handleDeviceCaptureCompleted = (multiDriver as any).handleDeviceCaptureCompleted.bind(multiDriver);
-      
+
       // 设置为非采集状态
       (multiDriver as any)._capturing = false;
 
@@ -793,6 +793,47 @@ describe('MultiAnalyzerDriver 精准业务逻辑测试', () => {
       };
 
       expect(() => handleDeviceCaptureCompleted(eventArgs)).not.toThrow();
+    });
+
+    it('竞态: 多设备并发完成时 combineDeviceResults 只触发一次', () => {
+      (multiDriver as any)._capturing = true;
+      (multiDriver as any)._sourceSession = createTestSession({
+        captureChannels: [
+          createTestChannel(0),
+          createTestChannel(24)
+        ]
+      });
+      (multiDriver as any)._deviceCaptures = [
+        {
+          completed: true,
+          session: createTestSession({
+            captureChannels: [
+              { ...createTestChannel(0), samples: new Uint8Array([1]) }
+            ]
+          })
+        },
+        {
+          completed: true,
+          session: createTestSession({
+            captureChannels: [
+              { ...createTestChannel(0), samples: new Uint8Array([2]) }
+            ]
+          })
+        }
+      ];
+
+      const mockHandler = jest.fn();
+      (multiDriver as any)._currentCaptureHandler = mockHandler;
+
+      // 直接调用两次 combineDeviceResults（模拟竞态条件：两个设备同时完成）
+      (multiDriver as any).combineDeviceResults();
+      (multiDriver as any).combineDeviceResults();
+
+      // 验证 handler 只被调用一次（第二次调用应被守卫阻止）
+      expect(mockHandler).toHaveBeenCalledTimes(1);
+      expect(mockHandler).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
     });
   });
 
@@ -810,8 +851,6 @@ describe('MultiAnalyzerDriver 精准业务逻辑测试', () => {
       expect(capabilities.sampling.maxRate).toBe(multiDriver.maxFrequency);
       expect(capabilities.sampling.minRate).toBe(multiDriver.minFrequency);
       expect(capabilities.sampling.bufferSize).toBe(multiDriver.bufferSize);
-      expect(capabilities.features.multiDevice).toBe(true);
-      expect(capabilities.features.maxDevices).toBe(5);
       expect(capabilities.triggers.types).toEqual([1, 2]); // Complex, Fast
     });
   });

@@ -1,0 +1,14 @@
+/* web-app 暗色主题:AnalyzerLayout 为暗色设计(#0f172a 等),
+   但 html.css 默认浅色(#f5f7fa),element-plus 默认浅色主题,
+   导致 el-input 等表单组件在暗色 UI 上呈白。此处覆盖 body 暗色 +
+   激活 element-plus dark(html.dark 由 main-web.ts 添加)。 */
+:root {
+  color-scheme: dark;
+}
+
+html.dark,
+html.dark body,
+html.dark #app {
+  background: #0f172a;
+  color: #e5e7eb;
+}

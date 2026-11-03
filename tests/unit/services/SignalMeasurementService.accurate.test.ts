@@ -23,7 +23,8 @@ import {
   CrossChannelAnalysis,
   SynchronizationAnalysis,
   ChannelCorrelation,
-  TimingRelationship
+  TimingRelationship,
+  SignalMeasurementOptions
 } from '../../../src/services/SignalMeasurementService';
 
 // 注意：SignalMeasurementService导入路径有误，应该从CaptureModels导入
@@ -855,6 +856,65 @@ describe('SignalMeasurementService 精准业务逻辑测试', () => {
       expect(result.totalChannels).toBe(8);
       expect(result.crossChannelAnalysis!.synchronization).toHaveLength(28); // 8选2 = 28对
       expect(processingTime).toBeLessThan(5000); // 应该在5秒内完成
+    });
+  });
+
+  describe('SignalMeasurementOptions 类型选项验证', () => {
+    it('应该接受SignalMeasurementOptions(enableSignalQuality)正常工作', async () => {
+      const testChannel = createTestChannel(0, 'QUALITY_TEST', 'noise');
+      const options: SignalMeasurementOptions = {
+        enableSignalQuality: true,
+        glitchDetectionThreshold: 200
+      };
+
+      const result = await signalMeasurementServiceInstance.performMeasurement(
+        [testChannel], 1000000, options
+      );
+
+      expect(result).toBeDefined();
+      expect(result.totalChannels).toBe(1);
+      // enableSignalQuality 启用后应触发真实质量分析
+      const quality = result.channels[0].signalQuality;
+      expect(quality).toBeDefined();
+      expect(quality.signalIntegrity).toBeGreaterThanOrEqual(0);
+      expect(quality.signalIntegrity).toBeLessThanOrEqual(100);
+      expect(Array.isArray(quality.recommendations)).toBe(true);
+    });
+
+    it('应该在不传options时正常工作(默认行为)', async () => {
+      const testChannel = createTestChannel(0, 'DEFAULT', 'square');
+
+      // 不传 options: analyzeChannel 收到 undefined，使用默认行为
+      const result = await signalMeasurementServiceInstance.performMeasurement(
+        [testChannel], 1000000
+      );
+
+      expect(result).toBeDefined();
+      expect(result.totalChannels).toBe(1);
+      // 不传 options 时默认不启用跨通道分析
+      expect(result.crossChannelAnalysis).toBeUndefined();
+      // 默认 signalQuality 为初始满分值（未触发真实分析）
+      expect(result.channels[0].signalQuality.signalIntegrity).toBe(100);
+      expect(result.channels[0].signalQuality.recommendations).toEqual([]);
+    });
+
+    it('应该支持enableCrossChannelAnalysis选项', async () => {
+      const channels = [
+        createTestChannel(0, 'CH0', 'square'),
+        createTestChannel(1, 'CH1', 'pulse')
+      ];
+      const options: SignalMeasurementOptions = {
+        enableCrossChannelAnalysis: true
+      };
+
+      const result = await signalMeasurementServiceInstance.performMeasurement(
+        channels, 1000000, options
+      );
+
+      expect(result.crossChannelAnalysis).toBeDefined();
+      // 2 通道两两组合 = 1 对
+      expect(result.crossChannelAnalysis!.synchronization).toHaveLength(1);
+      expect(result.crossChannelAnalysis!.correlations).toHaveLength(1);
     });
   });
 });
