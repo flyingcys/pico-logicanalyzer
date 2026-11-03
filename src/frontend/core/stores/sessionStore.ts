@@ -94,8 +94,28 @@ function readSessionPayload(rootPayload: JsonRecord): JsonRecord {
     return rootPayload.Settings;
   }
 
+  /**
+   * ⚠️ 小写 `settings` 也必须认 —— 这是 .lac 的两种合法形态之一。
+   *
+   * 少了这个分支，文件会走到 `return rootPayload` 兜底，
+   * 于是 `readChannels(sessionPayload)` 去找 `sessionPayload.captureChannels`
+   * 找不到（它实际在 `rootPayload.settings.captureChannels` 里）
+   * ⇒ **样本全部丢失**，UI 显示「当前文件只有采集设置」。
+   *
+   * 实测：`tests/fixtures/lac/current-lowercase-samples.lac` 就是小写形态，
+   * 缺此分支时 ui-waveform 的 L2 报 0 samples。
+   */
+  if (isRecord(rootPayload.settings)) {
+    return rootPayload.settings;
+  }
+
   if (isRecord(rootPayload.captureSession)) {
     return rootPayload.captureSession;
+  }
+
+  /** 同上，PascalCase 的 `CaptureSession` 也要认。 */
+  if (isRecord(rootPayload.CaptureSession)) {
+    return rootPayload.CaptureSession;
   }
 
   return rootPayload;
