@@ -350,4 +350,114 @@ describe('scenarioExecutor (Webview 场景执行器与门控)', () => {
       expect(result.counts?.['.zero-items']).toBe(0);
     });
   });
+
+  describe('formItem 语义定位器与 readAllTexts', () => {
+    function setupFormDom() {
+      document.body.innerHTML = `
+        <div class="capture-form">
+          <div class="el-form-item">
+            <label class="el-form-item__label">Pattern</label>
+            <div class="el-form-item__content">
+              <input class="el-input__inner" value="123" />
+            </div>
+          </div>
+          <div class="el-form-item">
+            <label class="el-form-item__label">Pre Samples</label>
+            <div class="el-form-item__content">
+              <input class="el-input__inner" value="456" />
+            </div>
+          </div>
+          <div class="el-form-item">
+            <label class="el-form-item__label">触发反相</label>
+            <div class="el-form-item__content">
+              <div class="el-switch is-checked"><input type="checkbox" /></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    it('formItem:"Pattern" input 能定位到 label 为 Pattern 的表单项内的 input', async () => {
+      setupFormDom();
+      const result = await executeScenarioActions([
+        { type: 'readValue', selector: 'formItem:"Pattern" input' }
+      ]);
+      expect(result.ok).toBe(true);
+      expect(result.values?.['formItem:"Pattern" input']).toBe('123');
+    });
+
+    it('formItem:"Pre Samples" input 能正确处理含空格的 label', async () => {
+      setupFormDom();
+      const result = await executeScenarioActions([
+        { type: 'readValue', selector: 'formItem:"Pre Samples" input' }
+      ]);
+      expect(result.ok).toBe(true);
+      expect(result.values?.['formItem:"Pre Samples" input']).toBe('456');
+    });
+
+    it('formItem:"不存在的标签" 返回 null（不抛错）', async () => {
+      setupFormDom();
+      const result = await executeScenarioActions([
+        { type: 'readValueOptional', selector: 'formItem:"不存在的标签" input' }
+      ]);
+      expect(result.ok).toBe(true);
+      expect(result.values?.['formItem:"不存在的标签" input']).toBeNull();
+    });
+
+    it('formItem:Pattern（无引号）应抛错（fail-closed）', async () => {
+      setupFormDom();
+      const result = await executeScenarioActions([
+        { type: 'readValue', selector: 'formItem:Pattern input' }
+      ]);
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/formItem: selector requires quoted label/);
+    });
+
+    it('countElements 支持 formItem: 前缀（走 queryAll 而非原生）', async () => {
+      setupFormDom();
+      const result = await executeScenarioActions([
+        { type: 'countElements', selector: 'formItem:"Pattern" input' },
+        { type: 'countElements', selector: 'formItem:"不存在的标签" input' },
+        { type: 'countElements', selector: 'formItem:"触发反相" .el-switch.is-checked' }
+      ]);
+      expect(result.ok).toBe(true);
+      expect(result.counts?.['formItem:"Pattern" input']).toBe(1);
+      expect(result.counts?.['formItem:"不存在的标签" input']).toBe(0);
+      expect(result.counts?.['formItem:"触发反相" .el-switch.is-checked']).toBe(1);
+    });
+
+    it('waitForElement 支持 formItem: 前缀', async () => {
+      document.body.innerHTML = '';
+      setTimeout(() => {
+        setupFormDom();
+      }, 50);
+
+      const result = await executeScenarioActions([
+        { type: 'waitForElement', selector: 'formItem:"Pre Samples" input', timeoutMs: 1000 }
+      ]);
+      expect(result.ok).toBe(true);
+    });
+
+    it('formItem:"Pattern"（无子选择器）返回 form-item 容器本身', async () => {
+      setupFormDom();
+      const result = await executeScenarioActions([
+        { type: 'countElements', selector: 'formItem:"Pattern"' }
+      ]);
+      expect(result.ok).toBe(true);
+      expect(result.counts?.['formItem:"Pattern"']).toBe(1);
+    });
+
+    it('readAllTexts 返回所有匹配元素的文本列表', async () => {
+      setupFormDom();
+      const result = await executeScenarioActions([
+        { type: 'readAllTexts', selector: '.el-form-item__label' }
+      ]);
+      expect(result.ok).toBe(true);
+      expect(result.allTexts?.['.el-form-item__label']).toEqual([
+        'Pattern',
+        'Pre Samples',
+        '触发反相'
+      ]);
+    });
+  });
 });

@@ -32,6 +32,7 @@ export type ScenarioAction =
   | { type: 'waitForText'; selector: string; matches: string; timeoutMs?: number }
   | { type: 'click'; selector: string }
   | { type: 'input'; selector: string; value: string }
+  | { type: 'inputOptional'; selector: string; value: string }
   | { type: 'key'; key: string; ctrl?: boolean; shift?: boolean }
   | { type: 'sleep'; ms: number }
   | { type: 'readText'; selector: string }
@@ -39,6 +40,7 @@ export type ScenarioAction =
   | { type: 'readValue'; selector: string }
   | { type: 'readValueOptional'; selector: string }
   | { type: 'countElements'; selector: string }
+  | { type: 'readAllTexts'; selector: string }
   | { type: 'readCanvasStats'; selector: string; sampleStep?: number };
 
 export interface ScenarioEvent {
@@ -51,9 +53,10 @@ export interface ScenarioEvent {
 export interface ScenarioResult {
   ok: boolean;
   events?: ScenarioEvent[];
-  texts?: Record<string, string | null>;   // selector -> innerText
-  values?: Record<string, string | null>;  // selector -> input.value
-  counts?: Record<string, number>;        // selector -> querySelectorAll().length
-  canvasStats?: CanvasStatsResult;         // 最近一次 readCanvasStats 的结果
+  texts?: Record<string, string | null>;     // selector -> innerText
+  allTexts?: Record<string, string[]>;       // selector -> array of textContents
+  values?: Record<string, string | null>;    // selector -> input.value
+  counts?: Record<string, number>;          // selector -> querySelectorAll().length
+  canvasStats?: CanvasStatsResult;           // 最近一次 readCanvasStats 的结果
   error?: string;
 }

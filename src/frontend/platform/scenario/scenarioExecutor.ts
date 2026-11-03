@@ -27,6 +27,69 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * 解析并执行单一元素查询。
+ *
+ * 支持标准 CSS 选择器与增强的 `formItem:"<精确标签文本>"(?: <子选择器>)?` 语义选择器。
+ * ⚠️ 约束规则：
+ * 1. 前缀 `formItem:` 严格区分大小写（非 `formitem:`），防止大小写写错产生误解。
+ * 2. 标签文本必须以双引号包裹，例如 `formItem:"Pre Samples" input`；若未带引号则直接抛错（Fail-Closed）。
+ */
+export function queryOne(doc: Document, selector: string): Element | null {
+  if (selector.startsWith('formItem:')) {
+    const match = selector.match(/^formItem:"([^"]*)"(?:\s+(.*))?$/);
+    if (!match) {
+      throw new Error(
+        `formItem: selector requires quoted label, e.g. formItem:"Pre Samples" input. Received: "${selector}"`
+      );
+    }
+
+    const [, labelText, subSelector] = match;
+    const items = doc.querySelectorAll('.el-form-item');
+    for (const item of items) {
+      const labelEl = item.querySelector('.el-form-item__label');
+      if (labelEl && labelEl.textContent?.trim() === labelText.trim()) {
+        if (!subSelector) {
+          return item;
+        }
+        return item.querySelector(subSelector);
+      }
+    }
+    return null;
+  }
+
+  return doc.querySelector(selector);
+}
+
+/**
+ * 解析并执行多元素查询。
+ */
+export function queryAll(doc: Document, selector: string): Element[] {
+  if (selector.startsWith('formItem:')) {
+    const match = selector.match(/^formItem:"([^"]*)"(?:\s+(.*))?$/);
+    if (!match) {
+      throw new Error(
+        `formItem: selector requires quoted label, e.g. formItem:"Pre Samples" input. Received: "${selector}"`
+      );
+    }
+
+    const [, labelText, subSelector] = match;
+    const items = doc.querySelectorAll('.el-form-item');
+    for (const item of items) {
+      const labelEl = item.querySelector('.el-form-item__label');
+      if (labelEl && labelEl.textContent?.trim() === labelText.trim()) {
+        if (!subSelector) {
+          return [item];
+        }
+        return Array.from(item.querySelectorAll(subSelector));
+      }
+    }
+    return [];
+  }
+
+  return Array.from(doc.querySelectorAll(selector));
+}
+
+/**
  * 轮询等待元素出现在 DOM 中
  */
 async function waitForElement(
@@ -37,7 +100,7 @@ async function waitForElement(
 ): Promise<Element> {
   const start = now();
   while (now() - start < timeoutMs) {
-    const el = doc.querySelector(selector);
+    const el = queryOne(doc, selector);
     if (el) {
       return el;
     }
@@ -61,7 +124,7 @@ async function waitForText(
   const regex = new RegExp(matches);
 
   while (now() - start < timeoutMs) {
-    const el = doc.querySelector(selector);
+    const el = queryOne(doc, selector);
     if (el) {
       const text = el.textContent?.trim() || '';
       if (regex.test(text)) {
@@ -71,7 +134,7 @@ async function waitForText(
     await sleep(DEFAULT_POLL_INTERVAL_MS);
   }
 
-  const currentText = doc.querySelector(selector)?.textContent?.trim() ?? '<element not found>';
+  const currentText = queryOne(doc, selector)?.textContent?.trim() ?? '<element not found>';
   throw new Error(
     `waitForText timed out (${timeoutMs}ms) for selector: "${selector}", pattern: /${matches}/, current: "${currentText}"`
   );
@@ -148,6 +211,7 @@ export async function executeScenarioActions(
 ): Promise<ScenarioResult> {
   const events: ScenarioEvent[] = [];
   const texts: Record<string, string | null> = {};
+  const allTexts: Record<string, string[]> = {};
   const values: Record<string, string | null> = {};
   const counts: Record<string, number> = {};
   let lastCanvasStats: CanvasStatsResult | undefined;
@@ -180,7 +244,7 @@ export async function executeScenarioActions(
         }
 
         case 'click': {
-          const el = deps.doc.querySelector(action.selector);
+          const el = queryOne(deps.doc, action.selector);
           if (!el) {
             throw new Error(`click failed: element not found: "${action.selector}"`);
           }
@@ -195,7 +259,7 @@ export async function executeScenarioActions(
         }
 
         case 'input': {
-          const el = deps.doc.querySelector(action.selector);
+          const el = queryOne(deps.doc, action.selector);
           if (!el) {
             throw new Error(`input failed: element not found: "${action.selector}"`);
           }
@@ -204,6 +268,16 @@ export async function executeScenarioActions(
           }
           el.dispatchEvent(new Event('input', { bubbles: true }));
           el.dispatchEvent(new Event('change', { bubbles: true }));
+          break;
+        }
+
+        case 'inputOptional': {
+          const el = queryOne(deps.doc, action.selector);
+          if (el && 'value' in el) {
+            (el as { value: string }).value = action.value;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          }
           break;
         }
 
@@ -234,7 +308,7 @@ export async function executeScenarioActions(
         }
 
         case 'readText': {
-          const el = deps.doc.querySelector(action.selector);
+          const el = queryOne(deps.doc, action.selector);
           if (!el) {
             throw new Error(`readText failed: element not found: "${action.selector}"`);
           }
@@ -243,13 +317,13 @@ export async function executeScenarioActions(
         }
 
         case 'readTextOptional': {
-          const el = deps.doc.querySelector(action.selector);
+          const el = queryOne(deps.doc, action.selector);
           stepResult = texts[action.selector] = el ? el.textContent?.trim() ?? '' : null;
           break;
         }
 
         case 'readValue': {
-          const el = deps.doc.querySelector(action.selector);
+          const el = queryOne(deps.doc, action.selector);
           if (!el) {
             throw new Error(`readValue failed: element not found: "${action.selector}"`);
           }
@@ -261,7 +335,7 @@ export async function executeScenarioActions(
         }
 
         case 'readValueOptional': {
-          const el = deps.doc.querySelector(action.selector);
+          const el = queryOne(deps.doc, action.selector);
           if (!el || !('value' in el)) {
             stepResult = values[action.selector] = null;
           } else {
@@ -271,7 +345,14 @@ export async function executeScenarioActions(
         }
 
         case 'countElements': {
-          stepResult = counts[action.selector] = deps.doc.querySelectorAll(action.selector).length;
+          stepResult = counts[action.selector] = queryAll(deps.doc, action.selector).length;
+          break;
+        }
+
+        case 'readAllTexts': {
+          const els = queryAll(deps.doc, action.selector);
+          const list = els.map(el => el.textContent?.trim() ?? '');
+          stepResult = allTexts[action.selector] = list;
           break;
         }
 
@@ -279,7 +360,7 @@ export async function executeScenarioActions(
           if (!action.selector || typeof action.selector !== 'string') {
             throw new Error('readCanvasStats requires explicit non-empty selector');
           }
-          const el = deps.doc.querySelector(action.selector);
+          const el = queryOne(deps.doc, action.selector);
           if (!el) {
             throw new Error(`readCanvasStats failed: element not found: "${action.selector}"`);
           }
@@ -306,6 +387,7 @@ export async function executeScenarioActions(
         ok: false,
         events,
         texts,
+        allTexts,
         values,
         counts,
         canvasStats: lastCanvasStats,
@@ -320,6 +402,7 @@ export async function executeScenarioActions(
     ok: true,
     events,
     texts,
+    allTexts,
     values,
     counts,
     canvasStats: lastCanvasStats
@@ -377,6 +460,7 @@ export function setupScenarioListener(): (() => void) | undefined {
       ok: result.ok,
       events: result.events,
       texts: result.texts,
+      allTexts: result.allTexts,
       values: result.values,
       counts: result.counts,
       canvasStats: result.canvasStats,
