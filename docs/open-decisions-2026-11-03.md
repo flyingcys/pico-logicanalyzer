@@ -53,19 +53,87 @@ A/B 都要改固件（成本高且当前用户裁定不烧固件）。
 
 ---
 
-### D-3：OUT-1 —— `Extension.coverage.test.ts` 的 Promise 泄漏
+### D-3：OUT-1 —— `Extension.coverage.test.ts` 的 Promise 泄漏 —— ✅ **已修复（T1）**
 
 | 字段 | 内容 |
 |---|---|
-| 严重度 | Important（让整个目录测试不可用） |
+| 严重度 | Important（让整个文件/目录都跑不了） |
 | 引入方 | **既有**（commit `b691af54`，非本轮） |
-| 现象 | `npx jest tests/unit/extension` 整个目录 **worker 崩溃** |
-| 绕法 | 跑单文件 |
+| 修复 | `sendError` 声明式 reject + 契约断言对齐 + mock 哨兵值 + 配置节白名单 |
+| 验收 | `npx jest tests/unit --silent` → **93 suites / 2528 tests 全过** |
 
-**方案**：给那个 `Promise.reject` 加 `.catch()`，或改用 `expect(...).rejects`。
-**成本极低**（一行改动）。
+**修复过程中连带曝光了 3 条被崩溃掩盖的既有缺陷**（契约漂移 / mock 取值架空判据 /
+配置节名无校验），全部已修并做了 5 条变异验证（A-E 全部抓红）。
+详见 `docs/e2e-found-product-bugs-2026-11-03.md` OUT-1。
 
-**我的建议**：**顺手修**。它是本轮发现的，且修复成本几乎为零。
+> ⚠️ 我在这条上犯过一个错并已更正：早期写「单文件跑正常」，实际 HEAD 原版
+> **单文件也崩**。更正记录连同实测命令一起留在 OUT-1 里。
+
+---
+
+### D-7：`package.json` 声明了 4 个网络配置，产品从未读取（**新发现**）
+
+| 字段 | 内容 |
+|---|---|
+| 严重度 | Important（**文档承诺了、产品没实现**） |
+| 发现时间 | 2026-11-03（T1 排查配置读取路径时） |
+
+声明了但产品零读取：
+```
+logicAnalyzer.network.enableAutoDiscovery     (默认 true)
+logicAnalyzer.network.heartbeatIntervalMs     (默认 5000)
+logicAnalyzer.network.connectionTimeoutMs     (默认 10000)
+logicAnalyzer.network.enableAutoReconnect
+```
+`docs/network-features.md:116,130` 把它们写成了可用配置。
+
+**风险**：用户在设置面板里改了这 4 项，**不会有任何效果**，且无任何提示。
+
+**方案**：
+
+| 方案 | 成本 | 效果 |
+|---|---|---|
+| A. 删掉这 4 条声明 + 更正文档 | 低 | 诚实，但用户失去"将来会支持"的暗示 |
+| B. 补上实现 | 中-高 | 完整，但属于功能开发 |
+| C. 文档标注"暂未实现" | 最低 | 保留声明，明确告知 |
+
+**我的建议**：**C**（本期只收技术债，不扩功能）。下期若要动网络模块再按 B 处理。
+
+---
+
+### D-8：20 个测试垃圾文件**已被提交进仓库**，要不要 `git rm --cached`
+
+| 字段 | 内容 |
+|---|---|
+| 严重度 | Minor（不影响功能，但污染仓库、会干扰 `git status`） |
+| 发现时间 | 2026-11-03（修 `/tmp` 泄漏门禁时） |
+
+```sh
+$ git ls-files .recovery-checkpoints/ | wc -l
+20
+$ git log --oneline -3 -- .recovery-checkpoints/
+c2674d80 数据可以通过 cli 采集，但是 ui 上没有正常显示      ← 2026-08-02
+020c5bb1 优化单元测试                                     ← 2026-07-23
+8b256fea fix: 修复严格类型检查错误并清理 husky v9 钩子...   ← 2026-07-22
+```
+
+**来源**：`RecoveryManager` 默认把检查点写进 `process.cwd()/.recovery-checkpoints`
+且从不删（`cleanup()` 里那行是注释掉的）。历史上 2 次提交把它们带进了仓库。
+
+**现状**：
+- 产生侧**已修**（默认目录改到 `os.tmpdir()` 下按实例隔离 + `cleanup()` 真的删）
+- 但**这 20 个历史文件还在 git 里**，每次跑测试都会与它们混在一起
+
+**方案**：
+
+| 方案 | 命令 | 影响 |
+|---|---|---|
+| A. `git rm --cached` 并从历史移除 | `git rm -r --cached .recovery-checkpoints/` + 加 `.gitignore` | 干净，但**是一次删除提交** |
+| B. 只加 `.gitignore`，保留已跟踪的 | 改 `.gitignore` | 新文件不再进来，但旧的还在 |
+| C. 不动 | — | 保持现状 |
+
+**我的建议**：**A**。理由：这些文件没有任何价值（是运行产物），且已被 2 次误提交。
+⚠️ 但它是**破坏性操作**（删已跟踪文件），我不擅自做 —— **需要你确认**。
 
 ---
 
@@ -138,7 +206,9 @@ Tests:       2472 passed, 2472 total          ← 用例 100% 通过
 |---|---|---|---|---|
 | D-1 | BUG-3 广播发现无效 | Important | **C + D**（记住端口 + 文档化） | ⏸ |
 | D-2 | webview 导出落盘不可自动化 | Minor | **A**（接受现状） | ⏸ |
-| D-3 | `Extension.coverage` Promise 泄漏 | Important | **顺手修** | ⏸ |
+| D-3 | `Extension.coverage` Promise 泄漏 | Important | **已修（T1）** | ✅ |
+| D-7 | 4 个网络配置声明了但从未读取 | Important | **C**（文档标注未实现） | ⏸ |
+| D-8 | 20 个测试垃圾已被提交进仓库 | Minor | **A**（`git rm --cached`） | ⏸ **需你确认** |
 | D-4 | 真机 e2e（烧固件） | — | 取决于你 | ⏸ |
 | D-5 | 继续加 UI 场景 | — | **暂停** | ⏸ |
 | ~~D-6~~ | ~~10 个红的 unit 套件~~ | — | **已消解**（合并远程后 2472 用例全过） | ✅ 无需裁定 |

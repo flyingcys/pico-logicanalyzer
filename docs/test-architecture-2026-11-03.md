@@ -163,6 +163,15 @@ Tests:       2472 passed, 2472 total          ← 用例 100% 通过
 —— 它是 OUT-1 那个 **Promise 泄漏导致 worker 崩溃**（不是用例断言失败），
 详见 `docs/e2e-found-product-bugs-2026-11-03.md`。
 
+**✅ T1 修复后**（2026-11-03，当前基线）：
+```
+Test Suites: 93 passed, 93 total
+Tests:       2528 passed, 2528 total          ← 0 failed，无崩溃
+```
+> 该文件同时从「崩溃」变成了「真的在测东西」：修崩溃后曝光了 3 条被掩盖的既有缺陷
+> （契约漂移 / mock 取值架空判据 / 配置节名无校验），全部已修并做 5 条变异验证。
+> 详见 `docs/e2e-found-product-bugs-2026-11-03.md` OUT-1。
+
 > ⚠️ **这份文档早期版本写过「106 个用例失败」，那个数字已过期**。
 > 原因是：合并远程 master（`834575bc`，39 个提交）时带入了修复
 > （`5a76d992 test: tighten coverage path gates`、
@@ -173,11 +182,15 @@ Tests:       2472 passed, 2472 total          ← 用例 100% 通过
 > ⇒ **保留这段是为了提醒**：跨会话讨到的历史数字，合并后必须**重新实测**，
 > 不能拿旧数字下结论。
 
-### 6.1 已知的测试基础设施缺陷（范围外）
+### 6.1 已知的测试基础设施缺陷
 
-| 缺陷 | 影响 | 绕法 |
+| 缺陷 | 影响 | 状态 |
 |---|---|---|
-| `Extension.coverage.test.ts:461` 未捕获的 `Promise.reject` | `npx jest tests/unit/extension` **整个目录跑不了**（worker 崩溃）；全量跑时被 worker 隔离，不影响总结果 | 验证 extension 时**跑单文件**。详见 `docs/e2e-found-product-bugs-2026-11-03.md` OUT-1 |
+| `Extension.coverage.test.ts` 未捕获的 `Promise.reject` | 该文件**单文件和整目录都跑不了**（worker 崩溃） | ✅ **已修（T1）**，见 OUT-1 |
+
+> ⚠️ 更正：早期写「绕法 = 跑单文件」**不成立** —— HEAD 原版单文件同样崩。已删。
+> 同时更正早期记录的「被 worker 隔离、不影响总结果」：这只在**全量**跑时成立，
+> 单独跑该文件时是**硬失败**。
 
 ---
 

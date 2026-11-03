@@ -15,6 +15,7 @@
  */
 
 import * as fs from 'fs-extra';
+import * as os from 'os';
 import * as path from 'path';
 
 /**
@@ -81,7 +82,26 @@ class RecoveryManager {
     this.config = {
       checkpointInterval: 60000,   // 1分钟检查点
       maxCheckpoints: 10,
-      checkpointDir: path.join(process.cwd(), '.recovery-checkpoints'),
+      /**
+       * ⚠️ 默认目录必须**按实例隔离** —— 不能所有实例共用 `.recovery-checkpoints/`。
+       *
+       * 为什么（2026-11-03）：`cleanup()` 现在会删整个目录。若两个实例共用同一目录：
+       * ```
+       * 实例 A 建目录 → 实例 B 建目录 → A.cleanup() 删掉目录
+       *            → B 后续 createCheckpoint() 写入失败 / B.cleanup() 删不存在
+       * ```
+       * 同进程内并发、或多 test 文件并跑时都会踩到。
+       *
+       * 判据与 `tests/e2e/vscode/lib/profile.cjs` 的 profile 隔离同源：
+       * **每个实例一个唯一目录**，谁建的谁删，永不互删。
+       *
+       * 放在 `tmpdir()` 而不是 `process.cwd()`：
+       * 工作区不该存放运行产物 —— 那正是本轮要修的泄漏（28 个残留文件）。
+       */
+      checkpointDir: path.join(
+        os.tmpdir(),
+        `.recovery-checkpoints-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`
+      ),
       maxRetries: 3,
       retryDelay: 5000,           // 5秒重试延迟
       autoRecovery: true,
@@ -439,15 +459,38 @@ class RecoveryManager {
    */
   async cleanup(): Promise<void> {
     console.log(`🧹 清理RecoveryManager: ${this.checkpoints.size}个检查点, ${this.errorHistory.length}个错误记录`);
-    
+
     // 清理内存
     this.checkpoints.clear();
     this.errorHistory = [];
     this.currentCheckpointId = null;
     this.retryCount = 0;
-    
-    // 可选：清理磁盘检查点文件
-    // await fs.remove(this.config.checkpointDir);
+
+    /**
+     * 清理磁盘检查点目录。
+     *
+     * ⚠️ 2026-11-03 起必须执行（原先这行是注释掉的）。为什么：
+     *
+     * `checkpointDir` 默认是 `path.join(process.cwd(), '.recovery-checkpoints')`
+     * （见构造函数）。原先不删 ⇒ 每跑一次 stress 测试，**仓库根目录就多几个
+     * `checkpoint-*.json`**，永不消失。
+     *
+     * 实测：2026-11-03 扫描时工作区已有 **28 个**（最早可追到 8 月），
+     * 当天新增 22 个。它们混在 `git status` 的未跟踪文件里，容易被误提交。
+     *
+     * 为什么不能只保留「删超出 maxCheckpoints 的那几个」
+     * （`saveCheckpoint` 旁的 `fs.unlink` 逻辑）：那只能压住数量上限，
+     * **目录和最后 N 个文件仍留在工作区**。要干净就得删目录本身。
+     *
+     * `fs.remove` 自带 `force` 语义（目录不存在不报错），故这里不需要额外判空。
+     * 调用方若想看结果，可以捕获异常 —— 但**删除失败不该让 cleanup 抛**，
+     * 否则测试会因为「清理不了」而失败，掩盖真正的测试结果。
+     */
+    try {
+      await fs.remove(this.config.checkpointDir);
+    } catch (error) {
+      console.warn(`⚠️ 删除检查点目录失败: ${error}`);
+    }
   }
 }
 

@@ -403,13 +403,184 @@ Node.js v22.20.0                         # ← worker 进程直接崩
 
 **影响**：
 - `npx jest tests/unit/extension` **整个目录跑不了**
-- 单文件跑正常（`npx jest tests/unit/extension/Extension.test.ts` 可过）
+- **单文件也跑不了** —— ⚠️ 这一条更正过：本文早期版本写「单文件跑正常」，**是错的**。
+  2026-11-03 对 `git show HEAD:` 的原版实测：
+  ```sh
+  $ git show HEAD:tests/unit/extension/Extension.coverage.test.ts > /tmp/head-cov.ts
+  $ cp /tmp/head-cov.ts tests/unit/extension/Extension.coverage.test.ts
+  $ npx jest tests/unit/extension/Extension.coverage.test.ts
+  EXIT=1        # 同样 Node.js v22.20.0 崩溃
+  ```
+  ⇒ **这个文件在 HEAD 上无论怎么跑都起不来**。所以记录时必须区分
+  「哪个测试文件」而不是「单文件 vs 目录」。
 - 全量 `npm test` 时它崩在 worker 里，主进程继续，**不影响总结果**（所以一直没被发现）
 
-**临时绕法**：验证 extension 相关改动时**跑单文件**，不要跑目录。
+**临时绕法**：⚠️ **没有绕法**。要验证 extension 相关改动，必须先修它。
+（早期写的「跑单文件」不成立，见上。）
 
 **修复方向**：给那个 `Promise.reject` 加 `.catch()`，
 或者用 `expect(...).rejects.toThrow()` 正确消费。
+
+**根因（2026-11-03 补充）**：
+```ts
+sendNetworkConfig: jest.fn().mockResolvedValue(opts?.sendResult ?? true)
+```
+`mockResolvedValue` 会把传入的 Promise **再包一层** ⇒ `Promise.reject(...)`
+被 `resolve` 掉了，外层 promise 永远 fulfilled；而里层那个 rejection
+**没有任何 `.catch`** ⇒ unhandled rejection ⇒ Node 22 默认 `--unhandled-rejections=throw`
+⇒ 进程直接退出。
+
+⇒ 正确修法不是给它加 `.catch()`（那是掩盖），而是**让 mock 真的 reject**：
+用 `jest.fn().mockRejectedValue(err)`，并让测试声明式传入 `sendError`。
+
+#### 修复（2026-11-03，T1）
+
+除根因外，这次还牵出并修掉三条**被崩溃掩盖的既有缺陷**：
+
+| # | 缺陷 | 为什么之前看不见 |
+|---|---|---|
+| 1 | **契约漂移**：断言仍写 `timeout: 5000 / concurrency: 30`，而产品 `e4e713ba` 已改成 `connectionTimeout/scanTimeout/timeoutMs/ports` | 崩在断言之前，永远跑不到 |
+| 2 | **mock 取值架空判据**：`getConfiguration` 返回 5000/30/[4045,…]/true，其中三条**与产品兜底常量相同** ⇒ 产品删掉 `.get()` 直接写常量也全绿 | 测试一直"绿"，没人怀疑 |
+| 3 | **配置节名无校验**：`getConfiguration` 无条件返回同一对象 ⇒ 产品把节名写成任意字符串都不红 | 同上 |
+
+修法：mock 改为**哨兵值 + 配置节白名单**（见下），断言对齐新契约。
+
+**变异矩阵（每次只改产品一行，跑完立即还原，`git status` 确认干净）**
+
+| 变异 | 把产品改成 | 05 原方案 | 现方案 |
+|---|---|---|---|
+| A | `scanTimeoutMs = 5000`（不读配置） | ✅ 绿（漏判） | ❌ 红 |
+| B | `defaultPorts = [4045,…]`（不读配置） | ✅ 绿（漏判） | ❌ 红 |
+| C | `enableBroadcast = true`（不读配置） | ✅ 绿（漏判） | ❌ 红 |
+| D | `maxConcurrency = 50`（不读配置） | ❌ 红 | ❌ 红 |
+| E | 配置节名改成 `logicAnalyzer.WRONGSECTION` | ❌ 红 | ❌ 红 |
+
+> 对照实验做法：把 05 的取值（5000/30/[4045,…]/true）与我的其余改动拼一起，
+> 两版除**取数值**外完全相同，各跑一遍同一批变异。
+> D 能红纯属巧合（mock 的 `30` 恰好 ≠ 兜底 `50`）。
+> E 两版都红，因为配置节校验是本轮新加的。
+
+**关键教训**：判据要能鉴别两个状态，**两个状态的输入必须真的不同**。
+把 mock 设成"产品兜底值"，等于让「读配置」与「不读配置」产生同一个可观测结果 ——
+判据看起来在测，其实测不到。
+
+```ts
+// 最终形态
+getConfiguration: jest.fn((section?: string) => {
+  if (section !== 'logicAnalyzer.network') {
+    throw new Error(`未预期的配置节: ${String(section)}`);
+  }
+  return {
+    get: jest.fn((key: string, defaultValue?: unknown) => {
+      if (key === 'scanTimeoutMs') return 7777;              // ≠ 默认 5000
+      if (key === 'maxConcurrentConnections') return 17;     // ≠ 默认 50
+      if (key === 'defaultPorts') return [9999, 8888];       // ≠ 默认 [4045,…]
+      if (key === 'enableBroadcastDiscovery') return false;  // ≠ 默认 true
+      return defaultValue ?? true;
+    }),
+  };
+}),
+```
+
+**验收**
+```sh
+$ npx jest tests/unit/extension --silent   → 6 suites / 277 tests 全过
+$ npx jest tests/unit --silent             → 93 suites / 2528 tests 全过
+```
+五次连续全量复跑均 2528 全绿。期间出现过一次 `1 failed`，
+但**三次连续复跑无法复现**，且当时另一会话正在并发跑同一批测试。
+⇒ 归因为**并发资源竞争**，非产品/测试缺陷 —— 但如实记录，不隐瞒。
+
+#### 附带发现（不在 T1 范围，单列交裁定）
+
+排查配置时发现 `package.json` 声明了 4 个网络配置，产品**从未读取**：
+
+```
+logicAnalyzer.network.enableAutoDiscovery     (默认 true)
+logicAnalyzer.network.heartbeatIntervalMs     (默认 5000)
+logicAnalyzer.network.connectionTimeoutMs     (默认 10000)
+logicAnalyzer.network.enableAutoReconnect
+```
+```sh
+$ grep -rn 'connectionTimeoutMs\|enableAutoDiscovery\|heartbeatIntervalMs' src/ --include=*.ts | grep -v test
+（零命中）
+```
+而 `docs/network-features.md:116,130` 把这几个配置写成了可用。
+⇒ **文档承诺了、产品没实现**。已在 `docs/open-decisions-2026-11-03.md` D-7 登记。
+
+---
+
+### OUT-2：`/tmp` 泄漏门禁自身的两个「假绿」（2026-11-03）
+
+上一笔提交（`d83926b1`）建的门禁 `scripts/check-tmp-leaks.js`，
+在修 T1 期间被发现有**两个独立的假绿**。它一直在报「✅ 无泄漏」，
+但工作区实际躺着 **28 个** `checkpoint-*.json`。
+
+#### 假绿 1：只认 `mkdtemp`，完全不覆盖「往 cwd 落产物」
+
+```ts
+// RecoveryManager.ts:84（修复前）
+checkpointDir: path.join(process.cwd(), '.recovery-checkpoints')
+```
+每跑一次 stress 测试，仓库根目录就多几个文件。门禁只在找 `mkdtemp`，**看不见它**。
+
+修法：增加 `CWD_WRITE_RE = /process\.cwd\s*\(\s*\)/`，
+⚠️ **只对 `tests/` 生效** —— 第一版对全目录生效时误报 3 个 `scripts/*.ts`
+（发布脚本按 cwd 定位仓库根，是正常用法）。
+
+#### 假绿 2：源码里出现 `rm/unlink` 字样就放行 —— 哪怕那行**是注释掉的**
+
+```ts
+// RecoveryManager.ts:450（修复前）
+// await fs.remove(this.config.checkpointDir);      ← 整行是注释
+```
+```ts
+// RecoveryManager.ts:391
+await fs.unlink(filePath);                          ← 只删超出上限的单文件
+```
+两个都被 `CLEANUP_RE` 命中 ⇒ 门禁放行。**而目录从未被删过。**
+
+修法：
+1. 先 `stripComments()` 剥注释再判断
+2. 对「往 cwd 落产物」的文件，判据升级为 `DIR_REMOVE_RE`（真删目录），
+   不接受单个 `unlink`
+
+#### 教训（通用）
+
+> **任何「靠源码里出现某个字样」判断的门禁，都必须先剥注释。**
+> 一条被注释掉的清理代码，会让门禁永久失效 —— 而它看起来还在工作。
+
+这与 OUT-1 是同一类错误：**判据与它声称在测的东西之间没有因果关系**。
+OUT-1 是「mock 取值 = 兜底值 ⇒ 读不读配置看不出来」；
+OUT-2 是「有清理字样 ≠ 真的清理了」。
+
+#### 修复与验证
+
+产品侧（`RecoveryManager.ts`）：
+- `checkpointDir` 默认从 `process.cwd()` 改到 `os.tmpdir()` 下**按实例唯一**
+  （`${pid}-${时间戳}-${随机}`）—— 避免多实例互相删目录
+- `cleanup()` 真正执行 `fs.remove`（失败只 warn，不让清理异常掩盖测试结果）
+
+**严格对照实验**（同一台机器、同一命令、`git checkout` 保证起点一致）：
+```
+HEAD 版：起始 20 个 → 跑一次 stress → 22 个（+2 泄漏）
+修复版：起始 20 个 → 跑一次 stress → 20 个（0 增长）
+```
+
+**门禁双向变异**：
+```
+把 :450 取消注释 → 门禁 ✅ 通过
+还原成注释       → 门禁 ❌ 报错（1 个文件）
+```
+
+> ⚠️ 我在这轮踩过一次实验污染：`rm -rf .recovery-checkpoints` 与测试并发执行，
+> 导致误以为「测试删掉了整个目录」。严格对照重做后结论才可靠。
+> **教训：验证"跑测试会不会产生 X"时，不要在同一个工作区同时手工删 X。**
+
+#### 遗留：20 个历史文件仍在 git 里
+
+`git ls-files .recovery-checkpoints/` → **20**，由 2026-07/08 两次误提交带入。
+删除属破坏性操作，已登记 `docs/open-decisions-2026-11-03.md` **D-8** 待用户确认。
 
 ---
 
