@@ -678,7 +678,8 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
       require('net').Socket.mockImplementation(() => mockSocket);
 
       const config: Partial<ScanConfiguration> = {
-        timeout: 100,
+        connectionTimeout: 100,
+        scanTimeout: 30000,
         concurrency: 5,
         ports: [4045],
         enableBroadcast: true,
@@ -686,7 +687,7 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
       };
 
       const result = await discoveryService.scanForDevices(config);
-      
+
       expect(result).toBeDefined();
       expect(result.status).toBe('completed');
       expect(typeof result.scanDuration).toBe('number');
@@ -731,13 +732,28 @@ describe('WiFiDeviceDiscovery 精准业务逻辑测试', () => {
       require('dgram').createSocket.mockReturnValue(mockUdpSocket);
 
       const result = await discoveryService.scanForDevices({
-        timeout: 100,
+        connectionTimeout: 100,
+        scanTimeout: 30000,
         enableBroadcast: true
       });
       
       // 即使有错误，也应该完成扫描
       expect(result.status).toBe('completed');
       expect(result.devices).toEqual([]);
+    });
+
+    it('应该兼容 Webview 传入的 timeoutMs 字段（BUG-4）', async () => {
+      // 只传 timeoutMs，不传 scanTimeout —— 模拟 AppSidebarLeft.vue:108 的真实调用
+      const start = Date.now();
+      const result = await discoveryService.scanForDevices({ timeoutMs: 300 });
+      const elapsed = Date.now() - start;
+
+      // 判据 1：命令确实按 300ms 收口（远小于默认 5000ms）
+      expect(elapsed).toBeLessThan(2000);
+      // 判据 2：结果结构里有名分统计
+      expect(result.stats).toBeDefined();
+      // 判据 3：300ms 预算几乎必定触发全局截断
+      expect(result.stats?.aborted).toBe(true);
     });
   });
 

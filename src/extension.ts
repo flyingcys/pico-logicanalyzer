@@ -33,6 +33,29 @@ interface CaptureWorkflowConfig {
   channels?: CaptureWorkflowChannel[];
 }
 
+export interface SyntheticCaptureOptions {
+  /**
+   * 目标保存路径。传入时跳过交互式 showSaveDialog。
+   *
+   * 为什么需要：真宿主（ExtensionMode.Test）下 showSaveDialog 永不 resolve，
+   * 无法自动化。这是产品对"编程式调用"的正式能力，不是测试暗门。
+   *
+   * ⚠️ 无参分支（走 showSaveDialog）在真宿主 e2e 内**不可验**（弹窗永不 resolve），
+   *    该分支只能由人工测试覆盖。本接口**不改变**无参分支的任何行为。
+   */
+  targetUri?: vscode.Uri;
+}
+
+export interface ScanNetworkDevicesOptions {
+  /**
+   * 编程式调用时跳过交互式 showQuickPick。
+   * - true: 只返回扫描结果（含 stats），不执行连接
+   * - string (IP): 自动连接指定 IP 的设备
+   * - undefined: 交互式 showQuickPick 弹窗（用户从命令面板点击的路径）
+   */
+  autoSelect?: string | true;
+}
+
 // 服务依赖接口
 export interface ExtensionServices {
   wifiDiscoveryService?: WiFiDeviceDiscovery;
@@ -268,17 +291,41 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
   // 网络设备扫描命令
   const scanNetworkDevicesCommand = vscode.commands.registerCommand(
     'logicAnalyzer.scanNetworkDevices',
-    async () => {
+    async (options?: ScanNetworkDevicesOptions) => {
       try {
         vscode.window.showInformationMessage('正在扫描网络设备...');
 
+        const networkConfig = vscode.workspace.getConfiguration('logicAnalyzer.network');
+        const scanTimeoutMs = networkConfig.get<number>('scanTimeoutMs', 5000);
+        const maxConcurrency = networkConfig.get<number>('maxConcurrentConnections', 50);
+        const defaultPorts = networkConfig.get<number[]>('defaultPorts', [4045, 10429, 5555, 5025, 111]);
+        const enableBroadcast = networkConfig.get<boolean>('enableBroadcastDiscovery', true);
+
         const result = await wifiDiscoveryService.scanForDevices({
-          timeout: 5000,
-          concurrency: 30,
+          connectionTimeout: 3000,
+          scanTimeout: scanTimeoutMs,
+          timeoutMs: scanTimeoutMs,
+          concurrency: maxConcurrency,
+          ports: defaultPorts,
           deepScan: true,
-          enableBroadcast: true
+          enableBroadcast
         });
 
+        // 编程式直接连接指定 IP 分支
+        if (typeof options?.autoSelect === 'string') {
+          const target = result.devices.find(d => d.ipAddress === options.autoSelect);
+          if (target) {
+            await connectToNetworkDevice(target.ipAddress, target.port);
+          }
+          return result;
+        }
+
+        // 编程式只返回结果分支（跳过 showQuickPick 弹窗）
+        if (options?.autoSelect === true) {
+          return result;
+        }
+
+        // 用户交互模式分支
         if (result.devices.length > 0) {
           const deviceItems = result.devices.map(device => ({
             label: device.deviceName || 'Unknown Device',
@@ -299,8 +346,12 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
         } else {
           vscode.window.showWarningMessage('未发现网络设备');
         }
+
+        return result;
       } catch (error) {
+        console.error(`[la-e2e] scanNetworkDevices threw: ${JSON.stringify({ code: 'exception', message: String(error) })}`);
         vscode.window.showErrorMessage(`网络设备扫描失败: ${error}`);
+        return null;
       }
     }
   );
@@ -416,17 +467,17 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
 
   const createSyntheticCaptureCommand = vscode.commands.registerCommand(
     'logicAnalyzer.createSyntheticCapture',
-    async () => {
+    async (options?: SyntheticCaptureOptions) => {
       try {
         const source = getSignalDslSource();
         const session = SignalDescriptionLanguage.generateCaptureSession(source);
-        const saveUri = await vscode.window.showSaveDialog({
+        const saveUri = options?.targetUri ?? (await vscode.window.showSaveDialog({
           defaultUri: buildSyntheticCaptureDefaultUri(),
           filters: {
             'Logic Analyzer Capture': ['lac']
           },
           saveLabel: '保存合成采集'
-        });
+        }));
 
         if (!saveUri) {
           return;
@@ -434,6 +485,7 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
 
         const result = await LACFileFormat.save(saveUri.fsPath, session, undefined, true);
         if (!result.success) {
+          console.error(`[la-e2e] createSyntheticCapture failed: ${JSON.stringify({ code: 'save-failed', error: result.error })}`);
           vscode.window.showErrorMessage(`合成采集保存失败: ${result.error}`);
           return;
         }
@@ -443,6 +495,7 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
           `已生成合成采集: ${session.captureChannels.length} 个通道，${session.totalSamples} 个样本`
         );
       } catch (error) {
+        console.error(`[la-e2e] createSyntheticCapture threw: ${JSON.stringify({ code: 'exception', message: String(error) })}`);
         if (error instanceof SignalDslParseError) {
           vscode.window.showErrorMessage(`Signal DSL 解析失败: ${error.message}`);
           return;

@@ -1,6 +1,7 @@
 import { Socket } from 'net';
 import { createSocket } from 'dgram';
 import { networkInterfaces } from 'os';
+import { setMaxListeners } from 'events';
 import { OutputPacket } from '../drivers/AnalyzerDriverBase';
 import { VersionValidator } from '../drivers/VersionValidator';
 
@@ -37,6 +38,20 @@ export interface WiFiDeviceInfo {
 }
 
 /**
+ * 网络扫描统计指标
+ */
+export interface NetworkScanStats {
+  /** 总共需要扫描的 IP 数量 */
+  totalIps: number;
+  /** 实际已探测的 IP 数量 */
+  probedIps: number;
+  /** 是否因总超时或外部信号中断 */
+  aborted: boolean;
+  /** 实际耗时 (ms) */
+  elapsedMs: number;
+}
+
+/**
  * 网络扫描结果接口
  */
 export interface NetworkScanResult {
@@ -52,14 +67,28 @@ export interface NetworkScanResult {
   status: 'completed' | 'failed' | 'timeout';
   /** 错误信息（如果有） */
   error?: string;
+  /** 可选：扫描统计指标（向后兼容，实现中总是填充） */
+  stats?: NetworkScanStats;
 }
+
+/**
+ * 扫描配置输入选项（含兼容字段）
+ */
+export type ScanInputOptions = Partial<ScanConfiguration> & {
+  /** 兼容 Webview 等调用方传入的字段名（BUG-4） */
+  timeoutMs?: number;
+};
 
 /**
  * 扫描配置接口
  */
 export interface ScanConfiguration {
-  /** 扫描超时时间(ms) */
-  timeout: number;
+  /** 单次 TCP 连接超时时间(ms)，默认 3000 */
+  connectionTimeout: number;
+  /** 整次网络扫描总预算(ms)，默认 5000（对应 package.json 的 scanTimeoutMs） */
+  scanTimeout: number;
+  /** 兼容历史字段名：扫描超时时间(ms)，等价于 connectionTimeout */
+  timeout?: number;
   /** 并发连接数 */
   concurrency: number;
   /** 要扫描的端口列表 */
@@ -83,6 +112,8 @@ export class WiFiDeviceDiscovery {
 
   /** 默认扫描配置 */
   private defaultConfig: ScanConfiguration = {
+    connectionTimeout: 3000,
+    scanTimeout: 5000,
     timeout: 3000,
     concurrency: 50,
     ports: [4045, 10429, 5555, 5025, 111],
@@ -93,7 +124,7 @@ export class WiFiDeviceDiscovery {
   /**
    * 扫描网络中的Pico Logic Analyzer设备
    */
-  async scanForDevices(config?: Partial<ScanConfiguration>): Promise<NetworkScanResult> {
+  async scanForDevices(config?: ScanInputOptions): Promise<NetworkScanResult> {
     if (this.isScanning) {
       throw new Error('设备扫描正在进行中，请等待完成');
     }
@@ -101,26 +132,103 @@ export class WiFiDeviceDiscovery {
     const startTime = Date.now();
     this.isScanning = true;
     this.scanAbortController = new AbortController();
+    try {
+      if (typeof setMaxListeners === 'function') {
+        setMaxListeners(0, this.scanAbortController.signal);
+      }
+    } catch {
+      // 兼容不支持 setMaxListeners 的环境
+    }
 
-    const scanConfig: ScanConfiguration = { ...this.defaultConfig, ...config };
+    // 字段归一化：兼容 Webview 等调用方传入的 timeoutMs（修复 BUG-4）及历史 timeout
+    const raw = (config ?? {}) as Record<string, unknown>;
+    const normalized: Partial<ScanConfiguration> = {};
+
+    // 1. 单连接超时：优先 connectionTimeout，兼容历史 timeout
+    if (typeof raw.connectionTimeout === 'number') {
+      normalized.connectionTimeout = raw.connectionTimeout;
+      normalized.timeout = raw.connectionTimeout;
+    } else if (typeof raw.timeout === 'number') {
+      normalized.connectionTimeout = raw.timeout;
+      normalized.timeout = raw.timeout;
+    }
+
+    // 2. 整次扫描总预算：优先 scanTimeout，兼容 timeoutMs
+    if (typeof raw.scanTimeout === 'number') {
+      normalized.scanTimeout = raw.scanTimeout;
+    } else if (typeof raw.timeoutMs === 'number') {
+      normalized.scanTimeout = raw.timeoutMs;
+    }
+
+    if (typeof raw.concurrency === 'number') {
+      normalized.concurrency = raw.concurrency;
+    }
+    if (Array.isArray(raw.ports)) {
+      normalized.ports = raw.ports as number[];
+    }
+    if (typeof raw.ipRange === 'string') {
+      normalized.ipRange = raw.ipRange;
+    }
+    if (typeof raw.deepScan === 'boolean') {
+      normalized.deepScan = raw.deepScan;
+    }
+    if (typeof raw.enableBroadcast === 'boolean') {
+      normalized.enableBroadcast = raw.enableBroadcast;
+    }
+
+    // 未知字段告警，消除静默丢弃
+    const knownKeys = new Set([
+      'timeout',
+      'timeoutMs',
+      'connectionTimeout',
+      'scanTimeout',
+      'concurrency',
+      'ports',
+      'ipRange',
+      'deepScan',
+      'enableBroadcast'
+    ]);
+    const unknownKeys = Object.keys(raw).filter(k => !knownKeys.has(k));
+    if (unknownKeys.length > 0) {
+      console.warn(`[WiFiDeviceDiscovery] 忽略未知扫描参数: ${unknownKeys.join(', ')}`);
+    }
+
+    const scanConfig: ScanConfiguration = { ...this.defaultConfig, ...normalized };
     const devices: WiFiDeviceInfo[] = [];
+
+    // 设置全局总超时定时器熔断：总是按 scanConfig.scanTimeout 生效
+    const totalTimeoutTimer = setTimeout(() => {
+      this.scanAbortController?.abort();
+    }, scanConfig.scanTimeout);
+
+    let totalIps = 0;
+    let probedIps = 0;
 
     try {
       // 1. 获取本地网络信息
       const networkRanges = this.getLocalNetworkRanges();
       console.log(`开始扫描网络范围: ${networkRanges.join(', ')}`);
 
-      // 2. 如果启用UDP广播，先尝试广播发现
-      if (scanConfig.enableBroadcast) {
+      // 2. 如果启用UDP广播，先尝试广播发现（已知 BUG-3：当前官方固件未在 UDP 4046 提供响应）
+      if (scanConfig.enableBroadcast && !this.scanAbortController.signal.aborted) {
         console.log('开始UDP广播发现...');
         const broadcastDevices = await this.performBroadcastDiscovery(scanConfig);
         devices.push(...broadcastDevices);
       }
 
-      // 3. 执行IP范围扫描
+      // 3. 执行IP范围扫描（受并发 Worker 与全局 Abort 控制）
       for (const ipRange of networkRanges) {
+        if (this.scanAbortController.signal.aborted) {
+          break;
+        }
         console.log(`扫描IP范围: ${ipRange}`);
-        const rangeDevices = await this.scanIPRange(ipRange, scanConfig);
+        const { rangeDevices, rangeTotal, rangeProbed } = await this.scanIPRange(
+          ipRange,
+          scanConfig,
+          this.scanAbortController.signal
+        );
+        totalIps += rangeTotal;
+        probedIps += rangeProbed;
 
         // 合并设备，避免重复
         for (const device of rangeDevices) {
@@ -135,14 +243,23 @@ export class WiFiDeviceDiscovery {
       this.updateDeviceCache(devices);
 
       const scanDuration = Date.now() - startTime;
-      console.log(`设备扫描完成，发现 ${devices.length} 个设备，耗时 ${scanDuration}ms`);
+      const wasAborted = this.scanAbortController.signal.aborted;
+      const status: 'completed' | 'timeout' = wasAborted ? 'timeout' : 'completed';
+
+      console.log(`设备扫描完成（状态: ${status}），发现 ${devices.length} 个设备，已探测 ${probedIps}/${totalIps} 个IP，耗时 ${scanDuration}ms`);
 
       return {
         devices,
         scanDuration,
         ipRange: networkRanges.join(', '),
         ports: scanConfig.ports,
-        status: 'completed'
+        status,
+        stats: {
+          totalIps,
+          probedIps,
+          aborted: wasAborted,
+          elapsedMs: scanDuration
+        }
       };
 
     } catch (error) {
@@ -155,9 +272,18 @@ export class WiFiDeviceDiscovery {
         ipRange: config?.ipRange || 'auto',
         ports: scanConfig.ports,
         status: 'failed',
-        error: error instanceof Error ? error.message : '未知错误'
+        error: error instanceof Error ? error.message : '未知错误',
+        stats: {
+          totalIps,
+          probedIps,
+          aborted: this.scanAbortController?.signal.aborted ?? false,
+          elapsedMs: scanDuration
+        }
       };
     } finally {
+      if (totalTimeoutTimer) {
+        clearTimeout(totalTimeoutTimer);
+      }
       this.isScanning = false;
       this.scanAbortController = undefined;
     }
@@ -169,13 +295,29 @@ export class WiFiDeviceDiscovery {
   private async performBroadcastDiscovery(config: ScanConfiguration): Promise<WiFiDeviceInfo[]> {
     return new Promise((resolve) => {
       const devices: WiFiDeviceInfo[] = [];
-      const udpSocket = createSocket('udp4');
-
-      // 设置超时
-      const timeout = setTimeout(() => {
-        udpSocket.close();
+      let udpSocket: ReturnType<typeof createSocket> | undefined;
+      try {
+        udpSocket = createSocket('udp4');
+      } catch {
         resolve(devices);
-      }, config.timeout);
+        return;
+      }
+
+      if (!udpSocket || typeof udpSocket.on !== 'function') {
+        resolve(devices);
+        return;
+      }
+
+      // 设置超时：广播等待不超过连接超时，且至多等待 1000ms 避免侵占 IP 扫描预算
+      const broadcastWaitMs = Math.min(config.connectionTimeout || config.timeout || 1000, 1000);
+      const timeout = setTimeout(() => {
+        try {
+          udpSocket?.close();
+        } catch {
+          // ignore close error
+        }
+        resolve(devices);
+      }, broadcastWaitMs);
 
       udpSocket.on('message', async (msg, rinfo) => {
         try {
@@ -251,29 +393,40 @@ export class WiFiDeviceDiscovery {
   /**
    * 扫描指定IP范围
    */
-  private async scanIPRange(ipRange: string, config: ScanConfiguration): Promise<WiFiDeviceInfo[]> {
-    const devices: WiFiDeviceInfo[] = [];
+  private async scanIPRange(
+    ipRange: string,
+    config: ScanConfiguration,
+    signal?: AbortSignal
+  ): Promise<{ rangeDevices: WiFiDeviceInfo[]; rangeTotal: number; rangeProbed: number }> {
+    const rangeDevices: WiFiDeviceInfo[] = [];
     const ipList = this.generateIPList(ipRange);
+    const rangeTotal = ipList.length;
+    let rangeProbed = 0;
 
     console.log(`扫描 ${ipList.length} 个IP地址...`);
 
-    // 使用并发限制避免过多连接
-    const semaphore = new Array(config.concurrency).fill(null);
-    const promises: Promise<void>[] = [];
+    // 真正生效的并发 Worker 消费池
+    const concurrency = Math.max(1, Math.min(config.concurrency || this.defaultConfig.concurrency, 100));
+    let cursor = 0;
 
-    for (const ip of ipList) {
-      // 等待可用的并发槽
-      const promise = Promise.resolve().then(async () => {
-        // 检查是否需要中止扫描
-        if (this.scanAbortController?.signal.aborted) {
-          return;
+    const worker = async () => {
+      while (cursor < ipList.length) {
+        if (signal?.aborted) {
+          break;
         }
+        const ipIndex = cursor++;
+        if (ipIndex >= ipList.length) break;
+        const ip = ipList[ipIndex];
+        rangeProbed++;
 
-        // 扫描这个IP的所有端口
         for (const port of config.ports) {
+          if (signal?.aborted) {
+            break;
+          }
           try {
             const startTime = Date.now();
-            const isOpen = await this.isPortOpen(ip, port, config.timeout);
+            const connTimeout = config.connectionTimeout || config.timeout || 3000;
+            const isOpen = await this.isPortOpen(ip, port, connTimeout, signal);
 
             if (isOpen) {
               const responseTime = Date.now() - startTime;
@@ -281,14 +434,14 @@ export class WiFiDeviceDiscovery {
 
               // 如果启用深度扫描，验证是否为Pico设备
               if (config.deepScan) {
-                const deviceInfo = await this.verifyPicoDevice(ip, port, config.timeout);
+                const deviceInfo = await this.verifyPicoDevice(ip, port, connTimeout, signal);
                 if (deviceInfo) {
                   deviceInfo.responseTime = responseTime;
-                  devices.push(deviceInfo);
+                  rangeDevices.push(deviceInfo);
                 }
               } else {
                 // 简单扫描，只记录开放的端口
-                devices.push({
+                rangeDevices.push({
                   ipAddress: ip,
                   port,
                   responseTime,
@@ -304,53 +457,115 @@ export class WiFiDeviceDiscovery {
             // 忽略连接错误，继续扫描
           }
         }
-      });
+      }
+    };
 
-      promises.push(promise);
-    }
+    const workers = Array.from(
+      { length: Math.min(concurrency, ipList.length) },
+      () => worker()
+    );
 
-    // 等待所有扫描完成
-    await Promise.allSettled(promises);
+    await Promise.all(workers);
 
-    return devices;
+    return { rangeDevices, rangeTotal, rangeProbed };
   }
 
   /**
-   * 检查端口是否开放
+   * 检查端口是否开放（支持 AbortSignal 深度掐断在飞 Socket，防止超时延迟与 Socket 泄漏）
    */
-  private isPortOpen(ip: string, port: number, timeout: number): Promise<boolean> {
+  private isPortOpen(ip: string, port: number, timeout: number, signal?: AbortSignal): Promise<boolean> {
     return new Promise((resolve) => {
+      if (signal?.aborted) {
+        resolve(false);
+        return;
+      }
+
       const socket = new Socket();
+      let settled = false;
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        if (signal && onAbort) {
+          signal.removeEventListener('abort', onAbort);
+        }
+      };
+
+      const finish = (result: boolean) => {
+        if (!settled) {
+          settled = true;
+          cleanup();
+          socket.destroy();
+          resolve(result);
+        }
+      };
+
+      const onAbort = () => {
+        finish(false);
+      };
+
+      if (signal) {
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
 
       const timer = setTimeout(() => {
-        socket.destroy();
-        resolve(false);
+        finish(false);
       }, timeout);
 
       socket.connect(port, ip, () => {
-        clearTimeout(timer);
-        socket.end();
-        resolve(true);
+        finish(true);
       });
 
       socket.on('error', () => {
-        clearTimeout(timer);
-        resolve(false);
+        finish(false);
       });
     });
   }
 
   /**
-   * 验证设备是否为Pico Logic Analyzer
+   * 验证设备是否为Pico Logic Analyzer（支持 AbortSignal 深度掐断）
    */
-  private async verifyPicoDevice(ip: string, port: number, timeout: number): Promise<WiFiDeviceInfo | null> {
+  private async verifyPicoDevice(
+    ip: string,
+    port: number,
+    timeout: number,
+    signal?: AbortSignal
+  ): Promise<WiFiDeviceInfo | null> {
     return new Promise((resolve) => {
+      if (signal?.aborted) {
+        resolve(null);
+        return;
+      }
+
       const socket = new Socket();
       let responseData = '';
+      let settled = false;
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        if (signal && onAbort) {
+          signal.removeEventListener('abort', onAbort);
+        }
+      };
+
+      const finish = (result: WiFiDeviceInfo | null) => {
+        if (!settled) {
+          settled = true;
+          cleanup();
+          socket.destroy();
+          resolve(result);
+        }
+      };
+
+      const onAbort = () => {
+        finish(null);
+      };
+
+      if (signal) {
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
 
       const timer = setTimeout(() => {
-        socket.destroy();
-        resolve(null);
+        finish(null);
       }, timeout);
 
       socket.connect(port, ip, async () => {
@@ -362,9 +577,7 @@ export class WiFiDeviceDiscovery {
           const data = packet.serialize();
           socket.write(data);
         } catch (error) {
-          clearTimeout(timer);
-          socket.destroy();
-          resolve(null);
+          finish(null);
         }
       });
 
@@ -375,21 +588,17 @@ export class WiFiDeviceDiscovery {
         const lines = responseData.split('\n').filter(line => line.trim());
 
         if (lines.length >= 5) {
-          clearTimeout(timer);
-          socket.destroy();
-
           try {
             const deviceInfo = this.parseDeviceResponse(ip, port, lines);
-            resolve(deviceInfo);
+            finish(deviceInfo);
           } catch (error) {
-            resolve(null);
+            finish(null);
           }
         }
       });
 
       socket.on('error', () => {
-        clearTimeout(timer);
-        resolve(null);
+        finish(null);
       });
     });
   }
