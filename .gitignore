@@ -6,6 +6,12 @@ dist/
 *.vsix
 .worktree/
 
+# 真宿主 e2e：@vscode/test-electron 下载的 VS Code（约 132MB，不入库）
+.vscode-test/
+
+# 真宿主 e2e 每次跑的结果（可再生成，不入库）
+tests/e2e/vscode/artifacts/
+
 # Node.js 依赖
 node_modules/
 npm-debug.log*
