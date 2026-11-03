@@ -148,10 +148,13 @@ export async function executeScenarioActions(
 ): Promise<ScenarioResult> {
   const events: ScenarioEvent[] = [];
   const texts: Record<string, string | null> = {};
+  const values: Record<string, string | null> = {};
+  const counts: Record<string, number> = {};
   let lastCanvasStats: CanvasStatsResult | undefined;
 
   for (let index = 0; index < actions.length; index++) {
     const action = actions[index];
+    let stepResult: unknown = undefined;
 
     try {
       switch (action.type) {
@@ -235,13 +238,40 @@ export async function executeScenarioActions(
           if (!el) {
             throw new Error(`readText failed: element not found: "${action.selector}"`);
           }
-          texts[action.selector] = el.textContent?.trim() ?? '';
+          stepResult = texts[action.selector] = el.textContent?.trim() ?? '';
           break;
         }
 
         case 'readTextOptional': {
           const el = deps.doc.querySelector(action.selector);
-          texts[action.selector] = el ? el.textContent?.trim() ?? '' : null;
+          stepResult = texts[action.selector] = el ? el.textContent?.trim() ?? '' : null;
+          break;
+        }
+
+        case 'readValue': {
+          const el = deps.doc.querySelector(action.selector);
+          if (!el) {
+            throw new Error(`readValue failed: element not found: "${action.selector}"`);
+          }
+          if (!('value' in el)) {
+            throw new Error(`readValue failed: element has no value property: "${action.selector}"`);
+          }
+          stepResult = values[action.selector] = (el as HTMLInputElement).value;
+          break;
+        }
+
+        case 'readValueOptional': {
+          const el = deps.doc.querySelector(action.selector);
+          if (!el || !('value' in el)) {
+            stepResult = values[action.selector] = null;
+          } else {
+            stepResult = values[action.selector] = (el as HTMLInputElement).value;
+          }
+          break;
+        }
+
+        case 'countElements': {
+          stepResult = counts[action.selector] = deps.doc.querySelectorAll(action.selector).length;
           break;
         }
 
@@ -256,7 +286,7 @@ export async function executeScenarioActions(
           if (!(el instanceof (deps.doc.defaultView?.HTMLCanvasElement || HTMLCanvasElement))) {
             throw new Error(`readCanvasStats failed: element is not HTMLCanvasElement: "${action.selector}"`);
           }
-          lastCanvasStats = analyzeCanvasPixels(el as HTMLCanvasElement, action.sampleStep ?? 4);
+          stepResult = lastCanvasStats = analyzeCanvasPixels(el as HTMLCanvasElement, action.sampleStep ?? 4);
           break;
         }
 
@@ -268,13 +298,16 @@ export async function executeScenarioActions(
 
       events.push({
         action,
-        at: deps.now()
+        at: deps.now(),
+        ...(stepResult !== undefined ? { result: stepResult } : {})
       });
     } catch (error) {
       return {
         ok: false,
         events,
         texts,
+        values,
+        counts,
         canvasStats: lastCanvasStats,
         error: `action[${index}] ${action.type} failed: ${
           error instanceof Error ? error.message : String(error)
@@ -287,6 +320,8 @@ export async function executeScenarioActions(
     ok: true,
     events,
     texts,
+    values,
+    counts,
     canvasStats: lastCanvasStats
   };
 }
@@ -342,6 +377,8 @@ export function setupScenarioListener(): (() => void) | undefined {
       ok: result.ok,
       events: result.events,
       texts: result.texts,
+      values: result.values,
+      counts: result.counts,
       canvasStats: result.canvasStats,
       ...(result.error ? { error: result.error } : {})
     });

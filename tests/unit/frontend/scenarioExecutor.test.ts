@@ -281,4 +281,73 @@ describe('scenarioExecutor (Webview 场景执行器与门控)', () => {
 
     teardown?.();
   });
+
+  describe('readValue / readValueOptional / countElements 动作集', () => {
+    it('readValue 在元素不存在时抛错（fail-closed）', async () => {
+      const result = await executeScenarioActions([
+        { type: 'readValue', selector: '.absent-input' }
+      ]);
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/readValue failed: element not found/);
+    });
+
+    it('readValue 在非表单元素上抛错', async () => {
+      const div = document.createElement('div');
+      div.className = 'not-a-form-element';
+      div.textContent = 'I have no value';
+      document.body.appendChild(div);
+
+      const result = await executeScenarioActions([
+        { type: 'readValue', selector: '.not-a-form-element' }
+      ]);
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/readValue failed: element has no value property/);
+    });
+
+    it('readValue 正确读到 input.value', async () => {
+      const input = document.createElement('input');
+      input.className = 'test-input-field';
+      input.value = 'SPI_SCK';
+      document.body.appendChild(input);
+
+      const result = await executeScenarioActions([
+        { type: 'readValue', selector: '.test-input-field' }
+      ]);
+      expect(result.ok).toBe(true);
+      expect(result.values?.['.test-input-field']).toBe('SPI_SCK');
+    });
+
+    it('readValueOptional 在元素不存在时返回 null（不抛）', async () => {
+      const input = document.createElement('input');
+      input.className = 'existing-val-input';
+      input.value = 'val-123';
+      document.body.appendChild(input);
+
+      const result = await executeScenarioActions([
+        { type: 'readValueOptional', selector: '.existing-val-input' },
+        { type: 'readValueOptional', selector: '.not-existing-val-input' }
+      ]);
+
+      expect(result.ok).toBe(true);
+      expect(result.values?.['.existing-val-input']).toBe('val-123');
+      expect(result.values?.['.not-existing-val-input']).toBeNull();
+    });
+
+    it('countElements 返回精确数量（0 和多个都要测）', async () => {
+      for (let i = 0; i < 5; i++) {
+        const item = document.createElement('div');
+        item.className = 'counted-item';
+        document.body.appendChild(item);
+      }
+
+      const result = await executeScenarioActions([
+        { type: 'countElements', selector: '.counted-item' },
+        { type: 'countElements', selector: '.zero-items' }
+      ]);
+
+      expect(result.ok).toBe(true);
+      expect(result.counts?.['.counted-item']).toBe(5);
+      expect(result.counts?.['.zero-items']).toBe(0);
+    });
+  });
 });

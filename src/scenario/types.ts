@@ -36,18 +36,24 @@ export type ScenarioAction =
   | { type: 'sleep'; ms: number }
   | { type: 'readText'; selector: string }
   | { type: 'readTextOptional'; selector: string }
+  | { type: 'readValue'; selector: string }
+  | { type: 'readValueOptional'; selector: string }
+  | { type: 'countElements'; selector: string }
   | { type: 'readCanvasStats'; selector: string; sampleStep?: number };
 
 export interface ScenarioEvent {
   action: ScenarioAction;
   at: number;
+  result?: unknown;
 }
 
 /** 回送给宿主的最终结果 */
 export interface ScenarioResult {
   ok: boolean;
   events?: ScenarioEvent[];
-  texts?: Record<string, string | null>; // selector -> innerText (readText 必填，readTextOptional 未命中时为 null)
-  canvasStats?: CanvasStatsResult;       // 最近一次 readCanvasStats 的结果
+  texts?: Record<string, string | null>;   // selector -> innerText
+  values?: Record<string, string | null>;  // selector -> input.value
+  counts?: Record<string, number>;        // selector -> querySelectorAll().length
+  canvasStats?: CanvasStatsResult;         // 最近一次 readCanvasStats 的结果
   error?: string;
 }
