@@ -160,6 +160,10 @@ async function main() {
             LA_E2E_WORKSPACE: targetWorkspaceDir,
             LA_E2E_DECLARED_COMMANDS: JSON.stringify(declaredCommands),
             LA_E2E_COMMIT: process.env.LA_E2E_COMMIT || "unknown",
+            // 探针场景开关（见 scenarios/index.cjs 的 _probe-fakegreen 说明）。
+            // 必须显式转发：场景注册表在**扩展宿主进程**里加载，
+            // 不转发的话宿主那边读不到 runner 的 env。
+            LA_E2E_PROBE: process.env.LA_E2E_PROBE || "",
           },
           launchArgs: [
             targetWorkspaceDir,
@@ -190,23 +194,49 @@ async function main() {
       return { launchError: runError, hostResult: parsed };
     }
 
-    /** 这次失败「可能只是基础设施崩了」吗？ */
+    /**
+     * 这次失败「可能只是基础设施崩了」吗？
+     *
+     * ## ⚠️ 两条前置否决（2026-11-03 补）
+     *
+     * 1. **宿主已落盘的 `hostError` 非空** ⇒ 是**场景代码自己抛的**（逻辑错误），
+     *    不是 Chromium 崩。重试只会让同一个逻辑错误再跑一遍，把真实失败
+     *    洗成"偶发"。实测踩过：`Test run failed with code` 这个正则把
+     *    「场景抛异常」也匹配上了，于是重试 2 次。
+     * 2. **oracle 里已有 fail** ⇒ 场景真的跑到了、断言真的失败 —— 同上。
+     *
+     * 只有"宿主连结果都没落盘"（`hostResult === null`）且报错形态像 Chromium
+     * 崩溃时，才允许当作基础设施问题重试。
+     */
     function isInfraCrash(runResult) {
       if (!runResult.launchError) return false;
+
+      // 否决 1：宿主已经把异常记进结果里了 ⇒ 逻辑错误，不是基础设施
+      const hostError = runResult.hostResult && runResult.hostResult.hostError;
+      if (hostError) return false;
+
+      // 否决 2：已有断言失败 ⇒ 不许重试（会把真失败洗成概率性通过）
+      const oracles = (runResult.hostResult && runResult.hostResult.oracles) || [];
+      if (oracles.some(o => o.status === "fail")) return false;
+
       const message = String(runResult.launchError.message || runResult.launchError);
       // Chromium 在 xvfb 下偶发的 GPU/网络进程崩溃（实测 code 15）
-      const looksLikeCrash = /code:\s*15|renderer process gone|GPU process exited|Network service crashed|Test run failed with code/i.test(
-        message
-      );
+      const looksLikeCrash =
+        /code:\s*15|renderer process gone|GPU process exited|Network service crashed/i.test(
+          message
+        );
       if (!looksLikeCrash) return false;
+
       /**
-       * ⚠️ **只在 oracle 没有任何 fail 时才重试**。
+       * ⚠️ 额外要求：**宿主完全没落盘结果**。
        *
-       * 如果 oracle 里已经有 fail，那说明场景真的跑到了、断言真的失败了 ——
-       * 重试只会把真实失败洗成概率性通过。**那是同一种假绿。**
+       * 落盘了结果就说明扩展宿主那边至少跑到了收尾，崩溃大概率不是基础设施 ——
+       * 那种情况重试会掩盖真实问题。
+       *
+       * 注：`Test run failed with code` 这个宽正则已移除，它把「场景抛异常」
+       * 也匹配进来过（host-driver 会把它包成 launchError 抛给 runner）。
        */
-      const oracles = (runResult.hostResult && runResult.hostResult.oracles) || [];
-      return !oracles.some(o => o.status === "fail");
+      return !runResult.hostResult;
     }
 
     let attempt = await attemptRun(profileDir, resultPath, workspaceDir);
@@ -356,6 +386,26 @@ async function main() {
   console.log(`\n📄 汇总：${summaryPath}`);
 
   // ---- 退出码：**只有全 pass 才 0** ----
+  //
+  // ⚠️ `hostError` / `launchFailed` 必须独立参与判定，不能只看 `overall`。
+  //
+  // 2026-11-03 实测的 Critical 假绿：场景在第一条 oracle 前抛异常 ⇒
+  // 结果 JSON 里 `oracles: []`、`overall` 由旧的零-oracle 逻辑算成 pass
+  // ⇒ 这条 if 不进 ⇒ 打印「✅ 全部场景通过」+ EXIT=0。
+  //
+  // 现在三层都收紧了（oracles 零条 → not_exercised；host-driver 用 hostError
+  // 覆盖 overall；runner 这里再兜一道），任何一层漏掉都不会让崩溃变成绿。
+  if (summary.some(s => s.hostError && s.overall === "pass")) {
+    console.error(
+      "\n❌ 有场景 overall=pass 但 hostError 非空 —— 这是不可能同时成立的组合，" +
+        "说明某一层的降级逻辑被绕过了"
+    );
+    return 1;
+  }
+  if (summary.some(s => s.launchFailed && s.overall === "pass" && !s.hostError)) {
+    console.error("\n❌ 有场景宿主没启动成功却报了 pass（launchFailed 未参与判定）");
+    return 1;
+  }
   if (summary.some(s => s.overall === "fail")) {
     console.error("\n❌ 有场景失败");
     return 1;

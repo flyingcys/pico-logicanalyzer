@@ -106,9 +106,24 @@ async function run() {
   }
 
   const finished = oracles.finish();
+
+  /**
+   * `hostError` 非空 ⇒ 场景**没有正常跑完** ⇒ overall 不能是 pass。
+   *
+   * ⚠️ 2026-11-03 修掉的假绿：原先 `finish()` 先算出 pass（零 oracle 时旧实现
+   * 也返回 pass），再把 `hostError` 附在旁边 —— 落盘的 JSON 是
+   * `{ overall: "pass", hostError: "..." }`，而 runner 只看 `overall`。
+   * 结果是「场景崩溃 + 打印 ✅ 全部场景通过 + EXIT=0」。
+   *
+   * 现在把降级放在**产结果的地方**（这里），而不是只靠 runner 读 hostError ——
+   * 双保险：任何读这份 JSON 的下游（不止 runner）都不会误判。
+   */
+  const overall = hostError ? "fail" : finished.overall;
+
   writeResult({
     scenarioId,
     ...finished,
+    overall,
     hostError,
     durationMs: Date.now() - startedAt,
   });
@@ -116,7 +131,7 @@ async function run() {
   if (hostError) {
     throw new Error(`场景 ${scenarioId} 抛错：${hostError}`);
   }
-  if (finished.overall === "fail") {
+  if (overall === "fail") {
     throw new Error(`场景 ${scenarioId} 有断言失败`);
   }
 }

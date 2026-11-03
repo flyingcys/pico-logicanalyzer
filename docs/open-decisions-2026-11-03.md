@@ -137,6 +137,104 @@ c2674d80 数据可以通过 cli 采集，但是 ui 上没有正常显示      �
 
 ---
 
+### D-9：网络驱动发 JSON 文本，固件只认二进制帧 —— **WiFi 采集路径从未真正工作过**
+
+| 字段 | 内容 |
+|---|---|
+| 严重度 | **Critical**（`NetworkLogicAnalyzerDriver` 全路径不可用：连接阶段即失败） |
+| 发现方式 | 协议级模拟设备 e2e（`network-capture-mock` 场景，2026-11-03） |
+| 影响面 | **仅限 `NetworkLogicAnalyzerDriver` 这个类**；串口路径与 `LogicAnalyzerDriver` 的 TCP 分支均正常（已实测） |
+
+#### 现象（e2e 实测原始输出）
+
+```
+❌ network-capture-mock → overall=fail
+  ✅ mock-device-started — 监听 127.0.0.1:44343（协议：固件二进制帧）
+  ✅ mock-device-speaks-firmware-protocol — 正确帧得到 5 行应答（首行 LOGIC_ANALYZER_V2_1.7.0）
+  ✅ product-discovers-mock — 产品握手成功：版本 LOGIC_ANALYZER_V2_1.7.0
+  ✅ handshake-content-matches — verificationStatus=confirmed
+  ❌ driver-connects — 连接失败：网络命令超时 —— 产品 NetworkLogicAnalyzerDriver
+                      在握手阶段发 JSON 文本，真固件协议（0x55 0xAA 二进制帧）丢弃无应答
+  ❌ device-received-capture-frame — 设备未收到任何合法帧；期间丢弃 120 字节
+  ⚠️ driver-start-capture-outcome — 因 connect() 握手失败，未执行 startCapture
+  ✅ tcp-handshake-via-firmware-protocol — LogicAnalyzerDriver 用二进制帧握手成功
+  ✅ tcp-capture-completes — TCP 采集完成，通道样本总数 96（期望 96）
+  ✅ tcp-capture-sample-content — CH0 非零样本 36/48
+```
+
+#### 根因：两条驱动走了两套协议
+
+| 位置 | 发送内容 | 固件能否识别 |
+|---|---|---|
+| `src/drivers/LogicAnalyzerDriver.ts:182-187`（串口/网络通用） | `new OutputPacket().addByte(1).addStruct(req).serialize()` → **二进制帧** | ✅ 能 |
+| `src/drivers/NetworkLogicAnalyzerDriver.ts:701` `sendNetworkCommand` | `JSON.stringify(command)` + `'\n'` → **JSON 文本** | ❌ 不能 |
+| `src/services/WiFiDeviceDiscovery.ts:580-584` `verifyPicoDevice` | `new OutputPacket().addByte(0).serialize()` → **二进制帧** | ✅ 能 |
+
+固件侧判定（`logicanalyzer/Firmware/LogicAnalyzer_V2/LogicAnalyzer.c:212-216`）：
+```c
+//If we have stored the first byte and it is not 0x55 restart reception
+if(bufferPos == 1 && messageBuffer[0] != 0x55)
+    bufferPos = 0;
+else if(bufferPos == 2 && messageBuffer[1] != 0xAA)
+    bufferPos = 0;
+```
+⇒ 首字节是 `{`（JSON）时**直接丢弃**，永不应答。
+
+这解释了为什么「能发现设备（走的 `verifyPicoDevice` 用正确协议）、但连不上设备（走的
+`NetworkLogicAnalyzerDriver` 用 JSON）」这一看似矛盾的现象。
+
+#### 真采集链路（用 `LogicAnalyzerDriver` 走 TCP）—— **是通的**
+
+```
+✅ tcp-handshake-via-firmware-protocol — LogicAnalyzerDriver 用二进制帧握手成功（version=LOGIC_ANALYZER_V2_1.7.0, channels=24）
+✅ tcp-capture-completes — TCP 采集完成，通道样本总数 96（期望 96）
+✅ tcp-capture-sample-content — CH0 非零样本 36/48（设备发的是可辨识方波图案）
+```
+
+⇒ **D-9 的缺陷范围被精确锁定在 `NetworkLogicAnalyzerDriver` 这一个类里**，
+不是"TCP 不能采集"，也不是"协议设计有问题"。
+`LogicAnalyzerDriver` 的网络分支（`LogicAnalyzerDriver.ts:87` 按连接串含 `:` 判定）
+握手 + 采集 + 样本解析全部正常。
+
+#### 变异与对照证据
+
+| 实验 | 结果 |
+|---|---|
+| 模拟器收到正确二进制帧 | 自测 11/11 通过；`refreshDevice` 握手成功 |
+| 模拟器收到 JSON | 丢弃 120 字节，零应答（与真固件 `LogicAnalyzer.c:212` 行为一致） |
+| 模拟器 ID 应答改成 `LOGIC_ANALYZER_V1_0`（major 相同、minor=0 < 7） | `product-discovers-mock` **红** |
+| 模拟器 ID 应答改成 `LOGIC_ANALYZER_V2_1.0`（major=2 > 1） | `product-discovers-mock` **仍 pass** —— 见下方说明 |
+| 模拟器 `extractFrames` 去掉 `0xAA 0x55` 结束标记检查 | 自测第 2 条**红** |
+| 模拟器样本改全 0 | `tcp-capture-sample-content` **红**（`tcp-capture-completes` 仍 pass） |
+| 把 `server.close()` 改回不断开活动连接 | 自测第 10 条**红**（`timeout != closed`） |
+
+⚠️ **`V2_1.0` 不红是产品的真实行为**，不是判据缺陷：
+`VersionValidator.ts:66` 的判定是
+```ts
+const isValid = (major > MAJOR_VERSION) ||
+                (major === MAJOR_VERSION && minor >= MINOR_VERSION);
+```
+`MAJOR_VERSION=1`，所以 `V2_x` 走第一条分支**直接判有效，完全跳过 minor 检查**。
+⇒ 只有 `V1_0`（major 相同、minor 不足）才会被拒。这本身值得记录：
+**版本校验是"major 更高就无条件放行"，不是语义化版本的严格比较。**
+
+#### 修复方案（本次不做，仅记录）
+
+| 方案 | 做法 | 成本 | 风险 |
+|---|---|---|---|
+| A | `NetworkLogicAnalyzerDriver` 整体改用 `OutputPacket` 二进制帧，与 `LogicAnalyzerDriver` 同范式；响应解析改为按 `\n` 切行 | 中（约 200-300 行改写 + 单测） | 中（该驱动还有 UDP/WebSocket 分支与"认证/协议类型"等自成体系的概念，需一并梳理） |
+| B | 让固件同时支持 JSON | 高 | 高（固件侧改动、需重烧、破坏向后兼容） |
+| **C（推荐，可行性已验证）** | 弃用 `NetworkLogicAnalyzerDriver`，网络路径直接用 `LogicAnalyzerDriver`（它已支持 `host:port`） | **低** | 低 —— 本轮 e2e 已实测握手 ✅ / 采集 ✅ / 样本解析 ✅（见上文「真采集链路」） |
+
+**我的建议**：**走 C**。`LogicAnalyzerDriver` 的 TCP 分支已被本场景端到端验证
+（二进制握手 + 采集 + 样本解析全通），无需再单独验可行性；剩余工作是把
+`HardwareDriverManager` 里网络设备指向的驱动类从 `NetworkLogicAnalyzerDriver`
+换成 `LogicAnalyzerDriver`，并删除或标记废弃旧类。
+
+⚠️ 无论选哪个，都需要**真机**验证（当前固件未烧，见 D-4）。
+
+---
+
 ## 二、覆盖范围（2 条）
 
 ### D-4：真机 e2e —— 烧不烧固件
@@ -209,6 +307,7 @@ Tests:       2472 passed, 2472 total          ← 用例 100% 通过
 | D-3 | `Extension.coverage` Promise 泄漏 | Important | **已修（T1）** | ✅ |
 | D-7 | 4 个网络配置声明了但从未读取 | Important | **C**（文档标注未实现） | ⏸ |
 | D-8 | 20 个测试垃圾已被提交进仓库 | Minor | **A**（`git rm --cached`） | ⏸ **需你确认** |
+| D-9 | 网络驱动发 JSON、固件只认二进制帧（WiFi 采集从未可用） | **Critical** | **C**（改指向 `LogicAnalyzerDriver`；其 TCP 分支已被 e2e 实测握手/采集/解析全通） | ⏸ |
 | D-4 | 真机 e2e（烧固件） | — | 取决于你 | ⏸ |
 | D-5 | 继续加 UI 场景 | — | **暂停** | ⏸ |
 | ~~D-6~~ | ~~10 个红的 unit 套件~~ | — | **已消解**（合并远程后 2472 用例全过） | ✅ 无需裁定 |

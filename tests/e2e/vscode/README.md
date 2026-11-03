@@ -135,6 +135,30 @@ Extension Host 是 node 16，不认 ESM。所以 driver 与 lib 全是 `.cjs`。
 | **真机采集/解码 e2e** | 本机 Pico 上跑的不是逻辑分析器固件；固件**可构建**（已证明），但**烧录待用户授权**（2026-11-03 裁定「先不烧」）。台账见 `docs/hardware-validation/records/2026-11-03-pico-firmware-build-proven.md`。 |
 | **in Jest** | 真宿主 e2e **不进** `jest.config.js`（`testPathIgnorePatterns` 已排除 `tests/e2e/`）。理由：它是外进程启动真 VS Code，与 jest 的并行/隔离模型冲突，且耗时以分钟计。 |
 
+## 六点五、⚠️ `_probe-fakegreen` 探针 —— **不要删**
+
+`scenarios/common/_probe-fakegreen.scenario.cjs` 是**防复发探针，不是常规场景**。
+
+| 项 | 内容 |
+|---|---|
+| 作用 | 主动 `throw`，用来证明 runner **不会把崩溃报成通过** |
+| 何时生效 | 仅 `LA_E2E_PROBE=1` 时注册（默认不在 `--list` 里） |
+| 为什么默认关 | 常驻会让全量 e2e 永远挂一条 fail，把退出码从 3 拉到 1 —— **污染真实基线** |
+| 为什么必须留 | 三层假绿防御（`oracles` / `host-driver` / `runner`）若被改回去，只有它能立刻发现 |
+
+**改了 runner / oracles / host-driver 的失败判定逻辑时，必须跑一次**：
+
+```sh
+LA_E2E_PROBE=1 xvfb-run -a node tests/e2e/vscode/lib/runner.cjs --scenario _probe-fakegreen
+# 期望：❌ overall=fail + EXIT=1 + 不重试
+# 若看到 ✅ overall=pass 或 EXIT=0 ⇒ 假绿回来了
+```
+
+完整背景（三处叠加的根因、逐层拆解验证表）见
+`docs/e2e-found-product-bugs-2026-11-03.md` **OUT-3**。
+
+---
+
 ## 七、目录结构
 
 ```
@@ -143,11 +167,14 @@ tests/e2e/vscode/
 │   ├── runner.cjs      # 外层启动器：隔离 profile → @vscode/test-electron → 汇总
 │   ├── env.cjs         # 前置检查（DISPLAY / 产物 / 读 manifest 命令清单）
 │   ├── profile.cjs     # profile 隔离、进程回收、残留清扫
-│   └── oracles.cjs     # 结果契约（pass/fail/not_exercised/blocked + 最差状态汇总）
+│   ├── oracles.cjs     # 结果契约（pass/fail/not_exercised/blocked + 最差状态汇总）
+│   ├── mockDevice.cjs      # 协议级模拟设备（严格按固件线协议实现）
+│   └── _selftest-mockDevice.cjs  # 模拟器自测（11 条，含与产品 serialize() 逐字节对账）
 ├── host-driver.cjs     # 宿主内入口（extensionTestsPath）
 ├── scenarios/
 │   ├── index.cjs       # 场景注册表（**单一来源**，新场景必须登记）
 │   ├── common/         # 与硬件无关
+│   │   └── _probe-fakegreen.scenario.cjs   # ⚠️ 防复发探针，见 §6.5
 │   └── hardware/       # 需要真机（默认 not_exercised）
 └── artifacts/latest/   # 每次跑的 summary.json（可机读）
 ```

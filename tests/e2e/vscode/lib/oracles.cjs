@@ -103,11 +103,21 @@ function createOracleCollector() {
    * - 无 fail 有 blocked ⇒ blocked（有东西被挡住，不能说通过）
    * - 只有 pass + not_exercised ⇒ not_exercised（部分未验，不能说 covered）
    * 也就是说 **只有全 pass 才得到 pass**。
+   *
+   * ## ⚠️ 零 oracle ⇒ `not_exercised`，**绝不能是 pass**
+   *
+   * 实测过的假绿（2026-11-03）：场景在第一条 oracle 之前就抛异常，
+   * `host-driver` 先把结果 JSON 写盘再 throw ⇒ 落盘的 `oracles: []`
+   * ⇒ 旧实现 `some(...)` 全为 false ⇒ `overall: "pass"`。
+   *
+   * 语义上也讲不通：**「一条都没验」不是「全部通过」**。
+   * 这与项目铁律「全 skip 也算 EXIT=0 是伪装」是同一条。
    */
   function overall() {
     if (oracles.some(o => o.status === "fail")) return "fail";
     if (oracles.some(o => o.status === "blocked")) return "blocked";
     if (oracles.some(o => o.status === "not_exercised")) return "not_exercised";
+    if (oracles.length === 0) return "not_exercised";
     return "pass";
   }
 

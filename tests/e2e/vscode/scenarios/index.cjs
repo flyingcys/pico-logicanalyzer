@@ -32,4 +32,14 @@ module.exports = [
   require("./common/ui-trigger-config.scenario.cjs"),
   require("./common/ui-export-button.scenario.cjs"),
   require("./common/ui-decoder.scenario.cjs"),
+  require("./common/network-capture-mock.scenario.cjs"),
+  // ⚠️ 探针场景：**默认不注册**，只在变异验证时显式打开
+  //    （`LA_E2E_PROBE=1`）。
+  //
+  //    为什么不常驻：它会永远产生一条 fail，把全量 e2e 的退出码从 3 拉到 1，
+  //    那是**污染真实基线**。但它必须留档 —— 见文件头的假绿复现说明，
+  //    否则后人无法证明 runner 的「hostError 参与退出码」修复仍然生效。
+  ...(process.env.LA_E2E_PROBE === "1"
+    ? [require("./common/_probe-fakegreen.scenario.cjs")]
+    : []),
 ];

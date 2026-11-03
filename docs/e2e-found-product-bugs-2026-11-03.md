@@ -13,6 +13,14 @@
 | [BUG-4](#bug-4webview-传的-timeoutms-与服务的-timeout-字段名对不上静默失效) | webview 传的 `timeoutMs` 与服务的 `timeout` 字段名对不上，静默失效 | Important | ✅ **已修**（变异验证） |
 | ~~BUG-5~~ | ~~Uint8Array 序列化丢样本~~ | — | ❌ **已撤销**（我误判，见下文；`applyDocument` 从 `content` 重新 parse，不读那个字段） |
 
+### 范围外发现（不阻塞本轮）
+
+| ID | 缺陷 | 严重度 | 状态 |
+|---|---|---|---|
+| [OUT-1](#out-1extensioncoveragetesttestts-未捕获的-promisereject-让-jest-进程崩溃) | `Extension.coverage.test.ts` 未捕获的 `Promise.reject` 让 jest 进程崩溃 | Important | ✅ **已修**（T1） |
+| [OUT-2](#out-2tmp-泄漏门禁自身的两个假绿2026-11-03) | `/tmp` 泄漏门禁自身的两个「假绿」 | Important | ✅ **已修**（OUT-2） |
+| [OUT-3](#out-3e2e-runner-自身的假绿--场景崩溃也打印-全部场景通过-exit0) | **e2e runner 自身的假绿：场景崩溃也报「全部通过」+ EXIT=0** | **Critical**（元缺陷） | ✅ **已修**（T3，三层防御 + 防复发探针） |
+
 > **状态口径**：「已修」= 有变异验证证明改坏会红；「待裁定」= 需要用户决定是否做、怎么做。
 > 未提交的修复也算「已修」，但会在提交后补 commit 号。
 
@@ -581,6 +589,111 @@ HEAD 版：起始 20 个 → 跑一次 stress → 22 个（+2 泄漏）
 
 `git ls-files .recovery-checkpoints/` → **20**，由 2026-07/08 两次误提交带入。
 删除属破坏性操作，已登记 `docs/open-decisions-2026-11-03.md` **D-8** 待用户确认。
+
+---
+
+### OUT-3：e2e runner 自身的假绿 —— **场景崩溃也打印「✅ 全部场景通过」+ EXIT=0**
+
+这是**元缺陷**：它让「其他所有 e2e 的绿」都不可信 —— 因为绿可以是伪造的。
+
+#### 现象（探针场景主动抛异常，修复前）
+
+```
+$ LA_E2E_PROBE=1 xvfb-run -a node tests/e2e/vscode/lib/runner.cjs --scenario _probe-fakegreen
+✅ _probe-fakegreen → overall=pass
+  ⛔ hostError: Error: 模拟场景内部崩溃（探针）
+✅ 全部场景通过
+EXIT=0
+```
+**场景一行业务逻辑都没跑就崩了，runner 报"全部通过"。**
+
+#### 根因：三处叠加，缺一不成
+
+| # | 位置 | 问题 |
+|---|---|---|
+| 1 | `host-driver.cjs` | 捕获异常后**先把结果 JSON 写盘**（`overall` 仍由 `oracles.finish()` 算），再 throw；而 `runner` 只读那份 JSON |
+| 2 | `lib/oracles.cjs:107` | 零 oracle 时 `overall()` 返回 `pass`（`some(...)` 全 false ⇒ 落到末尾 `return "pass"`） |
+| 3 | `lib/runner.cjs` 退出码 | 只看 `s.overall`，**`hostError` / `launchFailed` 从不参与判定** |
+
+叠加后果：崩溃 ⇒ `oracles: []` ⇒ `overall: "pass"` ⇒ 三处都不拦 ⇒ 打印绿 + EXIT=0。
+
+另有**第四个副作用**：`isInfraCrash()` 的正则含 `Test run failed with code`，
+它把「场景抛异常」也当成 Chromium 崩溃 ⇒ **重试 2 次**（实测日志出现 2 次
+`检测到 Chromium 基础设施崩溃`），把逻辑错误洗成"偶发"。
+
+#### 三层防御（分别落在产生/搬运/判定三个位置）
+
+1. **`oracles.cjs`** —— 语义修正：零 oracle ⇒ `not_exercised`
+   ```js
+   if (oracles.length === 0) return "not_exercised";   // 「一条都没验」≠「全部通过」
+   ```
+2. **`host-driver.cjs`** —— 在**产结果的地方**降级（不只让 runner 读 hostError）
+   ```js
+   const overall = hostError ? "fail" : finished.overall;
+   writeResult({ scenarioId, ...finished, overall, hostError, ... });
+   ```
+   理由：任何读这份 JSON 的下游（不止 runner）都不会误判。
+3. **`runner.cjs`** —— 用「不可能组合」判定，不看单体字段
+   ```js
+   if (summary.some(s => s.hostError && s.overall === "pass")) return 1;
+   if (summary.some(s => s.launchFailed && s.overall === "pass" && !s.hostError)) return 1;
+   ```
+   加上 `isInfraCrash()` 三重否决：宿主已落盘 `hostError` ⇒ 逻辑错误；
+   已有 oracle `fail` ⇒ 不许重试；宿主完全没落盘结果才算基础设施崩溃。
+
+#### 逐层拆解验证（证明三层各自独立，不是同一断言的拷贝）
+
+| 还原的层 | overall | EXIT | 被谁拦住 |
+|---|---|---|---|
+| 全修复 | `fail` | **1** | 三层都在 |
+| 只还原 `host-driver` | `not_exercised` | **3** | **`oracles` 层** |
+| 还原 `host-driver` + `oracles` | `pass`（假绿复活） | **1** | **`runner` 层** |
+| 全还原（原始 bug） | `pass` | **0** | 无人拦 = 假绿 |
+
+第 3 行是关键：**oracle 已经显示 pass，runner 仍靠 `hostError` 抓住** ——
+证明纵深防御是真冗余，不是重复。
+
+#### 修复后对照（同一探针、同一命令）
+
+```
+修复前：EXIT=0，重试 2 次，打印「✅ 全部场景通过」
+修复后：EXIT=1，重试 0 次，打印「❌ 有场景失败」
+```
+
+#### 为什么必须留探针（不做出无痕）
+
+`tests/e2e/vscode/scenarios/common/_probe-fakegreen.scenario.cjs` 主动抛异常，
+用于**防复发**：若哪天有人把三层降级逻辑改回去，打开探针跑一次就能立刻发现。
+
+⚠️ 它**默认不注册**，只在 `LA_E2E_PROBE=1` 时进场景清单
+（`scenarios/index.cjs` 里做了门控）。理由：常驻会让全量 e2e
+永远挂着一条 fail，把退出码从 3 拉到 1，反而**污染真实基线**。
+
+验证门控生效：
+```
+$ node tests/e2e/vscode/lib/runner.cjs --list | grep -c "_probe-fakegreen"
+0                       ← 默认不在清单
+$ LA_E2E_PROBE=1 node tests/e2e/vscode/lib/runner.cjs --list | grep -c "_probe-fakegreen"
+1                       ← 显式打开才在
+```
+
+> **教训**：e2e 框架自己的假绿优先级高于任何单条产品缺陷。
+> 只要「失败也能显示通过」这条路存在，其余所有 oracle 的绿都不构成证据。
+
+---
+
+#### 顺带自查出的同类问题（「判据维度 ≠ 出错维度」家族）
+
+修 T3 时按「自己扫同类」的要求，在测试侧找到另外两处：
+
+| 位置 | 问题 | 性质 |
+|---|---|---|
+| `lib/_selftest-mockDevice.cjs:64` | `assert.ok(... \|\| true, ...)` —— `\|\| true` 让断言**永远通过** | 恒真（假绿） |
+| `common/network-capture-mock.scenario.cjs` `driver-start-capture-outcome` | `err !== 0 && typeof err !== "number"` 判成功，但 `CaptureError.None = 'None'` 是**字符串** ⇒ 成功也报 `not_exercised` | 恒不绿（永不可能 pass） |
+
+两者与 OUT-1（mock 取值 = 兜底值）、OUT-2（有清理字样 ≠ 真清理）同属一类：
+**判据与它声称在测的东西之间没有因果关系**。
+恒红容易被发现（测试一直红），**恒绿/恒不绿才最危险** —— 它们看起来在工作。
 
 ---
 
