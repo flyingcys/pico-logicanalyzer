@@ -41,6 +41,8 @@ export type ScenarioAction =
   | { type: 'readValueOptional'; selector: string }
   | { type: 'countElements'; selector: string }
   | { type: 'readAllTexts'; selector: string }
+  | { type: 'startCaptureMessages' }
+  | { type: 'stopCaptureMessages' }
   | { type: 'readCanvasStats'; selector: string; sampleStep?: number };
 
 export interface ScenarioEvent {
@@ -57,6 +59,7 @@ export interface ScenarioResult {
   allTexts?: Record<string, string[]>;       // selector -> array of textContents
   values?: Record<string, string | null>;    // selector -> input.value
   counts?: Record<string, number>;          // selector -> querySelectorAll().length
+  capturedMessages?: unknown[];              // startCaptureMessages 到 stopCaptureMessages 间捕获到的 postMessage 消息列表
   canvasStats?: CanvasStatsResult;           // 最近一次 readCanvasStats 的结果
   error?: string;
 }

@@ -202,6 +202,24 @@ function analyzeCanvasPixels(
   };
 }
 
+interface ActiveCaptureState {
+  realApi: { postMessage: (msg: unknown) => unknown };
+  captured: unknown[];
+  targetWindow: { vscode?: { postMessage: (msg: unknown) => unknown } };
+}
+
+let activeCaptureState: ActiveCaptureState | null = null;
+
+/**
+ * 重置捕获状态（仅供单测隔离）
+ */
+export function __resetScenarioExecutorForTest(): void {
+  if (activeCaptureState) {
+    activeCaptureState.targetWindow.vscode = activeCaptureState.realApi;
+    activeCaptureState = null;
+  }
+}
+
 /**
  * 执行动作序列并收集结果
  */
@@ -215,6 +233,7 @@ export async function executeScenarioActions(
   const values: Record<string, string | null> = {};
   const counts: Record<string, number> = {};
   let lastCanvasStats: CanvasStatsResult | undefined;
+  let lastCapturedList: unknown[] | undefined = undefined;
 
   for (let index = 0; index < actions.length; index++) {
     const action = actions[index];
@@ -222,7 +241,7 @@ export async function executeScenarioActions(
 
     try {
       switch (action.type) {
-        case 'waitForElement': {
+          case 'waitForElement': {
           await waitForElement(
             deps.doc,
             action.selector,
@@ -356,6 +375,57 @@ export async function executeScenarioActions(
           break;
         }
 
+        case 'startCaptureMessages': {
+          const defaultView = deps.doc.defaultView || (typeof window !== 'undefined' ? window : null);
+          const targetWindow = defaultView as unknown as { vscode?: { postMessage: (msg: unknown) => unknown } };
+          const realApi = targetWindow?.vscode;
+          if (!realApi || typeof realApi.postMessage !== 'function') {
+            throw new Error('startCaptureMessages failed: window.vscode.postMessage is not available');
+          }
+
+          if (activeCaptureState) {
+            activeCaptureState.targetWindow.vscode = activeCaptureState.realApi;
+            activeCaptureState = null;
+          }
+
+          const captured: unknown[] = [];
+          activeCaptureState = {
+            realApi,
+            captured,
+            targetWindow
+          };
+
+          // ⚠️ VS Code Webview 的 acquireVsCodeApi() 返回的是冻结对象（Object.freeze），
+          // 其 postMessage 属性是 read-only 不可直接赋值修改（否则在严格模式下抛 TypeError）。
+          // 因此采用代理对象整体替换 window.vscode 的形式进行透明拦截：
+          targetWindow.vscode = {
+            ...realApi,
+            postMessage: (msg: unknown) => {
+              try {
+                captured.push(JSON.parse(JSON.stringify(msg)));
+              } catch {
+                captured.push(msg);
+              }
+              return realApi.postMessage.call(realApi, msg);
+            }
+          };
+
+          stepResult = true;
+          break;
+        }
+
+        case 'stopCaptureMessages': {
+          let list: unknown[] = [];
+          if (activeCaptureState) {
+            list = [...activeCaptureState.captured];
+            activeCaptureState.targetWindow.vscode = activeCaptureState.realApi;
+            activeCaptureState = null;
+          }
+          lastCapturedList = list;
+          stepResult = list;
+          break;
+        }
+
         case 'readCanvasStats': {
           if (!action.selector || typeof action.selector !== 'string') {
             throw new Error('readCanvasStats requires explicit non-empty selector');
@@ -383,6 +453,10 @@ export async function executeScenarioActions(
         ...(stepResult !== undefined ? { result: stepResult } : {})
       });
     } catch (error) {
+      if (activeCaptureState) {
+        activeCaptureState.targetWindow.vscode = activeCaptureState.realApi;
+        activeCaptureState = null;
+      }
       return {
         ok: false,
         events,
@@ -390,6 +464,7 @@ export async function executeScenarioActions(
         allTexts,
         values,
         counts,
+        capturedMessages: lastCapturedList,
         canvasStats: lastCanvasStats,
         error: `action[${index}] ${action.type} failed: ${
           error instanceof Error ? error.message : String(error)
@@ -405,6 +480,7 @@ export async function executeScenarioActions(
     allTexts,
     values,
     counts,
+    capturedMessages: lastCapturedList,
     canvasStats: lastCanvasStats
   };
 }
@@ -463,6 +539,7 @@ export function setupScenarioListener(): (() => void) | undefined {
       allTexts: result.allTexts,
       values: result.values,
       counts: result.counts,
+      capturedMessages: result.capturedMessages,
       canvasStats: result.canvasStats,
       ...(result.error ? { error: result.error } : {})
     });

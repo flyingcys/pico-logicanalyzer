@@ -4,11 +4,13 @@
 
 import {
   executeScenarioActions,
-  setupScenarioListener
+  setupScenarioListener,
+  __resetScenarioExecutorForTest
 } from '../../../src/frontend/platform/scenario/scenarioExecutor';
 
 describe('scenarioExecutor (Webview 场景执行器与门控)', () => {
   beforeEach(() => {
+    __resetScenarioExecutorForTest();
     document.body.innerHTML = '';
   });
 
@@ -458,6 +460,70 @@ describe('scenarioExecutor (Webview 场景执行器与门控)', () => {
         'Pre Samples',
         '触发反相'
       ]);
+    });
+  });
+
+  describe('startCaptureMessages / stopCaptureMessages 消息拦截', () => {
+    it('startCaptureMessages 在 window.vscode 缺失时抛错', async () => {
+      delete (window as any).vscode;
+      const result = await executeScenarioActions([
+        { type: 'startCaptureMessages' }
+      ]);
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/startCaptureMessages failed/);
+    });
+
+    it('拦截期间记录消息，原样透传给原函数，stopCaptureMessages 恢复原函数', async () => {
+      const forwarded: unknown[] = [];
+      const originalPost = jest.fn((msg: unknown) => {
+        forwarded.push(msg);
+      });
+      (window as any).vscode = { postMessage: originalPost };
+
+      const result = await executeScenarioActions([
+        { type: 'startCaptureMessages' },
+        { type: 'sleep', ms: 10 }
+      ]);
+      expect(result.ok).toBe(true);
+
+      // 发送消息
+      (window as any).vscode.postMessage({
+        type: 'hostCommand',
+        command: 'exportData',
+        payload: { format: 'csv' }
+      });
+
+      // 停止拦截
+      const stopResult = await executeScenarioActions([
+        { type: 'stopCaptureMessages' }
+      ]);
+      expect(stopResult.ok).toBe(true);
+      expect(stopResult.capturedMessages).toHaveLength(1);
+      expect(stopResult.capturedMessages?.[0]).toEqual({
+        type: 'hostCommand',
+        command: 'exportData',
+        payload: { format: 'csv' }
+      });
+      expect(forwarded).toHaveLength(1);
+
+      // 验证已恢复原函数
+      expect((window as any).vscode.postMessage).toBe(originalPost);
+    });
+
+    it('动作异常退出时，finally 块强制还原 postMessage 原函数，防止泄露', async () => {
+      const originalPost = jest.fn();
+      (window as any).vscode = { postMessage: originalPost };
+
+      const result = await executeScenarioActions([
+        { type: 'startCaptureMessages' },
+        { type: 'click', selector: '.definitely-not-found' } // 抛错动作
+      ]);
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/click failed/);
+
+      // 即使异常退出，原函数依然被强制还原
+      expect((window as any).vscode.postMessage).toBe(originalPost);
     });
   });
 });

@@ -109,6 +109,7 @@ export function completeScenarioRequest(
     allTexts?: unknown;
     values?: unknown;
     counts?: unknown;
+    capturedMessages?: unknown;
     canvasStats?: unknown;
     error?: unknown;
   };
@@ -162,6 +163,9 @@ export function completeScenarioRequest(
       : {}),
     ...(raw.counts && typeof raw.counts === 'object'
       ? { counts: raw.counts as Record<string, number> }
+      : {}),
+    ...(Array.isArray(raw.capturedMessages)
+      ? { capturedMessages: raw.capturedMessages }
       : {}),
     ...(raw.canvasStats && typeof raw.canvasStats === 'object'
       ? { canvasStats: raw.canvasStats as any }
