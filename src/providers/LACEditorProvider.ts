@@ -13,7 +13,11 @@ import type {
   DecoderSelectedChannel
 } from '../decoders/types';
 import { DataExportService, type ExportOptions } from '../services/DataExportService';
-import { NetworkStabilityService, type DiagnosticResult } from '../services/NetworkStabilityService';
+import {
+  NetworkStabilityService,
+  resolveNetworkStabilityConfig,
+  type DiagnosticResult
+} from '../services/NetworkStabilityService';
 import { WiFiDeviceDiscovery, type WiFiDeviceInfo } from '../services/WiFiDeviceDiscovery';
 import {
   WEBVIEW_ASSET_MANIFEST_FILE,
@@ -781,7 +785,17 @@ ${webviewScriptTags}
 
   private getNetworkStabilityService(): NetworkStabilityService {
     if (!this.networkStabilityService) {
-      this.networkStabilityService = new NetworkStabilityService();
+      // D-7: 从工作区配置显式接线至 NetworkStabilityService
+      // TODO: 运行时热更新暂不支持，当前在初次获取实例时读取一次工作区配置进行注入
+      const config = typeof vscode.workspace?.getConfiguration === 'function'
+        ? vscode.workspace.getConfiguration('logicAnalyzer.network')
+        : undefined;
+
+      const stabilityConfig = typeof resolveNetworkStabilityConfig === 'function'
+        ? resolveNetworkStabilityConfig(config)
+        : undefined;
+
+      this.networkStabilityService = new NetworkStabilityService(stabilityConfig);
     }
 
     return this.networkStabilityService;

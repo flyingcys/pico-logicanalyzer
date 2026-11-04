@@ -72,6 +72,39 @@ export interface DiagnosticResult {
 }
 
 /**
+ * 可读取配置键值的接口（兼容 vscode.WorkspaceConfiguration 与测试中的字典）
+ */
+export interface NetworkConfigurationSource {
+  get<T>(key: string, defaultValue?: T): T | undefined;
+}
+
+/**
+ * 将 VS Code 工作区配置显式映射为 NetworkStabilityService 的连接配置（纯函数）
+ *
+ * 字段映射规则（D-7）：
+ * - heartbeatIntervalMs -> heartbeatInterval（心跳检测间隔）
+ * - connectionTimeoutMs -> connectionTimeout（连接超时时间）
+ * - enableAutoReconnect -> autoReconnect（是否启用自动重连）
+ */
+export function resolveNetworkStabilityConfig(
+  source?: NetworkConfigurationSource
+): Partial<ConnectionConfig> {
+  if (!source || typeof source.get !== 'function') {
+    return {};
+  }
+
+  const heartbeatInterval = source.get<number>('heartbeatIntervalMs', 5000);
+  const connectionTimeout = source.get<number>('connectionTimeoutMs', 10000);
+  const autoReconnect = source.get<boolean>('enableAutoReconnect', true);
+
+  return {
+    ...(typeof heartbeatInterval === 'number' ? { heartbeatInterval } : {}),
+    ...(typeof connectionTimeout === 'number' ? { connectionTimeout } : {}),
+    ...(typeof autoReconnect === 'boolean' ? { autoReconnect } : {})
+  };
+}
+
+/**
  * 网络连接稳定性优化服务
  * 提供连接质量监控、自动重连、网络诊断等功能
  */
@@ -108,6 +141,13 @@ export class NetworkStabilityService extends EventEmitter {
     super();
     this.currentConfig = { ...this.defaultConfig, ...config };
     this.connectionQuality = this.initializeConnectionQuality();
+  }
+
+  /**
+   * 获取当前生效的连接配置快照（只读快照）
+   */
+  public getCurrentConfig(): ConnectionConfig {
+    return { ...this.currentConfig };
   }
 
   /**

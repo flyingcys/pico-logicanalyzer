@@ -54,6 +54,9 @@ jest.mock('vscode', () => ({
           if (key === 'maxConcurrentConnections') return 17;
           if (key === 'defaultPorts') return [9999, 8888];
           if (key === 'enableBroadcastDiscovery') return false;
+          if (key === 'heartbeatIntervalMs') return 6666;
+          if (key === 'connectionTimeoutMs') return 16666;
+          if (key === 'enableAutoReconnect') return false;
           return defaultValue ?? true;
         }),
       };
@@ -100,6 +103,25 @@ jest.mock('../../../src/services/SignalDescriptionLanguage', () => ({
     }
   },
 }));
+
+const networkStabilityServiceConstructor = jest.fn();
+
+jest.mock('../../../src/services/NetworkStabilityService', () => {
+  const actual = jest.requireActual('../../../src/services/NetworkStabilityService');
+  return {
+    ...actual,
+    NetworkStabilityService: jest.fn().mockImplementation((config) => {
+      networkStabilityServiceConstructor(config);
+      return {
+        disconnect: jest.fn().mockResolvedValue(undefined),
+        connect: jest.fn().mockResolvedValue(true),
+        getConnectionQuality: jest.fn().mockReturnValue({ score: 100 }),
+        runDiagnostics: jest.fn().mockResolvedValue([]),
+        getCurrentConfig: jest.fn().mockReturnValue(config),
+      };
+    }),
+  };
+});
 
 jest.mock('../../../src/models/LACFileFormat', () => ({
   LACFileFormat: {
@@ -254,10 +276,17 @@ describe('VSCode Extension 主入口 — 覆盖率补充', () => {
       expect(wifi.clearCache).toHaveBeenCalled();
     });
 
-    it('不注入服务时使用默认实例（new WiFiDeviceDiscovery / NetworkStabilityService）', () => {
+    it('不注入服务时使用默认实例，并接线工作区网络配置（D-7）', () => {
+      networkStabilityServiceConstructor.mockClear();
       expect(() => activate(context)).not.toThrow();
       // 注册了全部命令即视为默认实例成功创建
       expect(mockVSCode.commands.registerCommand).toHaveBeenCalledTimes(9);
+      // D-7: 断言创建 NetworkStabilityService 时注入了解析后的工作区配置
+      expect(networkStabilityServiceConstructor).toHaveBeenCalledWith({
+        heartbeatInterval: 6666,
+        connectionTimeout: 16666,
+        autoReconnect: false
+      });
     });
   });
 

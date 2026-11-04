@@ -113,13 +113,22 @@ jest.mock('../../../src/drivers/HardwareDriverManager', () => ({
   }
 }));
 
-jest.mock('../../../src/services/NetworkStabilityService', () => ({
-  NetworkStabilityService: jest.fn().mockImplementation(() => ({
-    disconnect: networkDisconnect,
-    connect: networkConnect,
-    runDiagnostics
-  }))
-}));
+const networkStabilityServiceConstructor = jest.fn();
+
+jest.mock('../../../src/services/NetworkStabilityService', () => {
+  const actual = jest.requireActual('../../../src/services/NetworkStabilityService');
+  return {
+    ...actual,
+    NetworkStabilityService: jest.fn().mockImplementation((config) => {
+      networkStabilityServiceConstructor(config);
+      return {
+        disconnect: networkDisconnect,
+        connect: networkConnect,
+        runDiagnostics
+      };
+    })
+  };
+});
 
 jest.mock('../../../src/services/WiFiDeviceDiscovery', () => ({
   WiFiDeviceDiscovery: jest.fn().mockImplementation(() => ({
@@ -2176,6 +2185,28 @@ describe('executeHostCommand 命令分发', () => {
       const a = (provider as any).getNetworkStabilityService();
       const b = (provider as any).getNetworkStabilityService();
       expect(a).toBe(b);
+    });
+
+    it('创建 NetworkStabilityService 实例时应从工作区配置读取三项参数注入（D-7）', () => {
+      networkStabilityServiceConstructor.mockClear();
+      getConfiguration.mockReturnValue({
+        get: jest.fn((key: string, defaultValue?: unknown) => {
+          if (key === 'heartbeatIntervalMs') return 8888;
+          if (key === 'connectionTimeoutMs') return 18888;
+          if (key === 'enableAutoReconnect') return false;
+          return defaultValue;
+        })
+      });
+
+      const provider = createProvider();
+      const service = (provider as any).getNetworkStabilityService();
+      expect(service).toBeDefined();
+
+      expect(networkStabilityServiceConstructor).toHaveBeenCalledWith({
+        heartbeatInterval: 8888,
+        connectionTimeout: 18888,
+        autoReconnect: false
+      });
     });
   });
 

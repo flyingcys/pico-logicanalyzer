@@ -33,7 +33,8 @@ import {
   ConnectionQuality,
   NetworkEvent,
   ConnectionConfig,
-  DiagnosticResult
+  DiagnosticResult,
+  resolveNetworkStabilityConfig
 } from '../../../src/services/NetworkStabilityService';
 import { Socket } from 'net';
 
@@ -113,6 +114,60 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
       // 验证配置应用（通过行为验证）
       customService.setConfiguration({ heartbeatInterval: 3000 });
       expect(customService).toBeDefined(); // 基本验证，配置已应用
+      expect(customService.getCurrentConfig().heartbeatInterval).toBe(3000);
+    });
+
+    describe('D-7: 配置映射与当前生效配置查询', () => {
+      it('resolveNetworkStabilityConfig 应将工作区配置字段准确映射为服务字段', () => {
+        const mockSource = {
+          get: jest.fn((key: string, defaultValue?: unknown) => {
+            if (key === 'heartbeatIntervalMs') return 8000;
+            if (key === 'connectionTimeoutMs') return 18000;
+            if (key === 'enableAutoReconnect') return false;
+            return defaultValue;
+          })
+        };
+
+        const resolved = resolveNetworkStabilityConfig(mockSource);
+        expect(resolved).toEqual({
+          heartbeatInterval: 8000,
+          connectionTimeout: 18000,
+          autoReconnect: false
+        });
+        expect(mockSource.get).toHaveBeenCalledWith('heartbeatIntervalMs', 5000);
+        expect(mockSource.get).toHaveBeenCalledWith('connectionTimeoutMs', 10000);
+        expect(mockSource.get).toHaveBeenCalledWith('enableAutoReconnect', true);
+      });
+
+      it('resolveNetworkStabilityConfig 在未传源或类型不匹配时优雅降级', () => {
+        expect(resolveNetworkStabilityConfig(undefined)).toEqual({});
+        expect(resolveNetworkStabilityConfig({} as any)).toEqual({});
+
+        const invalidSource = {
+          get: jest.fn((key: string) => {
+            if (key === 'heartbeatIntervalMs') return 'not-a-number';
+            if (key === 'enableAutoReconnect') return 'not-a-boolean';
+            return undefined;
+          })
+        };
+        expect(resolveNetworkStabilityConfig(invalidSource as any)).toEqual({});
+      });
+
+      it('getCurrentConfig 应返回当前生效配置的完整只读快照', () => {
+        const service = new NetworkStabilityService({
+          heartbeatInterval: 7000,
+          autoReconnect: false
+        });
+
+        const config = service.getCurrentConfig();
+        expect(config.heartbeatInterval).toBe(7000);
+        expect(config.autoReconnect).toBe(false);
+        expect(config.connectionTimeout).toBe(10000); // 默认值保留
+
+        // 修改快照不影响服务内部配置
+        config.heartbeatInterval = 9999;
+        expect(service.getCurrentConfig().heartbeatInterval).toBe(7000);
+      });
     });
 
     it('应该提供完整的连接质量接口', () => {

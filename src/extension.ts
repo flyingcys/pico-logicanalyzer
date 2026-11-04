@@ -3,7 +3,10 @@ import * as path from 'path';
 import { LACEditorProvider } from './providers/LACEditorProvider';
 import { hardwareDriverManager } from './drivers/HardwareDriverManager';
 import { WiFiDeviceDiscovery } from './services/WiFiDeviceDiscovery';
-import { NetworkStabilityService } from './services/NetworkStabilityService';
+import {
+  NetworkStabilityService,
+  resolveNetworkStabilityConfig
+} from './services/NetworkStabilityService';
 import { AnalyzerDriverType, CaptureError, ConnectionParams, TriggerType, CaptureCompletedHandler } from './models/AnalyzerTypes';
 import { CaptureSession, AnalyzerChannel } from './models/CaptureModels';
 import { LACFileFormat } from './models/LACFileFormat';
@@ -74,7 +77,17 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
 
   // 初始化网络服务 - 支持依赖注入
   wifiDiscoveryService = services?.wifiDiscoveryService || new WiFiDeviceDiscovery();
-  networkStabilityService = services?.networkStabilityService || new NetworkStabilityService();
+  // D-7: 从工作区配置显式接线至 NetworkStabilityService
+  // TODO: 运行时热更新暂不支持，当前在激活时读取一次工作区配置进行注入
+  const networkConfig = typeof vscode.workspace?.getConfiguration === 'function'
+    ? vscode.workspace.getConfiguration('logicAnalyzer.network')
+    : undefined;
+  const initialStabilityConfig = typeof resolveNetworkStabilityConfig === 'function'
+    ? resolveNetworkStabilityConfig(networkConfig)
+    : undefined;
+  networkStabilityService = services?.networkStabilityService || new NetworkStabilityService(
+    initialStabilityConfig
+  );
 
   // 注册.lac文件的自定义编辑器
   context.subscriptions.push(LACEditorProvider.register(context));
