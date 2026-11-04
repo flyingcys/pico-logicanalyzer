@@ -240,9 +240,9 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 | 2 | P0-1b 删 Ctrl+Shift+M | ✅ 已验收 | `a2c4639f` | 产品源码零残留；b3 隔离副本反向变异（加回声明）→ 注册表 + 用户可见清单**双层同时击红** |
 | 3 | P0-1c 删 1/2/3/4 | ✅ 已验收 | `6c67cb3d` | 产品源码零残留（含 `triggerChannelToggle` 死代码）；b3 隔离副本反向变异 → 双层同时击红；`ShortcutHelpDialog` 测试改为模式匹配断言 |
 | 4 | P0-2b maxRetries | ✅ 已验收 | `1e12627c` | fallback=5；b3 三个变异（M1 fallback→3 / M2 删读取 / **M3 删调用点**）全部击红。05 额外自查出 `Extension.coverage.test.ts:285` 的 `toEqual` 也会红，并加哨兵值 7 锁住调用点 |
-| 5 | P0-2a defaultSampleRate（选项 1） | 🔄 第一次已验收（a1/a2/a3） | `e3747f35` | b3 两个真宿主变异正交：M1 写死→只红①②、M2 fallback 漂移→只红③，三条判据各自独立。a4 跨端契约待做 |
-| 5b | 补项 4 漏网断言（`LACEditorProvider.coverage.test.ts:2205`） | 🔄 待修 | — | 项 4 加 `maxRetries` 后此条 `toEqual` 变红，被双方漏检 |
-| 6 | P1-1 e2e 进 CI | ⬜ 待实现 | — | — |
+| 5 | P0-2a defaultSampleRate（选项 1） | ✅ 已验收 | `e3747f35` + `d36f5f05` | 后端 b3 两个真宿主变异正交（M1 写死→只红①②、M2 fallback 漂移→只红③）；前端 5 个单测变异（M4a/b/c/M5/M6）加 1 个 e2e 变异全部独立击红。05 **推翻了 b3 的预判**（M5 预判绿、实测红）。额外发现第 4 处构造点 `FrontendBootstrapData` |
+| 5b | 补项 4 漏网断言 | ✅ 已验收 | `d9be6fa4` | 哨兵 `maxRetries: 11`；b3 独立复跑全量单测 2452 passed；并变异「写死 5」验证判据有效 |
+| 6 | P1-1 e2e 进 CI | 🔄 范围待定 | — | **b3 提出可能应同时把全量单测加入 CI 门禁**（根因：`validate:local` 是 `--dry-run` 不真跑测试），已请 05 先答范围问题 |
 | 7 | P1-2 needsHardware 门控 | ⬜ 待实现 | — | — |
 | 8 | P2-1 mock 改由 webview 驱动 | ⬜ 待实现 | — | — |
 
