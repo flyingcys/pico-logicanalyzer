@@ -871,13 +871,46 @@ ${webviewScriptTags}
     try {
       switch (command) {
         case 'scanForDevices':
-        case 'scanNetworkDevices':
+        case 'scanNetworkDevices': {
+          const networkConfig = typeof vscode.workspace?.getConfiguration === 'function'
+            ? vscode.workspace.getConfiguration('logicAnalyzer.network')
+            : undefined;
+          const raw = this.isRecord(payload) ? { ...(payload as Record<string, unknown>) } : {};
+
+          // D-11: 缺省兜底 —— 显式入参优先；未显式指定或类型不合法时取配置兜底
+          const scanTimeout = typeof raw.scanTimeout === 'number'
+            ? raw.scanTimeout
+            : typeof raw.timeoutMs === 'number'
+              ? raw.timeoutMs
+              : (networkConfig?.get<number>('scanTimeoutMs', 5000) ?? 5000);
+
+          const concurrency = typeof raw.concurrency === 'number'
+            ? raw.concurrency
+            : (networkConfig?.get<number>('maxConcurrentConnections', 50) ?? 50);
+
+          const ports = Array.isArray(raw.ports)
+            ? raw.ports
+            : (networkConfig?.get<number[]>('defaultPorts', [4045, 10429, 5555, 5025, 111]) ?? [4045, 10429, 5555, 5025, 111]);
+
+          const enableBroadcast = typeof raw.enableBroadcast === 'boolean'
+            ? raw.enableBroadcast
+            : (networkConfig?.get<boolean>('enableBroadcastDiscovery', true) ?? true);
+
+          const effectivePayload = {
+            ...raw,
+            scanTimeout,
+            // timeoutMs 与 scanTimeout 保持同值（服务端 scanTimeout 优先，此处仅为兼容历史调用方）
+            timeoutMs: scanTimeout,
+            concurrency,
+            ports,
+            enableBroadcast
+          };
+
           return {
             success: true,
-            data: await this.getWiFiDiscoveryService().scanForDevices(
-              this.isRecord(payload) ? payload : undefined
-            )
+            data: await this.getWiFiDiscoveryService().scanForDevices(effectivePayload)
           };
+        }
 
         case 'detectDevices':
           return {

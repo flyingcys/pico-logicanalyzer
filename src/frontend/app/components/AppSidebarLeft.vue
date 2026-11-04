@@ -124,7 +124,8 @@ async function detectDevices() {
 }
 
 async function scanNetworkDevices() {
-  const result = await captureCommands.scanNetworkDevices({ timeoutMs: 5000 });
+  // D-11: 不传硬编码参数，由宿主 LACEditorProvider 统一读取工作区 scanTimeoutMs 配置进行缺省兜底
+  const result = await captureCommands.scanNetworkDevices();
   if (!result.success) {
     return;
   }

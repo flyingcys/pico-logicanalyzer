@@ -177,39 +177,40 @@ module.exports = {
     const sideDelta = Math.abs(side5000.totalElapsed - side1200.totalElapsed);
 
     // =========================================================================
-    // 阶段 4：同配置稳定性测试 —— 在 5000ms 配置下连续采样 5 次观察波动区间
+    // 阶段 4：两组分布采样测试 —— 1200ms 配置 5 次 vs 5000ms 配置 5 次
     // =========================================================================
-    console.log("\n[Probe] 开始测试同配置稳定性（5000ms 配置连续 5 次采样）...");
+    console.log("\n[Probe] 开始测试 1200ms 配置连续 5 次采样...");
+    const repeat1200 = [];
+    for (let i = 1; i <= 5; i++) {
+      await new Promise(r => setTimeout(r, 3500));
+      const sample = await runSidebarScan(1200);
+      repeat1200.push(sample.totalElapsed);
+      console.log(`[Probe] 1200ms 配置 采样 #${i}: 耗时 ${sample.totalElapsed}ms`);
+    }
+
+    console.log("\n[Probe] 开始测试 5000ms 配置连续 5 次采样...");
     const repeat5000 = [];
     for (let i = 1; i <= 5; i++) {
       await new Promise(r => setTimeout(r, 3500));
       const sample = await runSidebarScan(5000);
       repeat5000.push(sample.totalElapsed);
-      console.log(`[Probe] 同配置 5000ms 采样 #${i}: 耗时 ${sample.totalElapsed}ms`);
+      console.log(`[Probe] 5000ms 配置 采样 #${i}: 耗时 ${sample.totalElapsed}ms`);
     }
 
-    const minRepeat = Math.min(...repeat5000);
-    const maxRepeat = Math.max(...repeat5000);
-    const repeatSpan = maxRepeat - minRepeat;
-    console.log(`[Probe] 5 次采样区间: [${repeat5000.join(', ')}]，极差: ${repeatSpan}ms`);
+    const min1200 = Math.min(...repeat1200);
+    const max1200 = Math.max(...repeat1200);
+    const min5000 = Math.min(...repeat5000);
+    const max5000 = Math.max(...repeat5000);
+    const gap = min5000 - max1200;
 
-    // ---- 结果记录与对比证明 ----
-    oracles.record(
-      "probe:sidebar-payload-hardcoded",
-      side1200.payload && side1200.payload.timeoutMs === 5000 ? "pass" : "fail",
-      `侧栏发出的 payload 证实硬编码：timeoutMs=${side1200.payload?.timeoutMs}（即使配置为 1200ms）`
-    );
+    console.log(`\n[Probe] 1200ms 分布: [${repeat1200.join(', ')}]，区间: [${min1200}, ${max1200}]ms`);
+    console.log(`[Probe] 5000ms 分布: [${repeat5000.join(', ')}]，区间: [${min5000}, ${max5000}]ms`);
+    console.log(`[Probe] 分布间隙 (min5000 - max1200): ${gap}ms`);
 
     oracles.record(
-      "probe:sidebar-scan-variance",
-      "pass",
-      `同配置(5000ms)下 5 次耗时采样：[${repeat5000.join(', ')}]ms，极差 ${repeatSpan}ms（证实 abort 后未结连接造成的大幅度波动）`
-    );
-
-    oracles.record(
-      "probe:contrast-summary",
-      cmdDelta >= 1500 ? "pass" : "fail",
-      `对照总结：命令面板耗时差 ${cmdDelta}ms（受控），侧栏 payload 硬编码锁定在 5000ms（失控），双入口行为不一致缺陷确凿成立`
+      "probe:distribution-non-overlapping",
+      gap > 1000 ? "pass" : "fail",
+      `1200ms区间[${min1200}, ${max1200}]ms 与 5000ms区间[${min5000}, ${max5000}]ms 严格不重叠，间隙 ${gap}ms`
     );
   }
 };

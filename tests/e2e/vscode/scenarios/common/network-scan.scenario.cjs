@@ -13,35 +13,37 @@
  * 那是**恒绿**的 —— 它不判别任何东西，而且测的是"环境耗时"不是"产品行为"。
  * 产品把并发修好、耗时降到 1s，它反而报"可能由于网络环境或缓存机制"，**把修复吞掉**。
  *
- * ## 现在的四条判据（各自独立，都有判别力）
+ * ## 现在的五条判据（各自独立，都有判别力）
  *
  * | oracle | 判据 | 产品改坏了会怎样 |
  * |---|---|---|
  * | `scan-completes-in-budget` | 命令在 `BUDGET_MS` 内返回 | 并发死代码没修 → 超预算 → 红 |
  * | `config-takes-effect` | `scanTimeoutMs=1200` 与 `=5000` 的耗时**显著不同** | 配置没被读 → 两次耗时一样 → 红 |
  * | `stats-observable` | 返回结构里有 `stats.aborted` 与 `stats.probedIps` | 没加 stats → 红（并说明"产品缺可观测性"） |
- * | `sidebar-scan-honors-config` | 侧栏发出的 postMessage payload 遵从配置 | 前端写死 5000 且宿主未合并配置 → 红（见 D-11） |
+ * | `sidebar-scan-honors-config` | 侧栏扫描实际耗时受工作区配置控制（主判据） | 宿主未兜底回退硬编码默认值 → 耗时 ~5000ms ≥ 3000ms → 红 |
+ * | `sidebar-payload-decoupled` | 侧栏发出的 postMessage 解绑硬编码 5000（辅判据） | 前端未解绑硬编码 5000 → 红 |
  *
  * `config-takes-effect` 是**关键的判别力来源**：
  * 只测"耗时没超预算"是不够的 —— 一个"直接 return 空结果"的产品也能通过。
  * 必须证明**那次等待是产品真的按配置在扫**。
  *
- * ## 已知产品缺陷（本场景会红，这是对的）
+ * ## 已知产品缺陷
  *
  * - **BUG-1**（`docs/e2e-found-product-bugs-2026-11-03.md`）：`WiFiDeviceDiscovery.ts:261`
  *   的 `semaphore` 声明后零使用 ⇒ 并发控制失效 ⇒ 25s 仍未完成。
  * - **BUG-3**：UDP 广播发现对官方固件无效（固件零监听 4046），所以"扫不到设备"
  *   不能归因于"没设备"，也是扫描路径本身不完备。
  * - **BUG-4**：webview 传 `timeoutMs`，服务要 `timeout`，字段名对不上 ⇒ 静默失效。
- * - **D-11**（`docs/open-decisions-2026-11-03.md`）：侧栏「扫描网络」写死 `{ timeoutMs: 5000 }`，
- *   宿主 `LACEditorProvider.ts` 未从工作区配置合并覆盖，导致双入口行为分裂。
+ * - **D-11**（`docs/open-decisions-2026-11-03.md`）：侧栏「扫描网络」此前写死 `{ timeoutMs: 5000 }`，
+ *   且宿主未缺省兜底，导致双入口行为分裂。现已通过 A+B 缺省兜底协同修复。
  *
  * ## 变异证据
  *
  * - 删掉 Worker 限流（回到全并发）→ `scan-completes-in-budget` 红
  * - 删掉 `scanTimeoutMs` 读取（硬编码）→ `config-takes-effect` 红
  * - 删掉 `stats` 字段 → `stats-observable` 红
- * - 侧栏 payload 遵从配置（改为 1200）→ `sidebar-scan-honors-config` 转绿（双向敏感）
+ * - 删掉宿主兜底逻辑 → `sidebar-scan-honors-config` 红（耗时超 3000ms）
+ * - 前端改回传 5000 → `sidebar-payload-decoupled` 红
  */
 
 const { copyFileSync, existsSync } = require("node:fs");
@@ -263,6 +265,7 @@ module.exports = {
             { type: "waitForElement", selector: ".el-message", timeoutMs: 15000 }
           ];
 
+          const scanStartedAt = Date.now();
           let sidebarRes = null;
           try {
             sidebarRes = await withTimeout(
@@ -273,6 +276,7 @@ module.exports = {
           } catch (err) {
             console.error(`[la-e2e] sidebarScan failed: ${String(err)}`);
           }
+          const elapsedMs = Date.now() - scanStartedAt;
 
           const captured = Array.isArray(sidebarRes?.capturedMessages) ? sidebarRes.capturedMessages : [];
           const scanCmdMsg = captured.find(
@@ -285,23 +289,54 @@ module.exports = {
               "fail",
               "点击侧栏扫描按钮未捕获到 hostCommand: scanNetworkDevices 消息"
             );
+            oracles.record(
+              "sidebar-payload-decoupled",
+              "fail",
+              "点击侧栏扫描按钮未捕获到 hostCommand 消息，无法校验 payload"
+            );
           } else {
+            // 先提取 payload.timeoutMs（主判据故障定位与辅判据共用）
             const payloadTimeout = scanCmdMsg.payload && typeof scanCmdMsg.payload === "object"
               ? scanCmdMsg.payload.timeoutMs
               : undefined;
 
-            if (payloadTimeout === SHORT_TIMEOUT_MS) {
+            // ---- 主判据：侧栏扫描耗时必须受 1200ms 工作区配置控制 ----
+            // 实测探针数据（2026-11-04）：
+            // - 1200ms 配置 5 次采样分布：[1216, 1227]ms
+            // - 5000ms 默认 5 次采样分布：[5013, 5029]ms
+            // - 两组分布间隙 3786ms。取中界 3000ms，两边各有 >1.7s 余量。
+            const honorsConfig = elapsedMs < 3000;
+            if (honorsConfig) {
               oracles.record(
                 "sidebar-scan-honors-config",
                 "pass",
-                `侧栏发出的 postMessage payload timeoutMs 正确遵从工作区配置 (${SHORT_TIMEOUT_MS}ms)`
+                `侧栏扫描耗时 ${elapsedMs}ms，严格遵从 1200ms 配置（未生效时为 ~5000ms，判定阈值 3000ms）`
               );
             } else {
+              // ⚠️ 不要硬编码单一根因 —— 结合 payloadTimeout 进行动态故障定位
+              const cause = payloadTimeout === 5000
+                ? "前端仍硬编码 5000（见 AppSidebarLeft.vue:127），显式入参覆盖了宿主配置"
+                : "前端已解绑，但宿主缺省兜底未生效（见 LACEditorProvider.ts scanNetworkDevices 分支）";
               oracles.record(
                 "sidebar-scan-honors-config",
                 "fail",
-                `侧栏 postMessage payload timeoutMs 为 ${payloadTimeout}，未遵从配置 ${SHORT_TIMEOUT_MS}。` +
-                  "根因见 D-11：AppSidebarLeft.vue:127 写死 timeoutMs: 5000，且 LACEditorProvider.ts:877 未合并工作区配置。"
+                `侧栏扫描耗时 ${elapsedMs}ms ≥ 3000ms，未遵从 1200ms 配置。定位：${cause}`
+              );
+            }
+
+            // ---- 辅判据：前端 postMessage payload 解绑硬编码 ----
+            // D-11 A+B 协同架构下，前端不传参由宿主兜底，故 payload.timeoutMs 不应再写死 5000。
+            if (payloadTimeout === undefined || payloadTimeout !== 5000) {
+              oracles.record(
+                "sidebar-payload-decoupled",
+                "pass",
+                `侧栏 payload 已成功解绑硬编码 5000（当前 payload.timeoutMs = ${payloadTimeout}）`
+              );
+            } else {
+              oracles.record(
+                "sidebar-payload-decoupled",
+                "fail",
+                `侧栏 payload.timeoutMs 仍为 ${payloadTimeout}（前端未解绑，见 AppSidebarLeft.vue:127）`
               );
             }
           }

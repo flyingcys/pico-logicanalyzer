@@ -23,6 +23,7 @@ const showQuickPick = jest.fn();
 const executeCommand = jest.fn();
 const applyEdit = jest.fn();
 const onDidChangeTextDocument = jest.fn(() => ({ dispose: jest.fn() }));
+const getConfiguration = jest.fn();
 
 const detectHardware = jest.fn();
 const getCurrentDevice = jest.fn();
@@ -73,6 +74,7 @@ jest.mock(
     workspace: {
       applyEdit,
       onDidChangeTextDocument,
+      getConfiguration,
       fs: { readFile: jest.fn(), writeFile: jest.fn() }
     },
     Uri: {
@@ -284,6 +286,9 @@ describe('LACEditorProvider 覆盖率补强', () => {
     wifiScanForDevices.mockResolvedValue([]);
     wifiStopScan.mockReturnValue(undefined);
     wifiGetCachedDevices.mockReturnValue([]);
+    getConfiguration.mockReturnValue({
+      get: jest.fn((key: string, defaultValue?: unknown) => defaultValue)
+    });
     getDecoder.mockReturnValue(null);
     executeDecoder.mockResolvedValue({
       decoderName: 'I2C',
@@ -372,14 +377,110 @@ describe('executeHostCommand 命令分发', () => {
       wifiScanForDevices.mockResolvedValue([{ ipAddress: '1.1.1.1' }]);
       const provider = createProvider();
       const result = await (provider as any).executeHostCommand(createDocument(), 'scanForDevices', { timeout: 5 });
-      expect(wifiScanForDevices).toHaveBeenCalledWith({ timeout: 5 });
+      expect(wifiScanForDevices).toHaveBeenCalledWith(expect.objectContaining({ timeout: 5 }));
       expect(result).toEqual({ success: true, data: [{ ipAddress: '1.1.1.1' }] });
     });
 
-    it('scanNetworkDevices 应与非 record payload 一样调用 scanForDevices(undefined)', async () => {
+    it('scanNetworkDevices 应与非 record payload 一样调用 scanForDevices 带默认配置', async () => {
       const provider = createProvider();
       await (provider as any).executeHostCommand(createDocument(), 'scanNetworkDevices', 'nope');
-      expect(wifiScanForDevices).toHaveBeenCalledWith(undefined);
+      expect(wifiScanForDevices).toHaveBeenCalledWith(expect.objectContaining({ scanTimeout: 5000, timeoutMs: 5000 }));
+    });
+
+    describe('scanNetworkDevices / scanForDevices 配置缺省兜底（D-11）', () => {
+      it('显式传 timeoutMs: 1500 时优先使用，不读取配置中的 scanTimeoutMs', async () => {
+        wifiScanForDevices.mockResolvedValue([]);
+        const getMock = jest.fn((key: string, defaultValue?: unknown) => {
+          if (key === 'scanTimeoutMs') return 9999;
+          return defaultValue;
+        });
+        getConfiguration.mockReturnValue({ get: getMock });
+
+        const provider = createProvider();
+        await (provider as any).executeHostCommand(createDocument(), 'scanNetworkDevices', { timeoutMs: 1500 });
+
+        expect(wifiScanForDevices).toHaveBeenCalledWith(
+          expect.objectContaining({
+            scanTimeout: 1500,
+            timeoutMs: 1500
+          })
+        );
+        expect(getMock).not.toHaveBeenCalledWith('scanTimeoutMs', expect.anything());
+      });
+
+      it('显式传 scanTimeout: 1500 时优先使用，不读取配置中的 scanTimeoutMs', async () => {
+        wifiScanForDevices.mockResolvedValue([]);
+        const getMock = jest.fn((key: string, defaultValue?: unknown) => {
+          if (key === 'scanTimeoutMs') return 9999;
+          return defaultValue;
+        });
+        getConfiguration.mockReturnValue({ get: getMock });
+
+        const provider = createProvider();
+        await (provider as any).executeHostCommand(createDocument(), 'scanNetworkDevices', { scanTimeout: 1500 });
+
+        expect(wifiScanForDevices).toHaveBeenCalledWith(
+          expect.objectContaining({
+            scanTimeout: 1500,
+            timeoutMs: 1500
+          })
+        );
+        expect(getMock).not.toHaveBeenCalledWith('scanTimeoutMs', expect.anything());
+      });
+
+      it('未传超时时（传空对象 {}）自动读取工作区配置进行缺省兜底', async () => {
+        wifiScanForDevices.mockResolvedValue([]);
+        const getMock = jest.fn((key: string, defaultValue?: unknown) => {
+          if (key === 'scanTimeoutMs') return 2000;
+          if (key === 'maxConcurrentConnections') return 25;
+          if (key === 'defaultPorts') return [8888];
+          if (key === 'enableBroadcastDiscovery') return false;
+          return defaultValue;
+        });
+        getConfiguration.mockReturnValue({ get: getMock });
+
+        const provider = createProvider();
+        await (provider as any).executeHostCommand(createDocument(), 'scanNetworkDevices', {});
+
+        expect(wifiScanForDevices).toHaveBeenCalledWith({
+          scanTimeout: 2000,
+          timeoutMs: 2000,
+          concurrency: 25,
+          ports: [8888],
+          enableBroadcast: false
+        });
+      });
+
+      it('部分显式传参时保留显式字段，其余字段走配置兜底', async () => {
+        wifiScanForDevices.mockResolvedValue([]);
+        const getMock = jest.fn((key: string, defaultValue?: unknown) => {
+          if (key === 'scanTimeoutMs') return 3000;
+          if (key === 'maxConcurrentConnections') return 50;
+          if (key === 'defaultPorts') return [4045];
+          if (key === 'enableBroadcastDiscovery') return true;
+          return defaultValue;
+        });
+        getConfiguration.mockReturnValue({ get: getMock });
+
+        const provider = createProvider();
+        await (provider as any).executeHostCommand(createDocument(), 'scanNetworkDevices', {
+          concurrency: 8,
+          ports: [1234],
+          customHeader: 'keep-me'
+        });
+
+        expect(wifiScanForDevices).toHaveBeenCalledWith({
+          customHeader: 'keep-me',
+          concurrency: 8,
+          ports: [1234],
+          scanTimeout: 3000,
+          timeoutMs: 3000,
+          enableBroadcast: true
+        });
+        expect(getMock).not.toHaveBeenCalledWith('maxConcurrentConnections', expect.anything());
+        expect(getMock).not.toHaveBeenCalledWith('defaultPorts', expect.anything());
+        expect(getMock).toHaveBeenCalledWith('scanTimeoutMs', 5000);
+      });
     });
 
     it('detectDevices 应调用 hardwareDriverManager.detectHardware(false)', async () => {
