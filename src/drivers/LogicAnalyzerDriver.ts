@@ -299,7 +299,20 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
   }
 
   /**
-   * 发送网络配置
+   * 发送网络配置（写入设备的 WiFi 设置）
+   *
+   * ## ⚠️ 串口与网络**两种连接都支持**，不按 `_isNetwork` 短路
+   *
+   * 曾有一处 `if (this._isNetwork) return false;`，注释写的是
+   * 「对于网络设备，不需要配置网络」—— **这个前提是错的**：
+   *
+   * 真实用法恰恰相反 —— **设备插在 USB 上，用户告诉它"连哪个 SSID、连上后用哪个 IP"，
+   * 然后拔掉 USB 走无线**。所以最需要这条命令的正是"当前用 USB 连着"的时刻。
+   * 而设备**已经**在网络上时，用户也不会来点"配置 WiFi"（已经连上了）。
+   *
+   * ⇒ 该短路既不符合使用场景，也挡住了合法调用（D-10）。
+   * 现在两种模式走**同一条**二进制帧路径（固件 `LogicAnalyzer.c:310-342` 的 `case 2`
+   * 完整处理 `WIFI_SETTINGS_REQUEST`，串口与 WiFi 是同一个 `processData`）。
    */
   override async sendNetworkConfig(
     accessPointName: string,
@@ -307,11 +320,6 @@ export class LogicAnalyzerDriver extends AnalyzerDriverBase {
     ipAddress: string,
     port: number
   ): Promise<boolean> {
-    // 对于网络设备，不需要配置网络
-    if (this._isNetwork) {
-      return false;
-    }
-
     try {
       const packet = new OutputPacket();
       packet.addByte(2); // 修复：网络配置命令应该是2

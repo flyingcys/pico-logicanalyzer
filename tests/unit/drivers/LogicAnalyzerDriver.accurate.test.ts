@@ -331,27 +331,104 @@ describe('LogicAnalyzerDriver 精准业务逻辑测试', () => {
     });
   });
 
-  describe('网络配置处理逻辑', () => {
-    it('应该拒绝网络设备的网络配置', async () => {
-      const networkDriver = new LogicAnalyzerDriver('192.168.1.100:8080');
-      // 模拟网络设备状态
-      (networkDriver as any)._isNetwork = true;
+  describe('网络配置处理逻辑（D-10）', () => {
+    /**
+     * ⚠️ 旧用例叫「应该拒绝网络设备的网络配置」，断言 `result === false`。
+     *
+     * 那条断言锁的是一个**错误前提**（"网络设备不需要配置网络"）。
+     * 真实用法是"设备插在 USB 上，配置好 WiFi 后拔线走无线" ——
+     * 所以恰恰是**已连接的设备**最需要这条命令，不能按传输方式短路。
+     *
+     * 新判据不按模式分叉：两种连接都走同一条二进制帧路径，区别只在
+     * 「能不能拿到流」与「收到什么响应」。
+     */
+    function makeDriverWithFakeStream(connectionString: string) {
+      const driver = new LogicAnalyzerDriver(connectionString);
+      const written: Uint8Array[] = [];
+      let responseLine = 'SETTINGS_SAVED';
 
-      const result = await networkDriver.sendNetworkConfig(
-        'TestWiFi',
-        'password123',
-        '192.168.1.200',
-        8080
-      );
+      // 直接注入私有字段：这条单测只验"发不发帧 / 发什么帧 / 如何解析响应"，
+      // 不验真实 socket 行为（那由 e2e 覆盖）。
+      (driver as any)._currentStream = { write: () => true };
+      (driver as any).writeData = async (data: Uint8Array) => {
+        written.push(data);
+      };
+      (driver as any).waitForResponse = async (expected: string) =>
+        responseLine === expected ? expected : 'UNEXPECTED';
+
+      return {
+        driver,
+        written,
+        setResponse: (line: string) => {
+          responseLine = line;
+        },
+      };
+    }
+
+    it('串口模式：发送固件二进制帧（命令字节 2 + 115 字节配置体）', async () => {
+      const { driver, written } = makeDriverWithFakeStream('/dev/ttyUSB0');
+
+      const result = await driver.sendNetworkConfig('MyWiFi', 'secret', '192.168.1.50', 4045);
+
+      expect(result).toBe(true);
+      expect(written).toHaveLength(1);
+
+      const frame = Array.from(written[0]);
+      // 帧头 0x55 0xAA + 命令字节 2
+      expect(frame[0]).toBe(0x55);
+      expect(frame[1]).toBe(0xaa);
+      expect(frame[2]).toBe(2);
+      // 帧尾 0xAA 0x55
+      expect(frame[frame.length - 2]).toBe(0xaa);
+      expect(frame[frame.length - 1]).toBe(0x55);
+    });
+
+    it('网络模式：同样发送固件二进制帧（不再短路返回 false）', async () => {
+      const { driver, written } = makeDriverWithFakeStream('192.168.1.100:8080');
+
+      const result = await driver.sendNetworkConfig('MyWiFi', 'secret', '192.168.1.50', 4045);
+
+      // 关键断言：D-10 修复前这里恒为 false（`_isNetwork` 短路）
+      expect(result).toBe(true);
+      expect(written).toHaveLength(1);
+      expect(Array.from(written[0]).slice(0, 3)).toEqual([0x55, 0xaa, 2]);
+    });
+
+    it('设备回 SETTINGS_SAVED 之外的响应 ⇒ 返回 false（不把失败当成功）', async () => {
+      const { driver, setResponse } = makeDriverWithFakeStream('/dev/ttyUSB0');
+      setResponse('ERR_UNKNOWN_MSG');
+
+      const result = await driver.sendNetworkConfig('MyWiFi', 'secret', '192.168.1.50', 4045);
 
       expect(result).toBe(false);
     });
 
-    it('应该允许串口设备的网络配置', async () => {
-      const serialDriver = new LogicAnalyzerDriver('/dev/ttyUSB0');
-      
-      // 网络配置方法应该存在但实际逻辑待实现
-      expect(typeof serialDriver.sendNetworkConfig).toBe('function');
+    it('SSID/密码/IP 按固件结构体定长写入（33 + 64 + 16 + 2 = 115 字节）', async () => {
+      const { driver, written } = makeDriverWithFakeStream('/dev/ttyUSB0');
+
+      await driver.sendNetworkConfig('AB', 'cd', '1.2.3.4', 0x1234);
+
+      // 帧总长 = 2(头) + 1(cmd) + 转义后载荷 + 2(尾)
+      // 载荷无 0xAA/0x55/0xF0 时转义不增字节 ⇒ 2+1+115+2 = 120
+      const frame = Array.from(written[0]);
+      expect(frame.length).toBe(120);
+
+      // 载荷从 [3] 开始：SSID 定长 33 字节（'AB' + 31 个 0）
+      const payload = frame.slice(3, 3 + 115);
+      expect(payload[0]).toBe('A'.charCodeAt(0));
+      expect(payload[1]).toBe('B'.charCodeAt(0));
+      expect(payload[2]).toBe(0);
+
+      // 密码区从 33 开始，定长 64
+      expect(payload[33]).toBe('c'.charCodeAt(0));
+      expect(payload[34]).toBe('d'.charCodeAt(0));
+
+      // IP 区从 33+64=97 开始，定长 16
+      expect(payload[97]).toBe('1'.charCodeAt(0));
+
+      // 端口在 97+16=113，小端 2 字节
+      expect(payload[113]).toBe(0x34);
+      expect(payload[114]).toBe(0x12);
     });
   });
 });
