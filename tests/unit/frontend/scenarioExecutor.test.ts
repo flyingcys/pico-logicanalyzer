@@ -191,6 +191,57 @@ describe('scenarioExecutor (Webview 场景执行器与门控)', () => {
     expect(result.error).toMatch(/readCanvasStats requires explicit non-empty selector/);
   });
 
+  it('waitForCanvasRendered 成功等待非透明像素出现', async () => {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'rendered-canvas';
+    canvas.width = 10;
+    canvas.height = 10;
+
+    const mockData = new Uint8ClampedArray(400);
+    // 放入一个非透明像素
+    mockData[3] = 255;
+
+    const mockCtx = {
+      getImageData: jest.fn().mockReturnValue({ data: mockData })
+    };
+    canvas.getContext = jest.fn().mockReturnValue(mockCtx);
+    document.body.appendChild(canvas);
+
+    const result = await executeScenarioActions([
+      { type: 'waitForCanvasRendered', selector: '.rendered-canvas', timeoutMs: 200, sampleStep: 1 }
+    ]);
+    expect(result.ok).toBe(true);
+  });
+
+  it('waitForCanvasRendered 全透明时超时报错，说明等待超时', async () => {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'transparent-canvas';
+    canvas.width = 10;
+    canvas.height = 10;
+
+    const mockData = new Uint8ClampedArray(400); // 全部 alpha = 0
+
+    const mockCtx = {
+      getImageData: jest.fn().mockReturnValue({ data: mockData })
+    };
+    canvas.getContext = jest.fn().mockReturnValue(mockCtx);
+    document.body.appendChild(canvas);
+
+    const result = await executeScenarioActions([
+      { type: 'waitForCanvasRendered', selector: '.transparent-canvas', timeoutMs: 50, sampleStep: 1 }
+    ]);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/waitForCanvasRendered timed out \(50ms\) for selector: "\.transparent-canvas" — canvas remained fully transparent/);
+  });
+
+  it('waitForCanvasRendered selector 必填且非空，否则报错', async () => {
+    const result = await executeScenarioActions([
+      { type: 'waitForCanvasRendered', selector: '' }
+    ]);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/waitForCanvasRendered requires explicit non-empty selector/);
+  });
+
   it('setupScenarioListener 严格遵循三重门控：__scenarioEnabled 与 nonce 缺一不可', async () => {
     const posted: unknown[] = [];
     const mockVsCode = {

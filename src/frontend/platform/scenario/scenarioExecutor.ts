@@ -141,6 +141,50 @@ async function waitForText(
 }
 
 /**
+ * 轮询等待 Canvas 渲染出非透明像素
+ */
+async function waitForCanvasRendered(
+  doc: Document,
+  selector: string,
+  sampleStep: number,
+  timeoutMs: number,
+  now: () => number
+): Promise<Element> {
+  const start = now();
+  const step = Math.max(1, Math.floor(sampleStep));
+
+  while (now() - start < timeoutMs) {
+    const el = queryOne(doc, selector);
+    if (el && el instanceof (doc.defaultView?.HTMLCanvasElement || HTMLCanvasElement)) {
+      const canvas = el as HTMLCanvasElement;
+      const { width, height } = canvas;
+      if (width > 0 && height > 0) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const imageData = ctx.getImageData(0, 0, width, height);
+          const { data } = imageData;
+          let hasNonTransparent = false;
+          for (let i = 3; i < data.length; i += 4 * step) {
+            if (data[i] !== 0) {
+              hasNonTransparent = true;
+              break;
+            }
+          }
+          if (hasNonTransparent) {
+            return canvas;
+          }
+        }
+      }
+    }
+    await sleep(DEFAULT_POLL_INTERVAL_MS);
+  }
+
+  throw new Error(
+    `waitForCanvasRendered timed out (${timeoutMs}ms) for selector: "${selector}" — canvas remained fully transparent`
+  );
+}
+
+/**
  * 计算 Canvas 结构性像素统计
  */
 function analyzeCanvasPixels(
@@ -423,6 +467,20 @@ export async function executeScenarioActions(
           }
           lastCapturedList = list;
           stepResult = list;
+          break;
+        }
+
+        case 'waitForCanvasRendered': {
+          if (!action.selector || typeof action.selector !== 'string') {
+            throw new Error('waitForCanvasRendered requires explicit non-empty selector');
+          }
+          await waitForCanvasRendered(
+            deps.doc,
+            action.selector,
+            action.sampleStep ?? 4,
+            action.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS,
+            deps.now
+          );
           break;
         }
 

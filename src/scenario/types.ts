@@ -43,6 +43,7 @@ export type ScenarioAction =
   | { type: 'readAllTexts'; selector: string }
   | { type: 'startCaptureMessages' }
   | { type: 'stopCaptureMessages' }
+  | { type: 'waitForCanvasRendered'; selector: string; timeoutMs?: number; sampleStep?: number }
   | { type: 'readCanvasStats'; selector: string; sampleStep?: number };
 
 export interface ScenarioEvent {

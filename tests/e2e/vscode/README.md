@@ -336,6 +336,38 @@ LA_E2E_PROBE=1 xvfb-run -a node tests/e2e/vscode/lib/runner.cjs --scenario _prob
 
 ---
 
+## 六点九、⚠️ `ui-waveform` 中 `L3-canvas-rendered` 的判别力边界与时序防抖
+
+### 1. 时序防抖机理（`waitForCanvasRendered`）
+- **现象**：在全量 E2E 中（`network-scan` 等前置多套接字负载后），`ui-waveform` 偶发报出 `L3-canvas-rendered — Canvas 完全全透明，未渲染任何像素 (60552/60552)`。
+- **根因**：
+  1. DOM 文本（`4 samples`）由 Vue 响应式驱动在**微任务**队列中更新，`waitForText` 瞬间判定通过；
+  2. Canvas 绘制包裹在 `WaveformRenderer.ts:449` 的 `requestAnimationFrame(() => this.render())` **宏任务**中；
+  3. `useWaveformViewport.ts` 中 `ResizeObserver` 触发 `resize()` 会调用 `canvas.width = rect.width * dpr`，依据 HTML5 Canvas 规范会**瞬间将整张画布重置为全透明黑（rgba(0,0,0,0)）**，然后再排队 rAF 重绘；
+  4. 当系统处于密集调度时，`readCanvasStats` 紧随 `readText` 同步执行，容易正好落在画布被清空与 rAF 绘制之间的时序窗内。
+- **对策**：增加 `waitForCanvasRendered` 轮询动作（以 `DEFAULT_POLL_INTERVAL_MS = 20` 轮询），一旦检测到至少一个非透明像素（`alpha !== 0`）即判定画布已完成初次光栅化并放行，消解时序竞态。
+
+### 2. 判别力边界（能抓什么、抓不到什么）
+
+实测基线（`tests/fixtures/lac/current-lowercase-samples.lac` 正常渲染）：`colors=174, dominant=47.5%`。
+
+| 故障形态 | 变异方式 | 实测表现 | 判据能否抓到 |
+|---|---|---|---|
+| **完全未渲染** | `render()` 改为空函数 | `waitForCanvasRendered` 超时（5000ms）报红 | ✅ 能抓到（L3 明确报 `等待 Canvas 渲染超时`） |
+| **仅绘制纯底色** | 绘制背景后直接 `return` | `colors=2 < 5`，L3 原生判据报红 | ✅ 能抓到（L3 报 `Canvas 颜色种类数 2 < 5`） |
+| **大面积底色遮挡** | 异常色块覆盖 | `dominantColorRatio >= 0.95` 报红 | ✅ 能抓到 |
+| **⚠️ 波形线条缺失** | 跳过 `renderChannelSegment` | `colors=159 >= 5, dominant=48.4% < 95%` | ❌ **抓不到（仍判 pass）** |
+
+### 3. 为什么「波形线条缺失」抓不到
+- `WaveformRenderer.render()` 的绘制流程中，`renderTimeAxis`（时间轴刻度线与时间文本）与 `renderChannelLabels`（通道名称与标签文本）包含大量矢量笔画与字体抗锯齿边缘过渡色；
+- 仅时间轴与通道标签两项就贡献了 **159 种颜色**；
+- 真实的波形彩线（4 样本方波）仅使颜色种类由 159 增加到 174（净增 15 种）；
+- 现有全局像素统计判据（`colorVariety >= 5`）的阈值远低于时间轴/文本抗锯齿所产生的颜色基数，因此波形线条被完全淹没在刻度与标签的颜色中。
+
+> ⚠️ 如未来需要覆盖「波形线条缺失」层级的缺陷，需在波形绘制有效数据通道的水平 y 坐标轴范围内进行局部区域像素采样，或针对通道前景色（`channelColor`）的特定调色板色值进行存在性统计。
+
+---
+
 ## 七、目录结构
 
 ```
