@@ -58,6 +58,23 @@ describe('KeyboardShortcutManager', () => {
       const all = categories.flatMap(cat => cat.shortcuts);
       expect(all.every(s => s.enabled)).toBe(true);
     });
+
+    // 「测量面板」不存在（SidebarTab 只有 decoder / performance），
+    // 保留声明等于在帮助弹窗里向用户承诺做不到的功能。
+    it('不应声明不存在的测量面板快捷键', () => {
+      const categories = keyboardShortcutManager.getShortcutsByCategory();
+      const all = categories.flatMap(cat => cat.shortcuts);
+      expect(all.some(s => s.id === 'toggle-measurement-panel')).toBe(false);
+      expect(all.some(s => s.description === '切换测量面板')).toBe(false);
+    });
+
+    it('Ctrl+Shift+D 解码面板快捷键仍应保留', () => {
+      const categories = keyboardShortcutManager.getShortcutsByCategory();
+      const all = categories.flatMap(cat => cat.shortcuts);
+      const decoderToggle = all.find(s => s.id === 'toggle-decoder-panel');
+      expect(decoderToggle).toBeDefined();
+      expect(decoderToggle?.keys).toEqual(['Ctrl', 'Shift', 'D']);
+    });
   });
 
   describe('快捷键增删改', () => {

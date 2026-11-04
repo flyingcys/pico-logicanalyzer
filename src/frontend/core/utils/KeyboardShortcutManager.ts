@@ -264,14 +264,6 @@ export class KeyboardShortcutManager {
         category: '面板控制',
         handler: () => this.triggerPanelToggle('decoder'),
         enabled: true
-      },
-      {
-        id: 'toggle-measurement-panel',
-        keys: ['Ctrl', 'Shift', 'M'],
-        description: '切换测量面板',
-        category: '面板控制',
-        handler: () => this.triggerPanelToggle('measurement'),
-        enabled: true
       }
     ];
 
