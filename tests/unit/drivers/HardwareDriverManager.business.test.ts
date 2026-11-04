@@ -529,7 +529,12 @@ describe('HardwareDriverManager 业务逻辑专项测试', () => {
       expect(mockLogicAnalyzerDriver).toHaveBeenCalledWith('/dev/ttyACM0');
     });
 
-    it('应该正确创建NetworkLogicAnalyzerDriver实例', async () => {
+    /**
+     * ⚠️ 2026-11-04（D-9）：网络设备改用 `LogicAnalyzerDriver`，
+     * 与串口共用同一套固件协议。原用例锁的是"网络路径另有 JSON 协议"，
+     * 那是错误设计，已随 D-9 一并纠正。
+     */
+    it('网络设备应创建 LogicAnalyzerDriver 而非已弃用的 NetworkLogicAnalyzerDriver', async () => {
       const device = {
         id: 'network-device',
         name: 'Network Logic Analyzer',
@@ -540,9 +545,12 @@ describe('HardwareDriverManager 业务逻辑专项测试', () => {
       };
 
       const driver = await manager.createDriver(device);
-      
+
       expect(driver).toBeTruthy();
-      expect(mockNetworkLogicAnalyzerDriver).toHaveBeenCalledWith('192.168.1.100', 8080);
+      // 连接串原样透传，由驱动自己按 ':' 判定网络模式
+      expect(mockLogicAnalyzerDriver).toHaveBeenCalledWith('192.168.1.100:8080');
+      // 反向断言：弃用必须生效
+      expect(mockNetworkLogicAnalyzerDriver).not.toHaveBeenCalled();
     });
 
     it('应该触发driverCreated事件', (done) => {

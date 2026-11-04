@@ -4,7 +4,8 @@ import { LogicAnalyzerDriver } from './LogicAnalyzerDriver';
 import { SaleaeLogicDriver } from './SaleaeLogicDriver';
 import { RigolSiglentDriver } from './RigolSiglentDriver';
 import { SigrokAdapter } from './SigrokAdapter';
-import { NetworkLogicAnalyzerDriver } from './NetworkLogicAnalyzerDriver';
+// `NetworkLogicAnalyzerDriver` 不再用于默认接线（D-9），已改为 `@deprecated` 保留。
+// 此处不 import 它 —— 无引用即无耦合；将来若要恢复多协议能力再显式引入。
 import { MultiAnalyzerDriver } from './MultiAnalyzerDriver';
 import { VersionValidator } from './VersionValidator';
 import {
@@ -231,12 +232,30 @@ export class HardwareDriverManager extends EventEmitter {
     });
 
     // 注册网络设备驱动
+    //
+    // ⚠️ 为什么是 `LogicAnalyzerDriver` 而不是 `NetworkLogicAnalyzerDriver`（D-9）：
+    //
+    // **网络路径不需要独立的协议实现 —— 它和串口共用同一套。**
+    //
+    // 证据（产品侧）：`LogicAnalyzerDriver.initSerialPort`（:368）与 `initNetwork`（:406）
+    // 除"流从哪来"外逐行相同，两者都调同一个 `initializeDevice()`；
+    // 整个类里没有按传输方式分叉的协议发送代码，发数据一律 `writeData(packet.serialize())`。
+    //
+    // 证据（固件侧）：`LogicAnalyzer.c:205` 的 `processData(data, length, fromWiFi)`
+    // 是**同一个函数**处理串口与 WiFi；`fromWiFi` 只影响"往哪回"和个别命令的支持度。
+    //
+    // ⇒ `NetworkLogicAnalyzerDriver` 自建的那套 JSON 协议**偏离了固件设计**：
+    //   固件 `LogicAnalyzer.c:212-216` 见到首字节不是 0x55 就丢弃，
+    //   JSON 永远收不到应答。这不是"某个驱动有 bug"，是"多出来的那套协议是错的"。
+    //
+    // 保留 `NetworkLogicAnalyzerDriver` 文件（`@deprecated`）：它另有 UDP/WebSocket/HTTP
+    // 与 4 种 DataFormat 能力，产品路径无调用方，但属于驱动 SDK 层可复用资产。
     this.registerDriver({
       id: 'network-analyzer',
       name: 'Network Logic Analyzer',
       description: 'Generic network-based logic analyzer driver',
       version: '1.0.0',
-      driverClass: NetworkLogicAnalyzerDriver,
+      driverClass: LogicAnalyzerDriver,
       supportedDevices: ['network', 'tcp', 'udp', 'wifi', 'ethernet'],
       priority: 60
     });
@@ -472,13 +491,12 @@ export class HardwareDriverManager extends EventEmitter {
     connectionString: string
   ): AnalyzerDriverBase {
     // 特殊处理不同类型的驱动
-    if (DriverClass === NetworkLogicAnalyzerDriver) {
-      // 网络驱动需要解析host:port
-      const parts = connectionString.split(':');
-      const host = parts[0] || 'localhost';
-      const port = parseInt(parts[1] || '24000', 10);
-      return new NetworkLogicAnalyzerDriver(host, port);
-    } else if (DriverClass === SigrokAdapter) {
+    //
+    // ⚠️ 曾有一段 `if (DriverClass === NetworkLogicAnalyzerDriver)` 分支把
+    //    `host:port` 拆成 `(host, port)` 传给那个类的双参构造。
+    //    现在网络设备走 `LogicAnalyzerDriver(connectionString)`（单参，自己解析
+    //    `host:port`，见 `LogicAnalyzerDriver.ts:85-87`），该分支已删除 —— D-9。
+    if (DriverClass === SigrokAdapter) {
       // Sigrok适配器需要解析driver:connection
       const parts = connectionString.split(':');
       const driver = parts[0] || 'fx2lafw';

@@ -36,7 +36,12 @@
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require("node:fs");
 const { dirname, join, resolve } = require("node:path");
 const { runTests } = require("@vscode/test-electron");
-const { checkDisplay, checkExtensionBuild, readDeclaredCommands } = require("./env.cjs");
+const {
+  checkDisplay,
+  checkExtensionBuild,
+  checkE2eLibs,
+  readDeclaredCommands,
+} = require("./env.cjs");
 const {
   createProfileDir,
   reapProfileProcesses,
@@ -121,6 +126,22 @@ async function main() {
   if (!build.ok) {
     console.error(`❌ ${build.message}`);
     return 1;
+  }
+
+  /**
+   * `out/e2e-libs/` 只在**声明的场景**需要时检查。
+   *
+   * 为什么不无条件检查：多数场景吃 `out/extension.js` 就够了，
+   * 无条件要求 `npm run build:e2e-libs` 会给所有人加一道无关的门。
+   * 声明制（场景里 `needsE2eLibs: true`）让"需要"这件事由需求方写明。
+   */
+  const needsE2eLibs = selected.some(s => s.needsE2eLibs === true);
+  if (needsE2eLibs) {
+    const e2eLibs = checkE2eLibs(repoRoot);
+    if (!e2eLibs.ok) {
+      console.error(`❌ ${e2eLibs.message}`);
+      return 1;
+    }
   }
 
   const swept = sweepStaleProfileDirs();

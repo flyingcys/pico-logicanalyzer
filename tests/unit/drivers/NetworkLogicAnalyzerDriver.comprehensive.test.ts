@@ -30,7 +30,12 @@ jest.mock('dgram');
 import { Socket } from 'net';
 import { createSocket } from 'dgram';
 
-describe('NetworkLogicAnalyzerDriver 精准业务逻辑测试', () => {
+/**
+ * ⚠️ **整体 skip（2026-11-04，D-9）** —— 理由见
+ * `NetworkLogicAnalyzerDriver.simple.test.ts` 的同名注释与
+ * `docs/open-decisions-2026-11-03.md` D-9。
+ */
+describe.skip('NetworkLogicAnalyzerDriver 精准业务逻辑测试', () => {
   let networkDriver: NetworkLogicAnalyzerDriver;
   let mockTcpSocket: jest.Mocked<Socket>;
   let mockUdpSocket: any;

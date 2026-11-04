@@ -135,6 +135,58 @@ Extension Host 是 node 16，不认 ESM。所以 driver 与 lib 全是 `.cjs`。
 | **真机采集/解码 e2e** | 本机 Pico 上跑的不是逻辑分析器固件；固件**可构建**（已证明），但**烧录待用户授权**（2026-11-03 裁定「先不烧」）。台账见 `docs/hardware-validation/records/2026-11-03-pico-firmware-build-proven.md`。 |
 | **in Jest** | 真宿主 e2e **不进** `jest.config.js`（`testPathIgnorePatterns` 已排除 `tests/e2e/`）。理由：它是外进程启动真 VS Code，与 jest 的并行/隔离模型冲突，且耗时以分钟计。 |
 
+## 六点四、构建产物：`out/extension.js` 与 `out/e2e-libs/`（两个目录，各管各的）
+
+跑 e2e 前需要**两个**构建产物，来历不同、互不覆盖：
+
+| 产物 | 生成命令 | 内容 | 谁用 |
+|---|---|---|---|
+| `out/extension.js` | `npm run build` | webpack 打的扩展 bundle（真宿主加载它） | runner 的 `checkExtensionBuild` 前置检查 |
+| `out/e2e-libs/**` | **`npm run build:e2e-libs`** | tsc 全量编译 `src/` 的裸模块 | **按类名加载产品类的场景**（见下） |
+
+### 为什么需要 `out/e2e-libs/`
+
+有些场景要拿产品**内部类/实例**（例如 `network-capture-mock` 用
+`WiFiDeviceDiscovery` 握手、`hardwareDriverManager` 走真实连接链路）。
+但 `npm run build` 的两个产物都拿不到：
+
+- **`out/extension.js` 是 bundle**：它的 `module.exports` 只有 `extension.ts` 的
+  顶层具名导出（`activate` / `deactivate` / `connectToDevice` / `connectToNetworkDevice`），
+  内部类是 `undefined`。而 `activate()` 返回 `void`，`ext.exports` 也是 `undefined`。
+- **`build:cli` 的 tsc 只沿 CLI 依赖链**：`WiFiDeviceDiscovery` / `HardwareDriverManager`
+  不在链上 ⇒ 干净构建后 `out/services/`、`out/drivers/` 里根本没有它们。
+  （历史教训：本地 `out/` 曾有全量 tsc 的残留，导致"本地能跑、换机 blocked"。）
+
+### ⚠️ 不要用 `tsc -p tsconfig.json` 直出 `out/`
+
+实测：那会**覆盖 `out/extension.js`**，把 webpack bundle 换成 tsc 裸编译版
+（`__webpack_require__` 计数 82 → 0），真宿主加载会崩 —— 比原缺陷更危险。
+所以 `tsconfig.e2e-libs.json` 把 `outDir` 指到 `out/e2e-libs/`。
+
+### 场景如何声明
+
+```js
+module.exports = {
+  id: "my-scenario",
+  needsE2eLibs: true,     // ← 声明它需要 out/e2e-libs/
+  ...
+};
+```
+runner 见到该标志会在**开跑前**检查目录，缺失直接 `EXIT=1` 并指路
+（而不是让场景记 `blocked` —— 那看起来像环境问题）。
+
+场景内取产品类统一走一个 helper（**别写死 `out/xxx/yyy.js` 路径**）：
+```js
+function loadProductModule(relativePath) {
+  return require(`../../../../../out/e2e-libs/${relativePath}.js`);
+}
+// 用法：loadProductModule("services/WiFiDeviceDiscovery")
+```
+
+> 加载的仍是**产品代码**（同一份 `src/` 的编译产物），不是测试侧替身。
+
+---
+
 ## 六点五、⚠️ `_probe-fakegreen` 探针 —— **不要删**
 
 `scenarios/common/_probe-fakegreen.scenario.cjs` 是**防复发探针，不是常规场景**。

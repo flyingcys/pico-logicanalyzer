@@ -220,6 +220,7 @@
     "vscode:prepublish": "npm run build:production",
     "build": "npm run clean && webpack --mode development && npm run build:cli",
     "build:cli": "tsc src/cli/index.ts --outDir out --rootDir src --module commonjs --target ES2020 --esModuleInterop --skipLibCheck --declaration false --sourceMap true",
+    "build:e2e-libs": "tsc -p tsconfig.e2e-libs.json",
     "build:webview": "webpack --mode development --config webpack.config.js --config-name webview",
     "build:frontend:html": "webpack --mode development --config webpack.config.js --config-name webview",
     "build:production": "npm run clean && cross-env NODE_ENV=production webpack --mode production && npm run build:cli",

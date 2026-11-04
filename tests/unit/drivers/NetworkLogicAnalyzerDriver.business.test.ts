@@ -38,7 +38,12 @@ jest.mock('dgram', () => ({
   }))
 }));
 
-describe('NetworkLogicAnalyzerDriver 精准业务逻辑测试', () => {
+/**
+ * ⚠️ **整体 skip（2026-11-04，D-9）** —— 理由见
+ * `NetworkLogicAnalyzerDriver.simple.test.ts` 的同名注释与
+ * `docs/open-decisions-2026-11-03.md` D-9。
+ */
+describe.skip('NetworkLogicAnalyzerDriver 精准业务逻辑测试', () => {
   let networkDriver: NetworkLogicAnalyzerDriver;
 
   // 创建测试用的真实采集会话数据

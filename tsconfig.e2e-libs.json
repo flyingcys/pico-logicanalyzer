@@ -1,0 +1,45 @@
+{
+  /**
+   * e2e 专用产物配置 —— 只给真宿主 e2e 场景按**类名**加载产品模块用。
+   *
+   * ## 为什么需要它
+   *
+   * `npm run build` 的产物有两处 e2e 拿不到：
+   * - `webpack` 只打 `entry: { extension: './src/extension.ts' }` ⇒ `out/extension.js`
+   *   是 bundle，其 `module.exports` 只含 `extension.ts` 的**顶层具名导出**
+   *   （实测：`activate` / `deactivate` / `connectToDevice` / `connectToNetworkDevice`），
+   *   拿不到 `WiFiDeviceDiscovery` / `hardwareDriverManager` 这些内部类与实例；
+   * - `build:cli` 用 tsc **从 `src/cli/index.ts` 出发**只编译 CLI 依赖链，
+   *   `WiFiDeviceDiscovery` / `HardwareDriverManager` 不在链上 ⇒ 不产出。
+   *
+   * ⇒ 之前 e2e 场景直接 `require('out/services/WiFiDeviceDiscovery.js')`，
+   *   在**干净构建**后必挂（变 blocked，看起来像环境问题）。
+   *
+   * ## 为什么输出到 `out/e2e-libs/` 而不是 `out/`
+   *
+   * 实测：`tsc -p tsconfig.json` 直出 `out/` 会**覆盖 `out/extension.js`**，
+   * 把 webpack bundle 换成 tsc 裸编译版（`__webpack_require__` 计数 82 → 0），
+   * 真宿主加载大概率崩溃 —— 那比原缺陷更危险。
+   *
+   * 两个产物目录各管各的：bundle 归 webpack，可加载模块归这里。
+   *
+   * ## 契约
+   *
+   * `out/e2e-libs/` 是**正式产物目录**，不是临时方案：e2e 场景需要任何产品类都从这里取。
+   * 生成命令：`npm run build:e2e-libs`（不挂进 `build`，避免每次构建多 8s；
+   * 但 e2e runner 会做前置检查，缺失时明确报错而不是让场景 blocked）。
+   */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "out/e2e-libs",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    // ⚠️ 必须关 incremental 并清掉 tsBuildInfoFile：
+    //    `extends` 会继承父配置的 `incremental: true` + `tsBuildInfoFile`，
+    //    若保留，第二次构建会认为"无需重编"而**一个文件都不产出**
+    //    （缓存还指向 `out/.tsbuildinfo`，与 webpack 共用，语义错乱）。
+    "incremental": false,
+    "tsBuildInfoFile": null
+  }
+}

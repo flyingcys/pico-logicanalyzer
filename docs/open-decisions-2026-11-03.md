@@ -139,9 +139,19 @@ c2674d80 数据可以通过 cli 采集，但是 ui 上没有正常显示      �
 
 ### D-9：网络驱动发 JSON 文本，固件只认二进制帧 —— **WiFi 采集路径从未真正工作过**
 
+> **状态：✅ 已修（2026-11-04，C′ 阶段）** —— 网络设备已改指向 `LogicAnalyzerDriver`。
+>
+> ⚠️ **与用户最初裁定的差异**：用户当时选「完整执行 C」（删除旧类）。
+> 我方核查后发现旧类另有 UDP/WebSocket/HTTP 与 4 种 DataFormat 能力，
+> **删除会丢能力**，故按对端预案降级为 C′：**保留类（`@deprecated`）+ 只改接线 + 测试 `skip`**。
+> 对端复核后同意。
+>
+> ⚠️ **P2 仍未做**：`LogicAnalyzerDriver.sendNetworkConfig` 在网络模式仍直接 `return false`，
+> 导致 `logicAnalyzer.configureWiFi` 对网络设备无效。单列为 **D-10**。
+
 | 字段 | 内容 |
 |---|---|
-| 严重度 | **Critical**（`NetworkLogicAnalyzerDriver` 全路径不可用：连接阶段即失败） |
+| 严重度 | **Critical**（修复前 `NetworkLogicAnalyzerDriver` 全路径不可用：连接阶段即失败） |
 | 发现方式 | 协议级模拟设备 e2e（`network-capture-mock` 场景，2026-11-03） |
 | 影响面 | **仅限 `NetworkLogicAnalyzerDriver` 这个类**；串口路径与 `LogicAnalyzerDriver` 的 TCP 分支均正常（已实测） |
 
@@ -218,20 +228,87 @@ const isValid = (major > MAJOR_VERSION) ||
 ⇒ 只有 `V1_0`（major 相同、minor 不足）才会被拒。这本身值得记录：
 **版本校验是"major 更高就无条件放行"，不是语义化版本的严格比较。**
 
-#### 修复方案（本次不做，仅记录）
+#### 修复方案（已执行 C′）
 
 | 方案 | 做法 | 成本 | 风险 |
 |---|---|---|---|
-| A | `NetworkLogicAnalyzerDriver` 整体改用 `OutputPacket` 二进制帧，与 `LogicAnalyzerDriver` 同范式；响应解析改为按 `\n` 切行 | 中（约 200-300 行改写 + 单测） | 中（该驱动还有 UDP/WebSocket 分支与"认证/协议类型"等自成体系的概念，需一并梳理） |
+| A | `NetworkLogicAnalyzerDriver` 整体改用 `OutputPacket` 二进制帧 | 中（约 200-300 行改写 + 单测） | 中（该驱动还有 UDP/WebSocket 分支与"认证/协议类型"等自成体系的概念，需一并梳理） |
 | B | 让固件同时支持 JSON | 高 | 高（固件侧改动、需重烧、破坏向后兼容） |
-| **C（推荐，可行性已验证）** | 弃用 `NetworkLogicAnalyzerDriver`，网络路径直接用 `LogicAnalyzerDriver`（它已支持 `host:port`） | **低** | 低 —— 本轮 e2e 已实测握手 ✅ / 采集 ✅ / 样本解析 ✅（见上文「真采集链路」） |
+| **C（用户原选）** | 删除 `NetworkLogicAnalyzerDriver`，网络路径直接用 `LogicAnalyzerDriver` | 低 | 低，但**会丢失 UDP/WebSocket/HTTP + 4 种 DataFormat 能力** |
+| **C′（实际执行）** | 同 C，但**保留旧类**（`@deprecated`）+ 单测 `describe.skip` | 低 | 低 —— 能力与测例资产都保住，接线已改 |
 
-**我的建议**：**走 C**。`LogicAnalyzerDriver` 的 TCP 分支已被本场景端到端验证
-（二进制握手 + 采集 + 样本解析全通），无需再单独验可行性；剩余工作是把
-`HardwareDriverManager` 里网络设备指向的驱动类从 `NetworkLogicAnalyzerDriver`
-换成 `LogicAnalyzerDriver`，并删除或标记废弃旧类。
+**为什么降级为 C′**：核查发现 `NetworkLogicAnalyzerDriver` 另有
+UDP / WebSocket / HTTP 协议与 JSON/CSV/RAW/BINARY 4 种 DataFormat 解析器，
+产品路径**无调用方**，但属于驱动 SDK 层可复用资产。删除不可逆，
+`@deprecated` + `skip` 成本一样低且可逆。
 
-⚠️ 无论选哪个，都需要**真机**验证（当前固件未烧，见 D-4）。
+#### 执行记录（C′ 阶段，2026-11-04）
+
+| 文件 | 改了什么 |
+|---|---|
+| `src/drivers/HardwareDriverManager.ts` | `network-analyzer` 的 `driverClass` → `LogicAnalyzerDriver`；删除 `createDriverInstance` 里 `NetworkLogicAnalyzerDriver` 的 host/port 拆分分支；移除该 import。**注释写的是设计理由**（网络与串口共用同一套协议），不是"替换有问题的驱动" |
+| `src/drivers/NetworkLogicAnalyzerDriver.ts` | 保留文件，加 `@deprecated` 文件头（含 D-9 依据与"为什么保留"） |
+| `tests/unit/drivers/NetworkLogicAnalyzerDriver.{simple,business,comprehensive}.test.ts` | 顶层 `describe` → `describe.skip`，文件头注明理由 |
+| `tests/unit/drivers/HardwareDriverManager.{comprehensive,business}.test.ts` | 3 条断言旧契约的用例改为断言新契约；**并新增反向断言** `expect(NetworkLogicAnalyzerDriver).not.toHaveBeenCalled()` —— 防将来被改回去 |
+| `.gitignore` | 加 `logicanalyzer/`（固件仓库副本，约 2.5G；本地必须保留以作为协议真值，但不入库） |
+| `tests/e2e/vscode/scenarios/common/network-capture-mock.scenario.cjs` | **改为走产品驱动选择链路** `hardwareDriverManager.connectToDevice('network', …)`，不再自己 `new` 某个驱动类（否则绕过被测层 = 判据失效）；新增 oracle `network-uses-shared-protocol-driver` 锁死"网络必须解析成 `LogicAnalyzerDriver`" |
+
+#### 验证（C′ 阶段）
+
+```
+network-capture-mock：12 条 oracle 全 pass（此前 6✅/2❌/1⚠️）
+  ✅ driver-connects — driver=LogicAnalyzerDriver
+  ✅ network-uses-shared-protocol-driver
+  ✅ device-received-capture-frame — 设备收到 CAPTURE_REQUEST 帧（命令字节 1）
+  ✅ driver-start-capture-outcome — CaptureError.None
+
+全量 e2e：EXIT=3（10 场景：6 pass / 2 not_exercised / 1 blocked / 0 fail）
+  ↑ 由 1 降到 3 —— 因为唯一的 fail（本场景）已转绿
+
+全量单测：90 套件通过 / 3 套件 skip（107 用例 skip）/ 2421 通过 / 总计 2528
+门禁：✅ 无泄漏
+```
+
+**变异验证**（把接线改回旧类 + 恢复 host/port 拆分分支）：
+```
+❌ driver-connects — 连接失败：网络命令超时 —— 产品网络设备驱动未按固件协议握手
+❌ device-received-capture-frame — 设备未收到任何合法帧；期间丢弃 120 字节
+⚠️ driver-start-capture-outcome — 因 connectToDevice 握手失败，未执行 startCapture
+```
+⇒ 判据与缺陷的因果关系成立。
+
+⚠️ **仍需真机验证**（当前固件未烧，见 D-4）。模拟器只能证明协议对齐，不能替代真机。
+
+---
+
+### D-10：`LogicAnalyzerDriver.sendNetworkConfig` 在网络模式直接返回 false —— `configureWiFi` 对网络设备无效
+
+| 字段 | 内容 |
+|---|---|
+| 严重度 | Important |
+| 来源 | D-9 修复（C′）时的能力核查 |
+| 状态 | ⏸ **未修**（P2 待做） |
+
+```ts
+// src/drivers/LogicAnalyzerDriver.ts:310-313
+override async sendNetworkConfig(...): Promise<boolean> {
+  // 对于网络设备，不需要配置网络   ← 这个前提是错的
+  if (this._isNetwork) {
+    return false;
+  }
+```
+
+**为什么这个前提错**：`configureWiFi` 的真实用法是 ——
+**设备插在 USB 上，用户告诉它"连哪个 SSID、连上后用哪个 IP"，然后拔掉 USB 走无线。**
+所以恰恰是"USB 连着的设备"最需要它。当前写法把网络模式短路为 `false`，
+导致 `logicAnalyzer.configureWiFi` 在网络设备上一律报"WiFi配置发送失败"。
+
+**固件侧是支持的**：`LogicAnalyzer.c:310-342` 的 `case 2` 完整处理
+`WIFI_SETTINGS_REQUEST`（33 字节 SSID + 64 字节密码 + 16 字节 IP + 2 字节端口），
+回 `SETTINGS_SAVED`。
+
+**修法**（P2）：去掉 `_isNetwork` 短路，让网络模式也发命令字节 2 的二进制帧；
+改正那句错误注释；补"串口 + 网络"两种模式的单测；变异验证（把短路改回去必须红）。
 
 ---
 
@@ -307,7 +384,8 @@ Tests:       2472 passed, 2472 total          ← 用例 100% 通过
 | D-3 | `Extension.coverage` Promise 泄漏 | Important | **已修（T1）** | ✅ |
 | D-7 | 4 个网络配置声明了但从未读取 | Important | **C**（文档标注未实现） | ⏸ |
 | D-8 | 20 个测试垃圾已被提交进仓库 | Minor | **A**（`git rm --cached`） | ⏸ **需你确认** |
-| D-9 | 网络驱动发 JSON、固件只认二进制帧（WiFi 采集从未可用） | **Critical** | **C**（改指向 `LogicAnalyzerDriver`；其 TCP 分支已被 e2e 实测握手/采集/解析全通） | ⏸ |
+| D-9 | 网络驱动发 JSON、固件只认二进制帧（WiFi 采集从未可用） | **Critical** | **C′**（改指向 `LogicAnalyzerDriver`，保留旧类 `@deprecated`） | ✅ **已修（2026-11-04）** |
+| D-10 | `sendNetworkConfig` 网络模式直接返回 false ⇒ `configureWiFi` 对网络设备无效 | Important | 去掉 `_isNetwork` 短路，改发命令字节 2（P2） | ⏸ |
 | D-4 | 真机 e2e（烧固件） | — | 取决于你 | ⏸ |
 | D-5 | 继续加 UI 场景 | — | **暂停** | ⏸ |
 | ~~D-6~~ | ~~10 个红的 unit 套件~~ | — | **已消解**（合并远程后 2472 用例全过） | ✅ 无需裁定 |

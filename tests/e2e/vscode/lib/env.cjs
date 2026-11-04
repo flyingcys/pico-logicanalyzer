@@ -31,6 +31,19 @@ function checkDisplay(env = process.env) {
  *
  * `package.json` 的 `main` 指向 `out/extension.js`，缺它则扩展加载失败。
  * 那个症状（"扩展不可用"）指向不明，所以前置拦。
+ *
+ * ## ⚠️ 为什么还要查 `out/e2e-libs/`
+ *
+ * 部分场景（如 `network-capture-mock`）需要按**类名**加载产品模块
+ * （`WiFiDeviceDiscovery` / `HardwareDriverManager`）。它们**不在** `build` 的
+ * 两条产物链上（webpack 只打 `extension.ts` 一个 entry；`build:cli` 只沿 CLI 依赖链）——
+ * 所以必须由 `npm run build:e2e-libs` 单独产出到 `out/e2e-libs/`。
+ *
+ * 缺它时场景会记 `blocked`，而那看起来像**环境问题**而不是"忘了跑某个构建"。
+ * ⇒ 前置拦 + 明确指路，比事后读 blocked 原因高效。
+ *
+ * ⚠️ 这一项**不阻塞所有场景**（多数场景不需要）：只在缺 `out/e2e-libs/` 且
+ * 该场景声明了 `needsE2eLibs: true` 时才拦。声明制避免"没用到的场景也被拦"。
  */
 function checkExtensionBuild(root) {
   const entry = join(root, "out", "extension.js");
@@ -42,6 +55,23 @@ function checkExtensionBuild(root) {
   return {
     ok: false,
     message: `扩展产物缺失：${missing.join(", ")}。请先 \`npm run build\`（真宿主加载的是 out/ 不是 src/）。`,
+  };
+}
+
+/**
+ * 检查 `out/e2e-libs/`（供声明了 `needsE2eLibs: true` 的场景使用）。
+ *
+ * 只查"目录里有东西"，不逐个验证每个类 —— 具体缺哪个类由场景自己报
+ * （它的 `blocked` 原因里已经带了路径与命令）。
+ */
+function checkE2eLibs(root) {
+  const dir = join(root, "out", "e2e-libs");
+  if (existsSync(dir)) return { ok: true, message: "out/e2e-libs 存在" };
+  return {
+    ok: false,
+    message:
+      "out/e2e-libs/ 缺失 —— 本场景需要按类名加载产品模块。请先 `npm run build:e2e-libs`" +
+      "（它把全量 src 编译到 out/e2e-libs/，与 webpack 的 out/extension.js 互不覆盖）。",
   };
 }
 
@@ -58,4 +88,4 @@ function readDeclaredCommands(root) {
   return commands.map(entry => entry.command).filter(name => typeof name === "string");
 }
 
-module.exports = { checkDisplay, checkExtensionBuild, readDeclaredCommands };
+module.exports = { checkDisplay, checkExtensionBuild, checkE2eLibs, readDeclaredCommands };

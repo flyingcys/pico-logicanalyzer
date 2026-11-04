@@ -146,3 +146,10 @@ pnpm-lock.yaml
 # 历史上这里是 process.cwd()/.recovery-checkpoints，现已改到 os.tmpdir() 下按实例隔离，
 # 但为防止回退，仍在此忽略。已有的 20 个历史文件已在 D-8 中移除。
 .recovery-checkpoints/
+
+# 固件源码与编译产物（用户 2026-11-04 裁定忽略）
+# 为什么整目录忽略而不是只忽略构建产物：`logicanalyzer/` 是上游固件仓库的完整副本
+# （C 源码 + CMake + .pio 构建目录，约 2.5G），本仓只作为"固件协议的唯一真值"供
+# e2e 模拟器对照（见 tests/e2e/vscode/lib/mockDevice.cjs 的文件头引用）。
+# ⇒ 它不是本仓的源码，不需要版本化；但**本地必须保留**，否则协议对照失去依据。
+logicanalyzer/

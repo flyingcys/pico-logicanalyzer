@@ -51,10 +51,53 @@ function sampleCountMismatch(channels, sent) {
   return channels.some(ch => ((ch && ch.samples) || []).length !== sent.length);
 }
 
+/**
+ * 加载**产品模块**（按类名，供场景构造/使用产品真实实现）。
+ *
+ * ## ⚠️ 为什么不 require `out/services/*.js` 与 `out/drivers/*.js`
+ *
+ * 2026-11-04 实测（干净环境必挂）：
+ * ```sh
+ * $ npm run clean && npm run build
+ * $ ls out/services/     → 只有 DataExportService.js / ExportPerformanceOptimizer.js
+ * $ ls out/drivers/      → 只有 AnalyzerDriverBase / LogicAnalyzerDriver / VersionValidator
+ * ```
+ * 原因：`build:cli` 用 tsc **从 `src/cli/index.ts` 出发**只编译 CLI 依赖链，
+ * `WiFiDeviceDiscovery` / `HardwareDriverManager` 不在链上 ⇒ 不产出。
+ * 之前本地能跑，是因为 `out/` 里躺着某次全量 tsc 的历史残留。
+ *
+ * ## ⚠️ 也不能用 `out/extension.js`（webpack bundle）
+ *
+ * 实测：bundle 的 `module.exports` 只含 `extension.ts` 的**顶层具名导出**
+ * （`activate` / `deactivate` / `connectToDevice` / `connectToNetworkDevice`），
+ * `WiFiDeviceDiscovery` / `hardwareDriverManager` 都是 `undefined`。
+ * 而 `activate()` 是 `void`，`ext.exports` 同样拿不到 —— 所以也走不了
+ * "从扩展实例拿"那条路。
+ *
+ * ## ⇒ 用 `out/e2e-libs/`（正式产物目录，非临时方案）
+ *
+ * 由 `npm run build:e2e-libs`（配置 `tsconfig.e2e-libs.json`）产出：
+ * 全量 tsc emit 到 `out/e2e-libs/`，**与 webpack 的 `out/extension.js` 互不覆盖**
+ * （实测：直出 `out/` 会把 bundle 换成 tsc 裸编译版，`__webpack_require__` 计数 82 → 0，
+ *   真宿主加载会崩 —— 那比原缺陷更危险）。
+ *
+ * 这里加载的**仍然是产品代码**：同一份 `src/` 编译产物，不是测试侧替身。
+ */
+function loadProductModule(relativePath) {
+  return require(`../../../../../out/e2e-libs/${relativePath}.js`);
+}
+
 module.exports = {
   id: "network-capture-mock",
   title: "协议级模拟设备：网络发现 → 握手 → 采集请求",
   needsHardware: false,
+  /**
+   * 本场景按**类名**加载产品模块（`WiFiDeviceDiscovery` / `HardwareDriverManager` /
+   * `LogicAnalyzerDriver`），来自 `out/e2e-libs/`（`npm run build:e2e-libs`）。
+   * runner 见到本标志会在开跑前检查该目录，缺失直接报错并指路 ——
+   * 而不是让场景记 `blocked`（那看起来像环境问题）。
+   */
+  needsE2eLibs: true,
 
   async run({ vscode, oracles, withTimeout }) {
     // ---- 0. 起模拟设备 ----
@@ -140,15 +183,23 @@ module.exports = {
        * 注意：那里用的是 `new OutputPacket().addByte(0)` + `serialize()`，
        * **即正确的固件协议**。所以 D1 应该能过 —— 发现链路是对的。
        */
-      // ⚠️ 路径是 5 级：common → scenarios → vscode → e2e → tests → <repo>/out
+      // 从 `out/e2e-libs/` 取产品类（见 `loadProductModule` 的说明）
       let WiFiDeviceDiscovery = null;
       try {
-        ({ WiFiDeviceDiscovery } = require("../../../../../out/services/WiFiDeviceDiscovery.js"));
+        ({ WiFiDeviceDiscovery } = loadProductModule("services/WiFiDeviceDiscovery"));
       } catch (error) {
         oracles.record(
           "product-scanner-available",
           "blocked",
-          `未找到编译产物 out/services/WiFiDeviceDiscovery.js（${String(error && error.message)}）`
+          `未找到 out/e2e-libs/services/WiFiDeviceDiscovery.js —— 先跑 npm run build:e2e-libs（${String(error && error.message)}）`
+        );
+        return;
+      }
+      if (typeof WiFiDeviceDiscovery !== "function") {
+        oracles.record(
+          "product-scanner-available",
+          "blocked",
+          "out/e2e-libs/services/WiFiDeviceDiscovery.js 未导出 WiFiDeviceDiscovery"
         );
         return;
       }
@@ -205,90 +256,113 @@ module.exports = {
 
       // ---- D3/D4：产品主动发采集请求时，设备侧能否读懂 ----
       //
-      // 这一步用产品真实的 `NetworkLogicAnalyzerDriver`。
-      // 若产品协议正确，设备会收到 CMD_CAPTURE；若发 JSON，设备什么都收不到。
+      // ⚠️ **必须走产品的驱动选择链路**（`HardwareDriverManager.connectToDevice`），
+      //    不能自己 `new` 某个驱动类。
+      //
+      //    为什么（e2e 第一原则）：D-9 的修复点就在"网络设备指向哪个驱动类"这一层
+      //    （`HardwareDriverManager` 的 `network-analyzer` 注册项）。若本场景仍旧
+      //    `new NetworkLogicAnalyzerDriver(...)`，那就**绕过了被测的那一层** ——
+      //    无论接线改没改，测试结果都一样，判据与缺陷失去因果。
+      //
+      //    实测证据（2026-11-04）：接线已改为 `LogicAnalyzerDriver`，但第一版本场景
+      //    仍直接构造旧类 ⇒ `driver-connects` 继续红，**假红**（产品其实已修好）。
       const capturesBefore = device.stats.captureRequests;
       const discardsBefore = device.stats.discardedBytes;
 
       {
-        let NetworkDriver = null;
+        let hardwareDriverManager = null;
         try {
-          ({ NetworkLogicAnalyzerDriver: NetworkDriver } = require("../../../../../out/drivers/NetworkLogicAnalyzerDriver.js"));
+          ({ hardwareDriverManager } = loadProductModule("drivers/HardwareDriverManager"));
         } catch (error) {
           oracles.record(
             "network-driver-available",
             "blocked",
-            `未找到 out/drivers/NetworkLogicAnalyzerDriver.js（${String(error && error.message)}）`
+            `未找到 out/e2e-libs/drivers/HardwareDriverManager.js —— 先跑 npm run build:e2e-libs（${String(error && error.message)}）`
+          );
+          return;
+        }
+        if (!hardwareDriverManager) {
+          oracles.record(
+            "network-driver-available",
+            "blocked",
+            "out/e2e-libs/drivers/HardwareDriverManager.js 未导出 hardwareDriverManager"
           );
           return;
         }
 
-        // 产品构造签名：new NetworkLogicAnalyzerDriver(host, port)
-        // （见 HardwareDriverManager.createDriverInstance 的同一调用）
-        const driver = new NetworkDriver(device.host, device.port);
+        // 产品真实入口：`connectToDevice('network', { networkConfig: { host, port } })`
+        // （与 `extension.ts:641` 的 `connectToNetworkDevice` 同一条路径）
+        const conn = await withTimeout(
+          hardwareDriverManager.connectToDevice("network", {
+            networkConfig: { host: device.host, port: device.port },
+          }),
+          15000,
+          "connectToDevice(network)"
+        ).catch(e => ({ success: false, error: e.message }));
 
-        try {
-          const conn = await withTimeout(
-            driver.connect({
-              type: "network",
-              networkConfig: { host: device.host, port: device.port },
-            }),
-            // ⚠️ 产品内部 `sendNetworkCommand` 的超时是硬编码 10s，
-            //    握手若等不到响应要耗满 10s。这里给 15s 余量，避免外层先超时
-            //    把「产品的 10s 超时」误报成「外层超时」。
-            15000,
-            "driver.connect"
-          ).catch(e => ({ error: e.message }));
+        if (!conn || conn.success === false) {
+          const errDetail = (conn && conn.error) || "connectToDevice 返回 success=false";
+          oracles.record(
+            "driver-connects",
+            "fail",
+            `连接失败：${errDetail} —— 产品网络设备驱动未按固件协议握手`
+          );
 
-          // connect() 自己捕获异常并返回 {success:false,error}，所以两种形态都要看
-          const connectFailed =
-            (conn && conn.error) || (conn && conn.success === false);
+          const discarded = device.stats.discardedBytes - discardsBefore;
+          oracles.record(
+            "device-received-capture-frame",
+            "fail",
+            `设备未收到任何合法帧；期间丢弃 ${discarded} 字节 —— ` +
+              `产品驱动在握手阶段发的内容不是固件协议（应为 0x55 0xAA 帧）`
+          );
 
-          if (connectFailed) {
-            const errDetail = (conn && (conn.error || conn.detail)) || "connect 返回 success=false";
-            oracles.record(
-              "driver-connects",
-              "fail",
-              `连接失败：${errDetail} —— 产品 NetworkLogicAnalyzerDriver 在握手阶段发 JSON 文本，真固件协议（0x55 0xAA 二进制帧）丢弃无应答`
-            );
+          oracles.record(
+            "driver-start-capture-outcome",
+            "not_exercised",
+            "因 connectToDevice 握手失败，未执行 startCapture"
+          );
+        } else {
+          const driver = hardwareDriverManager.getCurrentDevice();
+          const driverClassName = driver && driver.constructor && driver.constructor.name;
 
-            const discarded = device.stats.discardedBytes - discardsBefore;
-            oracles.record(
-              "device-received-capture-frame",
-              "fail",
-              `设备未收到任何合法帧；期间丢弃 ${discarded} 字节 —— ` +
-                `产品驱动在握手阶段发的是 JSON 文本，未能进入采集请求阶段`
-            );
+          oracles.record(
+            "driver-connects",
+            "pass",
+            `产品驱动已连上 ${device.host}:${device.port}（driver=${driverClassName}）`
+          );
 
-            oracles.record(
-              "driver-start-capture-outcome",
-              "not_exercised",
-              "因驱动 connect() 握手阶段协议不匹配超时失败，未执行 startCapture"
-            );
-          } else {
-            oracles.record(
-              "driver-connects",
-              "pass",
-              `产品驱动 TCP 已连上 ${device.host}:${device.port}`
-            );
+          // ⚠️ 这条判据锁死 D-9：网络设备必须解析成 LogicAnalyzerDriver。
+          //    若将来有人改回 NetworkLogicAnalyzerDriver，它会立刻红。
+          oracles.record(
+            "network-uses-shared-protocol-driver",
+            driverClassName === "LogicAnalyzerDriver" ? "pass" : "fail",
+            driverClassName === "LogicAnalyzerDriver"
+              ? "网络设备使用 LogicAnalyzerDriver（与串口共用固件二进制协议）"
+              : `网络设备使用了 ${driverClassName} —— 应为 LogicAnalyzerDriver（见 D-9）`
+          );
 
-            // 发起一次采集
+          try {
+            // ⚠️ `CaptureSession` 的字段是顶层 `preTriggerSamples` / `postTriggerSamples`
+            //    （见 `LogicAnalyzerDriver.startCapture` 与下方 D5 段）。
+            //    曾经这里错用 `captureConfig: {...}` 嵌套形态 ⇒ 产品读不到 pre/post
+            //    ⇒ `validateSettings` 返回 false ⇒ `startCapture` 返回 `BadParams`，
+            //    设备侧一个字节都收不到（假红：误以为是协议问题）。
+            const pre = 16;
+            const post = 32;
             const session = {
-              captureChannels: [{ channelIndex: 0 }, { channelIndex: 1 }],
-              totalSamples: 1024,
-              sampleRate: 1000000,
-              captureConfig: {
-                frequency: 1000000,
-                preSamples: 16,
-                postSamples: 32,
-                channels: [0, 1],
-                channelCount: 2,
-                triggerType: 0,
-                trigger: 0,
-                inverted: 0,
-                loopCount: 0,
-                measure: 0,
-              },
+              totalSamples: pre + post,
+              preTriggerSamples: pre,
+              postTriggerSamples: post,
+              frequency: 1000000,
+              loopCount: 0,
+              measureBursts: false,
+              triggerType: 0,
+              triggerChannel: 0,
+              triggerInverted: false,
+              captureChannels: [
+                { channelNumber: 0, channelName: "CH0", samples: [] },
+                { channelNumber: 1, channelName: "CH1", samples: [] },
+              ],
             };
 
             const err = await withTimeout(
@@ -314,7 +388,7 @@ module.exports = {
               gotCapture
                 ? `设备收到 CAPTURE_REQUEST 帧（命令字节 ${CMD_CAPTURE}）`
                 : `设备未收到任何合法帧；期间丢弃 ${discarded} 字节 —— ` +
-                  `产品发的不是固件协议（应为 0x55 0xAA 帧，实为 JSON 文本）`
+                  `产品发的不是固件协议（应为 0x55 0xAA 帧）`
             );
 
             if (gotCapture) {
@@ -335,7 +409,6 @@ module.exports = {
              * 恒为 true ⇒ **成功也报 not_exercised，这条永远不可能 pass**。
              *
              * 正确判据：只有 `'None'` 才是"采集启动成功"；其余都是具体错误码。
-             * 把 `CaptureError` 枚举拉进来比对，而不是靠字面量猜。
              */
             const captureErrorNone = "None";
             const isStartOk = err === captureErrorNone;
@@ -346,9 +419,14 @@ module.exports = {
                 ? "driver.startCapture 返回 CaptureError.None（采集启动成功）"
                 : `driver.startCapture 返回 ${JSON.stringify(err)}（非 None ⇒ 启动失败）`
             );
+          } finally {
+            // 走产品的断开路径，避免把连接留给下一个场景
+            if (typeof hardwareDriverManager.disconnectCurrentDevice === "function") {
+              await hardwareDriverManager.disconnectCurrentDevice().catch(() => {});
+            } else if (driver && typeof driver.disconnect === "function") {
+              await driver.disconnect().catch(() => {});
+            }
           }
-        } finally {
-          await driver.disconnect().catch(() => {});
         }
       }
 
@@ -364,16 +442,25 @@ module.exports = {
       // 根本走不到采集。若这里再失败，就分不清「TCP 采集本身有问题」还是
       // 「D-9 导致的问题」—— 判据会失去独立性。
       {
+        // 同 `loadProductModule` 的理由：一律走 `out/e2e-libs/`，不依赖 CLI 依赖链的巧合。
         let LogicAnalyzerDriverClass = null;
         try {
-          ({ LogicAnalyzerDriver: LogicAnalyzerDriverClass } = require(
-            "../../../../../out/drivers/LogicAnalyzerDriver.js"
+          ({ LogicAnalyzerDriver: LogicAnalyzerDriverClass } = loadProductModule(
+            "drivers/LogicAnalyzerDriver"
           ));
         } catch (error) {
           oracles.record(
             "capture-driver-available",
             "blocked",
-            `未找到 out/drivers/LogicAnalyzerDriver.js（${String(error && error.message)}）`
+            `未找到 out/e2e-libs/drivers/LogicAnalyzerDriver.js —— 先跑 npm run build:e2e-libs（${String(error && error.message)}）`
+          );
+          return;
+        }
+        if (typeof LogicAnalyzerDriverClass !== "function") {
+          oracles.record(
+            "capture-driver-available",
+            "blocked",
+            "out/e2e-libs/drivers/LogicAnalyzerDriver.js 未导出 LogicAnalyzerDriver"
           );
           return;
         }

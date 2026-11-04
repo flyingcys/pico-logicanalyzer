@@ -45,7 +45,20 @@ enum DataFormat {
   RAW = 'raw'
 }
 
-describe('NetworkLogicAnalyzerDriver 简化核心测试', () => {
+/**
+ * ⚠️ **整体 skip（2026-11-04，D-9）** —— 不是"测试坏了"，是"被测对象已弃用"。
+ *
+ * `NetworkLogicAnalyzerDriver` 走 JSON 文本协议，真固件只认二进制帧
+ * （`LogicAnalyzer.c:212-216`），所以它的每一条用例断言的都是一套固件不认的行为。
+ * 产品路径已改指向 `LogicAnalyzerDriver`（`HardwareDriverManager.ts` 的 `network-analyzer`）。
+ *
+ * **为什么不删**：本类还有 UDP/WebSocket/HTTP 与 4 种 DataFormat 能力（产品无调用方），
+ * 属于驱动 SDK 层可复用资产。保留测例，将来若真要做"通用网络设备驱动"能立刻启用。
+ *
+ * **不要把它改回 `describe`** —— 只有当本类重新接回产品路径时才需要。
+ * 详见 `docs/open-decisions-2026-11-03.md` D-9。
+ */
+describe.skip('NetworkLogicAnalyzerDriver 简化核心测试', () => {
   describe('构造函数和基础属性', () => {
     it('应该正确继承AnalyzerDriverBase', () => {
       const driver = new NetworkLogicAnalyzerDriver('192.168.1.100', 8080);

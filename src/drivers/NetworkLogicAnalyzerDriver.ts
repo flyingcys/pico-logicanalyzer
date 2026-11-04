@@ -1,3 +1,45 @@
+/**
+ * @deprecated 网络设备**不再**使用本驱动，已改指向 `LogicAnalyzerDriver`（D-9）。
+ *
+ * ## 为什么弃用（不是"有 bug"，是"整套协议是错的"）
+ *
+ * 本类走的是自建的 **JSON 文本协议**（`sendNetworkCommand` → `JSON.stringify`），
+ * 而真固件只认二进制帧：
+ *
+ * ```c
+ * // logicanalyzer/Firmware/LogicAnalyzer_V2/LogicAnalyzer.c:212-216
+ * if(bufferPos == 1 && messageBuffer[0] != 0x55)
+ *     bufferPos = 0;                       // 首字节不是 0x55 就整帧丢弃
+ * else if(bufferPos == 2 && messageBuffer[1] != 0xAA)
+ *     bufferPos = 0;
+ * ```
+ *
+ * ⇒ 本类发出去的每一行 JSON 都会被固件当成垃圾丢掉，**永远收不到应答**。
+ * 实测：`connect()` 在握手阶段就 10s 超时失败，根本走不到采集（见
+ * `docs/open-decisions-2026-11-03.md` D-9）。
+ *
+ * ## 为什么网络路径该用 `LogicAnalyzerDriver`
+ *
+ * 固件**只有一套协议**：
+ * - `LogicAnalyzer.c:205` `processData(data, length, fromWiFi)` —— 串口与 WiFi 走进同一个函数，
+ *   `fromWiFi` 只影响"往哪回"和个别命令的支持度。
+ * - 产品侧 `LogicAnalyzerDriver.initSerialPort` / `initNetwork` 除"流从哪来"外逐行相同，
+ *   都调同一个 `initializeDevice()`。
+ *
+ * ⇒ 网络不是"另一类设备"，是"同一种设备的另一种传输"。给它单写一套协议，
+ *   才是偏离设计的那一步。
+ *
+ * ## 为什么保留而不是删除
+ *
+ * 本类另有一套产品路径**无调用方**的能力，属于驱动 SDK 层可复用资产：
+ * - `ProtocolType`: UDP / WebSocket / HTTP
+ * - `DataFormat`: JSON / CSV / RAW / BINARY（4 套解析器）
+ * - `authToken` 握手鉴权
+ *
+ * 对应单测以 `describe.skip` 保留（不删），以便将来若真要做"通用网络设备驱动"
+ * 时有现成测例。**任何产品路径都不得再 `new` 本类或把它接回默认接线。**
+ */
+
 import { Socket } from 'net';
 import { createSocket, Socket as UDPSocket } from 'dgram';
 import { AnalyzerDriverBase } from './AnalyzerDriverBase';
@@ -54,6 +96,7 @@ enum DataFormat {
   RAW = 'raw'
 }
 
+/** @deprecated 见文件头。产品路径改用 `LogicAnalyzerDriver`（D-9）。 */
 export class NetworkLogicAnalyzerDriver extends AnalyzerDriverBase {
 
   // 属性实现

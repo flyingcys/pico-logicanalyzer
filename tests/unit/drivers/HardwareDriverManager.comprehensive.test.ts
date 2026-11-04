@@ -455,7 +455,15 @@ describe('HardwareDriverManager 精准业务逻辑测试', () => {
       expect(LogicAnalyzerDriver).toHaveBeenCalledWith('/dev/ttyACM0');
     });
 
-    it('应该正确创建NetworkLogicAnalyzerDriver实例', async () => {
+    /**
+     * ⚠️ 2026-11-04（D-9）：网络设备**改用 `LogicAnalyzerDriver`**。
+     *
+     * 原用例断言 `new NetworkLogicAnalyzerDriver(host, port)` —— 那是把
+     * "网络路径另有一套 JSON 协议"这个错误设计锁进了测试。现在改为断言：
+     * 网络设备与串口一样走 `LogicAnalyzerDriver(connectionString)`，
+     * 由它自己按 `:` 判定网络模式（`LogicAnalyzerDriver.ts:85-87`）。
+     */
+    it('网络设备应创建 LogicAnalyzerDriver（不再用 NetworkLogicAnalyzerDriver）', async () => {
       const device = createTestDevice({
         id: 'network-device',
         name: 'Network Logic Analyzer',
@@ -466,12 +474,13 @@ describe('HardwareDriverManager 精准业务逻辑测试', () => {
 
       const driver = await manager.createDriver(device);
 
-      const mockInstance = (NetworkLogicAnalyzerDriver as jest.MockedClass<typeof NetworkLogicAnalyzerDriver>).mock.results.slice(-1)[0].value;
+      const mockInstance = (LogicAnalyzerDriver as jest.MockedClass<typeof LogicAnalyzerDriver>).mock.results.slice(-1)[0].value;
       expect(driver).toBe(mockInstance);
-      expect(NetworkLogicAnalyzerDriver).toHaveBeenCalledWith('192.168.1.100', 8080);
+      // 关键：连接串**原样**传入，不由 manager 拆 host/port
+      expect(LogicAnalyzerDriver).toHaveBeenCalledWith('192.168.1.100:8080');
     });
 
-    it('应该正确解析网络连接字符串 - 缺少端口', async () => {
+    it('网络连接字符串应原样透传（不拆分 host:port）', async () => {
       const device = createTestDevice({
         id: 'network-device',
         name: 'Network Logic Analyzer',
@@ -481,22 +490,24 @@ describe('HardwareDriverManager 精准业务逻辑测试', () => {
       });
 
       await manager.createDriver(device);
-      
-      expect(NetworkLogicAnalyzerDriver).toHaveBeenCalledWith('192.168.1.100', 24000); // 默认端口
+
+      // 旧实现会补默认端口 24000；新实现原样传，由驱动自己解析
+      expect(LogicAnalyzerDriver).toHaveBeenCalledWith('192.168.1.100');
     });
 
-    it('应该正确解析网络连接字符串 - 空主机', async () => {
+    it('网络设备不再实例化已弃用的 NetworkLogicAnalyzerDriver', async () => {
       const device = createTestDevice({
         id: 'network-device',
         name: 'Network Logic Analyzer',
         type: 'network',
-        connectionString: ':8080',
+        connectionString: 'localhost:8080',
         driverType: AnalyzerDriverType.Network
       });
 
       await manager.createDriver(device);
-      
-      expect(NetworkLogicAnalyzerDriver).toHaveBeenCalledWith('localhost', 8080); // 默认主机
+
+      // 反向断言：D-9 的弃用必须生效，否则协议不匹配会复发
+      expect(NetworkLogicAnalyzerDriver).not.toHaveBeenCalled();
     });
 
     it('应该正确创建SigrokAdapter实例', async () => {
@@ -603,8 +614,9 @@ describe('HardwareDriverManager 精准业务逻辑测试', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(NetworkLogicAnalyzerDriver).toHaveBeenCalledWith('192.168.1.100', 8080);
-      const mockInstance = (NetworkLogicAnalyzerDriver as jest.MockedClass<typeof NetworkLogicAnalyzerDriver>).mock.results.slice(-1)[0].value;
+      // D-9：网络连接走 LogicAnalyzerDriver，连接串 `${host}:${port}` 原样传入
+      expect(LogicAnalyzerDriver).toHaveBeenCalledWith('192.168.1.100:8080');
+      const mockInstance = (LogicAnalyzerDriver as jest.MockedClass<typeof LogicAnalyzerDriver>).mock.results.slice(-1)[0].value;
       expect(mockInstance.connect).toHaveBeenCalled();
     });
 
@@ -640,8 +652,9 @@ describe('HardwareDriverManager 精准业务逻辑测试', () => {
       const result = await manager.connectToDevice('192.168.1.100:8080');
 
       expect(result.success).toBe(true);
-      expect(NetworkLogicAnalyzerDriver).toHaveBeenCalledWith('192.168.1.100', 8080);
-      const mockInstance = (NetworkLogicAnalyzerDriver as jest.MockedClass<typeof NetworkLogicAnalyzerDriver>).mock.results.slice(-1)[0].value;
+      // D-9：同一驱动，连接串原样透传
+      expect(LogicAnalyzerDriver).toHaveBeenCalledWith('192.168.1.100:8080');
+      const mockInstance = (LogicAnalyzerDriver as jest.MockedClass<typeof LogicAnalyzerDriver>).mock.results.slice(-1)[0].value;
       expect(mockInstance.connect).toHaveBeenCalled();
     });
 
