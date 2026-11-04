@@ -118,7 +118,7 @@ export class WiFiDeviceDiscovery {
     concurrency: 50,
     ports: [4045, 10429, 5555, 5025, 111],
     deepScan: true,
-    enableBroadcast: true
+    enableBroadcast: false
   };
 
   /**

@@ -3705,7 +3705,7 @@ describe('LACEditorProvider 契约', () => {
         scanTimeout: 250,
         concurrency: 50,
         ports: [4045, 10429, 5555, 5025, 111],
-        enableBroadcast: true
+        enableBroadcast: false
       });
       expect(result).toEqual({
         success: true,

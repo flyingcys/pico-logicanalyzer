@@ -314,7 +314,7 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
         const scanTimeoutMs = networkConfig.get<number>('scanTimeoutMs', 5000);
         const maxConcurrency = networkConfig.get<number>('maxConcurrentConnections', 50);
         const defaultPorts = networkConfig.get<number[]>('defaultPorts', [4045, 10429, 5555, 5025, 111]);
-        const enableBroadcast = networkConfig.get<boolean>('enableBroadcastDiscovery', true);
+        const enableBroadcast = networkConfig.get<boolean>('enableBroadcastDiscovery', false);
 
         const result = await wifiDiscoveryService.scanForDevices({
           connectionTimeout: 3000,

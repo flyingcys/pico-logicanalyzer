@@ -908,7 +908,7 @@ ${webviewScriptTags}
 
           const enableBroadcast = typeof raw.enableBroadcast === 'boolean'
             ? raw.enableBroadcast
-            : (networkConfig?.get<boolean>('enableBroadcastDiscovery', true) ?? true);
+            : (networkConfig?.get<boolean>('enableBroadcastDiscovery', false) ?? false);
 
           const effectivePayload = {
             ...raw,

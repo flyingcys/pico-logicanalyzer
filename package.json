@@ -172,11 +172,6 @@
           ],
           "description": "Default ports to scan for network devices"
         },
-        "logicAnalyzer.network.enableBroadcastDiscovery": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable UDP broadcast discovery for network devices"
-        },
         "logicAnalyzer.network.heartbeatIntervalMs": {
           "type": "number",
           "default": 5000,

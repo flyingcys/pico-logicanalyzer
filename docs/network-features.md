@@ -110,7 +110,6 @@ VSCode Logic Analyzer扩展支持通过WiFi/网络连接到Pico Logic Analyzer�
   "logicAnalyzer.network.scanTimeoutMs": 5000,
   "logicAnalyzer.network.maxConcurrentConnections": 50,
   "logicAnalyzer.network.defaultPorts": [4045, 10429, 5555, 5025, 111],
-  "logicAnalyzer.network.enableBroadcastDiscovery": true,
   "logicAnalyzer.network.heartbeatIntervalMs": 5000,
   "logicAnalyzer.network.connectionTimeoutMs": 10000,
   "logicAnalyzer.network.enableAutoReconnect": true,
@@ -123,20 +122,21 @@ VSCode Logic Analyzer扩展支持通过WiFi/网络连接到Pico Logic Analyzer�
 - `scanTimeoutMs`: 扫描超时时间 (1-30秒)
 - `maxConcurrentConnections`: 最大并发连接数 (5-200)
 - `defaultPorts`: 默认扫描端口列表。`4045` 是 Pico TCP 端口，`10429` 是 Saleae Logic 2 API，`5555/5025/111` 是常见 SCPI 入口。
-- `enableBroadcastDiscovery`: 启用UDP广播发现
 - `heartbeatIntervalMs`: 心跳间隔 (1-60秒)
 - `connectionTimeoutMs`: 连接超时 (3-30秒)
 - `enableAutoReconnect`: 启用自动重连
 - `maxRetries`: 最大重试次数 (1-10)
+
+> ⚠️ **关于设备发现协议**：官方 Pico 逻辑分析仪固件采用纯 TCP 协议栈（仅监听配置的 TCP 端口，默认 4045），未实现 UDP 广播发现协议。若用户自定义了设备 TCP 端口，请将该端口追加到 `defaultPorts` 中，或直接在侧边栏/连接命令中输入 `IP:Port` 直连。
 
 ## 故障排除
 
 ### 无法发现设备
 
 1. **检查网络连接**：确保设备和电脑在同一网络
-2. **检查防火墙**：确保UDP端口4046和TCP端口4045未被阻止
+2. **检查防火墙**：确保设备 TCP 端口（默认 4045）未被阻止
 3. **检查设备状态**：确保设备已连接WiFi且运行正常
-4. **手动连接**：尝试手动输入设备IP地址
+4. **手动连接**：尝试手动输入设备 IP 地址与端口（如 `192.168.1.100:4045`）
 
 ### 连接不稳定
 
