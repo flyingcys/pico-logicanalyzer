@@ -143,3 +143,22 @@ PerformanceOptimizer: startFrame endFrame getMetrics getCurrentLOD dispose
 
 > ⚠️ 数字从 74 变成 73，是因为删了那份 12 个全 skip 的死测试。
 > **这个数字下降是好事** —— 它把"看起来有 74 个测试文件"的假象去掉了。
+
+---
+
+## 五、Webview 参数 → 硬件帧 的数据流未覆盖（已知边界）
+
+尝试过的路径：
+1. **从 e2e 侧调用 hardwareDriverManager.connectToDevice**：
+   → ❌ 无效：`out/e2e-libs/` 与 `out/extension.js`（webpack bundle）是两个相互隔离的独立模块实例，单例内存状态不共享，外部驱动连接无法更改 Webview 所绑定的宿主扩展内部设备状态；
+2. **通过 vscode.commands 让扩展自己连接**：
+   → ❌ 无效：`logicAnalyzer.connectDevice` 会在真宿主中 `await showWarningMessage` 永久挂死（见 D-13 与 README §6.8）；
+   → ❌ 且它走 `detectHardware()`，无法指向任意端口的模拟器进行受控连接。
+
+⇒ **结论**：在不修改产品（不加测试专用连接后门）的前提下，Webview 参数到 `CAPTURE_REQUEST` 二进制帧这一段无法在真宿主 E2E 中直接串联。
+
+**现状覆盖**：
+- `CAPTURE_REQUEST` 二进制控制帧的组包/解包与参数匹配：已由 `network-capture-mock` 场景及协议单测完整覆盖；
+- UI 侧栏表单交互与模式联动：已由 `ui-trigger-config` 场景覆盖；
+- **真实缺口**：两者之间的“Webview UI 交互值 → session → request 二进制帧”这一整段跨进程数据流。
+
