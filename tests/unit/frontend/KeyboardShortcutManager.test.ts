@@ -75,6 +75,16 @@ describe('KeyboardShortcutManager', () => {
       expect(decoderToggle).toBeDefined();
       expect(decoderToggle?.keys).toEqual(['Ctrl', 'Shift', 'D']);
     });
+
+    // 通道显隐没有任何 UI / store 动作支撑，只有渲染器消费 channel.hidden。
+    // 保留 1/2/3/4 声明等于向用户承诺一个设计了一半的功能。
+    it('不应声明无实现支撑的通道切换快捷键', () => {
+      const categories = keyboardShortcutManager.getShortcutsByCategory();
+      const all = categories.flatMap(cat => cat.shortcuts);
+      const channelToggles = all.filter(s => s.id.startsWith('toggle-channel-'));
+      expect(channelToggles).toEqual([]);
+      expect(all.some(s => /^切换通道[1-4]$/.test(s.description))).toBe(false);
+    });
   });
 
   describe('快捷键增删改', () => {

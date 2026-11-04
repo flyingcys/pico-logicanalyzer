@@ -43,10 +43,11 @@ const stubs = {
 
 /**
  * 帮助弹窗直接读 keyboardShortcutManager.getShortcutsByCategory() 渲染。
- * 「测量面板」不存在，因此用户看到的清单里不能出现这条虚假承诺。
+ * 只断言「虚假承诺不出现 / 真实功能仍保留」两类与实现承载相关的项，
+ * 不依赖其它快捷键条目的具体文本 —— 避免后续删改别的声明时把本测试绑在一起。
  */
 describe('ShortcutHelpDialog / 快捷键清单', () => {
-  it('打开的清单不应出现「切换测量面板」，且仍保留「切换解码器面板」', async () => {
+  it('打开的清单不应出现「切换测量面板」及通道切换，且仍保留「切换解码器面板」', async () => {
     const mountPoint = document.createElement('div');
     document.body.appendChild(mountPoint);
 
@@ -75,6 +76,7 @@ describe('ShortcutHelpDialog / 快捷键清单', () => {
 
     const text = mountPoint.textContent ?? '';
     expect(text).not.toContain('切换测量面板');
+    expect(text).not.toMatch(/切换通道[1-4]/);
     expect(text).toContain('切换解码器面板');
 
     app.unmount();

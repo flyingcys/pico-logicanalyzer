@@ -218,38 +218,6 @@ export class KeyboardShortcutManager {
         enabled: true
       },
       {
-        id: 'toggle-channel-1',
-        keys: ['1'],
-        description: '切换通道1',
-        category: '通道控制',
-        handler: () => this.triggerChannelToggle(0),
-        enabled: true
-      },
-      {
-        id: 'toggle-channel-2',
-        keys: ['2'],
-        description: '切换通道2',
-        category: '通道控制',
-        handler: () => this.triggerChannelToggle(1),
-        enabled: true
-      },
-      {
-        id: 'toggle-channel-3',
-        keys: ['3'],
-        description: '切换通道3',
-        category: '通道控制',
-        handler: () => this.triggerChannelToggle(2),
-        enabled: true
-      },
-      {
-        id: 'toggle-channel-4',
-        keys: ['4'],
-        description: '切换通道4',
-        category: '通道控制',
-        handler: () => this.triggerChannelToggle(3),
-        enabled: true
-      },
-      {
         id: 'show-help',
         keys: ['F1'],
         description: '显示帮助',
@@ -409,13 +377,6 @@ export class KeyboardShortcutManager {
    */
   private triggerWaveformAction(action: string) {
     window.dispatchEvent(new CustomEvent('waveform-action', { detail: action }));
-  }
-
-  /**
-   * 触发通道切换
-   */
-  private triggerChannelToggle(channelIndex: number) {
-    window.dispatchEvent(new CustomEvent('channel-toggle', { detail: channelIndex }));
   }
 
   /**
