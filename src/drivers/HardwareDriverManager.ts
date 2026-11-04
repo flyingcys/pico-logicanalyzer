@@ -369,20 +369,28 @@ export class HardwareDriverManager extends EventEmitter {
    * 对单个检测器设置超时，避免永不 resolve 的检测器阻塞整体检测流程
    */
   private async safeDetect(detector: IDeviceDetector): Promise<DetectedDevice[]> {
+    // ⚠️ race 的超时定时器必须在 detect() 先返回时主动清理：
+    // 否则一次快速检测会在测试/短生命周期宿主后残留 5 秒定时器，
+    // 结束后再 console.warn（Jest 报 "Cannot log after tests are done" 并以非 0 退出）。
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
         detector.detect(),
         new Promise<DetectedDevice[]>((resolve) => {
-          const timer = setTimeout(() => {
+          timeoutHandle = setTimeout(() => {
             console.warn(`Detector ${detector.name} timed out`);
             resolve([]);
           }, this.detectorTimeout);
-          timer.unref?.();
+          timeoutHandle.unref?.();
         })
       ]);
     } catch (error) {
       console.warn(`Detector ${detector.name} failed:`, error);
       return [];
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
     }
   }
 
