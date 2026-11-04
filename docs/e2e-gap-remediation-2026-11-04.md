@@ -252,7 +252,7 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 | 5 | P0-2a defaultSampleRate（选项 1） | ✅ 已验收 | `e3747f35` + `d36f5f05` | 后端 b3 两个真宿主变异正交（M1 写死→只红①②、M2 fallback 漂移→只红③）；前端 5 个单测变异（M4a/b/c/M5/M6）加 1 个 e2e 变异全部独立击红。05 **推翻了 b3 的预判**（M5 预判绿、实测红）。额外发现第 4 处构造点 `FrontendBootstrapData` |
 | 5b | 补项 4 漏网断言 | ✅ 已验收 | `d9be6fa4` | 哨兵 `maxRetries: 11`；b3 独立复跑全量单测 2452 passed；并变异「写死 5」验证判据有效 |
 | 6 | P1-1 e2e 进 CI | ✅ 已验收 | `ceb4b269` `aa8c1f61` `a798f1ed` | **CI 24 步首次全绿**（run `41882205445`），含 e2e 真跑。b3 做了 6 个独立变异（含 status 改名、stale）全部符合预期；EXIT=3 默认语义未被洗掉。CI 过程中还暴露并修掉两个既有缺陷：`LogicAnalyzerDriver.test.ts` 遗留 60s 定时器崩溃、`safeDetect` 定时器泄漏（**产品真 bug**） |
-| 7 | P1-2 needsHardware 门控 | 🔄 范围待定 | — | b3 已提两方案（复用白名单 vs 独立门控），倾向独立，待 05 回应 |
-| 8 | P2-1 mock 改由 webview 驱动 | ⬜ 待实现 | — | — |
+| 7 | P1-2 needsHardware 门控 | ✅ 已验收 | `92b77b75` | CI 连续 2 次绿（`41926526379`）。b3 **亲自攻后门**（给 `network-capture-mock` 加 `needsHardware: true`）→ EXIT=1 并点名，堵死。b3 做 6 个独立变异（含「硬件跳过不能洗白新增未登记」）全部符合。自检 17 例全过。05 主动修了「子集运行 stale 误判」 |
+| 8 | P2-1 mock 改由 webview 驱动 | 🔄 三问待答 | — | b3 已提三问：改造可行性 / `NetworkStabilityService` 三件事怎么断言 / 走不通的退路 |
 
 **图例**：⬜ 待实现 / 🔄 实现中 / 🔍 待验收 / ✅ 已验收 / ❌ 验收未通过
