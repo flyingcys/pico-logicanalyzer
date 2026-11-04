@@ -72,6 +72,18 @@ let wifiDiscoveryService: WiFiDeviceDiscovery;
 let networkStabilityService: NetworkStabilityService;
 let lastCaptureConfig: CaptureWorkflowConfig | null = null;
 
+/** 默认采样率 fallback，与 package.json 的 logicAnalyzer.defaultSampleRate 保持一致。 */
+const DEFAULT_SAMPLE_RATE = 1000000;
+
+/** 读取默认采样率；配置节缺失（如精简宿主）时回退到 manifest default。 */
+function readDefaultSampleRate(): number {
+  const config = typeof vscode.workspace?.getConfiguration === 'function'
+    ? vscode.workspace.getConfiguration('logicAnalyzer')
+    : undefined;
+  const value = config?.get<number>('defaultSampleRate', DEFAULT_SAMPLE_RATE);
+  return typeof value === 'number' ? value : DEFAULT_SAMPLE_RATE;
+}
+
 export function activate(context: vscode.ExtensionContext, services?: ExtensionServices) {
   console.log('VSCode Logic Analyzer插件正在激活...');
 
@@ -115,7 +127,7 @@ export function activate(context: vscode.ExtensionContext, services?: ExtensionS
 
       // 创建初始化的LAC文件内容
       const initialSession = new CaptureSession();
-      initialSession.frequency = 1000000;
+      initialSession.frequency = readDefaultSampleRate();
       initialSession.postTriggerSamples = 1000;
       initialSession.preTriggerSamples = 100;
 
@@ -814,7 +826,7 @@ async function getCaptureConfiguration(): Promise<CaptureWorkflowConfig | null> 
     // 采样频率配置
     const frequencyInput = await vscode.window.showInputBox({
       prompt: '请输入采样频率 (Hz)',
-      value: '1000000',
+      value: String(readDefaultSampleRate()),
       validateInput: (value) => {
         const freq = parseInt(value);
         if (isNaN(freq) || freq < 1000 || freq > 100000000) {

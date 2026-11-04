@@ -35,18 +35,27 @@ jest.mock('vscode', () => ({
   workspace: {
     // ⚠️ 两层判据，缺一不可（两条都由变异验证过必须为红）：
     //
-    // 1. **配置节名**：产品必须读 `logicAnalyzer.network`。
+    // 1. **配置节名**：网络服务必须读 `logicAnalyzer.network`；默认采样率读 `logicAnalyzer`。
     //    原实现无条件返回同一对象 ⇒ 产品把节名写成任意字符串都不红。
     //    实测变异：把 `getConfiguration('logicAnalyzer.network')` 改成 `('logicAnalyzer.WRONG_SECTION')`
     //    ⇒ 旧实现仍全绿，等于"读哪节"这件事根本没被测。
+    //    任何其它节名仍直接抛错，防止产品偷偷读错节。
     //
     // 2. **取值**：返回哨兵值（既非 package.json 默认值，也非 src/extension.ts 的兜底常量）。
     //    原实现把 5000/30/[4045,...]/true 给回去，其中三条与产品兜底常量相同
     //    ⇒ 产品删掉 `.get()` 直接写常量也全绿。
     //    实测变异：逐条短路 `.get()` 调用，旧实现 3/4 条漏判，本实现 4/4 抓红。
     getConfiguration: jest.fn((section?: string) => {
+      if (section === 'logicAnalyzer') {
+        return {
+          get: jest.fn((key: string, defaultValue?: unknown) => {
+            if (key === 'defaultSampleRate') return 8000000;
+            return defaultValue;
+          }),
+        };
+      }
       if (section !== 'logicAnalyzer.network') {
-        throw new Error(`未预期的配置节: ${String(section)}（产品应只读 logicAnalyzer.network）`);
+        throw new Error(`未预期的配置节: ${String(section)}`);
       }
       return {
         get: jest.fn((key: string, defaultValue?: unknown) => {
@@ -235,6 +244,18 @@ describe('VSCode Extension 主入口 — 覆盖率补充', () => {
     mockVSCode.window.showInputBox.mockImplementation(() => Promise.resolve(values[i++]));
   }
 
+  // 采样频率输入框的默认值由 defaultSampleRate 配置决定；
+  // 不锁 value 的单测在「改回写死 1000000」时会假绿（PK 第 5 轮认领的教训）。
+  function getInputBoxValue(promptSubstr: string): string | undefined {
+    for (const call of mockVSCode.window.showInputBox.mock.calls) {
+      const opts = call[0];
+      if (opts && typeof opts === 'object' && typeof opts.prompt === 'string' && opts.prompt.includes(promptSubstr)) {
+        return opts.value;
+      }
+    }
+    throw new Error(`未找到 prompt 含 "${promptSubstr}" 的 InputBox 调用`);
+  }
+
   // 按 prompt 关键字取出某次 InputBox 的 validateInput（手动调用以覆盖校验逻辑）
   function getValidator(promptSubstr: string): (value: string) => string | null {
     for (const call of mockVSCode.window.showInputBox.mock.calls) {
@@ -289,6 +310,39 @@ describe('VSCode Extension 主入口 — 覆盖率补充', () => {
         autoReconnect: false,
         maxRetries: 7
       });
+    });
+
+    it('openAnalyzer 新建会话应使用 defaultSampleRate 配置', async () => {
+      activate(context);
+      await getHandler('logicAnalyzer.openAnalyzer')();
+
+      const session = LACFileFormat.createFromCaptureSession.mock.calls[0]?.[0];
+      // mock 的 logicAnalyzer 节返回 8000000（非 manifest default 1000000），
+      // 产品写死 1000000 时本断言必红。
+      expect(session?.frequency).toBe(8000000);
+      expect(mockVSCode.workspace.getConfiguration).toHaveBeenCalledWith('logicAnalyzer');
+    });
+
+    it('defaultSampleRate 缺省时 fallback 应为 1000000（与 manifest 一致）', async () => {
+      const original = mockVSCode.workspace.getConfiguration.getMockImplementation();
+      const rateGet = jest.fn((_key: string, defaultValue?: unknown) => defaultValue);
+      mockVSCode.workspace.getConfiguration.mockImplementation((section?: string) => {
+        if (section === 'logicAnalyzer') {
+          return { get: rateGet };
+        }
+        return original ? original(section) : {};
+      });
+
+      try {
+        activate(context);
+        await getHandler('logicAnalyzer.openAnalyzer')();
+
+        const session = LACFileFormat.createFromCaptureSession.mock.calls[0]?.[0];
+        expect(rateGet).toHaveBeenCalledWith('defaultSampleRate', 1000000);
+        expect(session?.frequency).toBe(1000000);
+      } finally {
+        mockVSCode.workspace.getConfiguration.mockImplementation(original);
+      }
     });
   });
 
@@ -717,6 +771,13 @@ describe('VSCode Extension 主入口 — 覆盖率补充', () => {
       await getHandler('logicAnalyzer.startCapture')();
       return getValidator(stopAtPrompt);
     }
+
+    it('采样频率输入框默认值应读取 defaultSampleRate 配置', async () => {
+      await driveUntilCancel('采样频率');
+      // mock 的 logicAnalyzer 节返回 8000000（非 manifest default），
+      // 产品写死 1000000 时本断言必红。
+      expect(getInputBoxValue('采样频率')).toBe('8000000');
+    });
 
     it('采样频率校验：低于/高于/非法/合法', async () => {
       const v = await driveUntilCancel('采样频率');

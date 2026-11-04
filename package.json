@@ -141,8 +141,8 @@
       "properties": {
         "logicAnalyzer.defaultSampleRate": {
           "type": "number",
-          "default": 24000000,
-          "description": "Default sample rate in Hz"
+          "default": 1000000,
+          "description": "默认采样率 (Hz)，作用于新建会话、命令面板采集输入框及 Webview 首次采集表单"
         },
         "logicAnalyzer.network.scanTimeoutMs": {
           "type": "number",
