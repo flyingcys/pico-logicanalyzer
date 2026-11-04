@@ -293,24 +293,44 @@ module.exports = {
       ],
       // 下面几条**没有承接场景**，所以是真正的 not_exercised —— 原因必须可核实
       //
-      // ⚠️ 2026-11-04 修正理由措辞：原来把「await 弹窗永不 resolve」这条原因
-      //    一并套给了 `repeatCapture` / `configureWiFi`，那是错的 —— 这两处的
-      //    `showWarningMessage` **没有 await**，已改为真执行（见上面 4b 段），
-      //    现在作为 `executes:*` oracle 记录。
-      //    保留在这里的是**真的会挂**的两条，以及与弹窗无关的两条。
+      // ⚠️ 2026-11-04 实测证据更新（探针 _probe-dialog-blocking，各 3 次测试）：
+      //    这三条命令在真宿主下直接调用 100% 稳定在 6000ms 超时挂死（非响应慢，是真挂死）。
+      //    对照组实测（并发 clearAll / closeQuickOpen）：
+      //      - startCapture / networkDiagnostics 会在 ~200ms 返回，但返回值均为 undefined，
+      //        直接走入 `if (!action) return;` 的用户取消分支，未触达连接/采集/诊断核心业务；
+      //      - connectDevice 前置调用 detectHardware() 探测 5 个驱动耗时约 5.5s，弹窗在第 5 秒末才弹出，
+      //        并发 200ms 的 clearAll 根本打不到弹窗上，依然在 6015ms 超时挂死。
+      //    ⇒ 用 clearAll 只能伪造"用户取消"的提前退出假象，属于欺骗性假绿，故维持诚实的 not_exercised。
+      //    单测覆盖：Extension.coverage.test.ts:602-635（connectDevice 3 条）、
+      //             :728-755（startCapture 连接/取消全分支）、
+      //             :710-726（networkDiagnostics 取消/地址解析全分支）。
       [
         "connectDevice",
-        "无设备时 `const action = await showWarningMessage(...)`（extension.ts:140）⇒ 真宿主永不 resolve（实测 2026-11-03）",
+        "await showWarningMessage（extension.ts:143）在真宿主自动化下永不 resolve。" +
+          "实测 2026-11-04（探针 _probe-dialog-blocking，各 3 次）：executeCommand 均在 6001-6028ms 超时挂死。" +
+          "对照组（notifications.clearAll 并发）：前置 detectHardware() 耗时约 5.5s，弹窗在此后才出现，无法被提前 clearAll 打中，仍以 6015ms 超时。" +
+          "单测覆盖：Extension.coverage.test.ts:602-635（3 条，覆盖网络连接分支、缺端口及非法端口解析错误路径）。",
         null,
         null,
       ],
       [
         "startCapture",
-        "依赖已连接设备；且 `getCaptureConfiguration()` 走 `await showInputBox` ⇒ 永不 resolve（extension.ts:234 同样是 await 弹窗）",
+        "无连接设备时 `const action = await showWarningMessage(...)`（extension.ts:234）在真宿主自动化下永不 resolve。" +
+          "实测 2026-11-04（探针 _probe-dialog-blocking，各 3 次）：executeCommand 均在 6000-6002ms 超时挂死。" +
+          "对照组（notifications.clearAll 并发）：208ms 返回，但返回值为 undefined，走入 `if (!action) return;` 用户取消分支，未触达采集逻辑。" +
+          "单测覆盖：Extension.coverage.test.ts:728-755（覆盖无设备点击'连接设备'、点击'取消'及采集参数取消等全部前置分支）。",
         null,
         null,
       ],
-      ["networkDiagnostics", "依赖网络扫描成功且需要 `await showInputBox` 输入地址", null, null],
+      [
+        "networkDiagnostics",
+        "入口 `const networkAddress = await showInputBox(...)`（extension.ts:365）在真宿主自动化下永不 resolve。" +
+          "实测 2026-11-04（探针 _probe-dialog-blocking，各 3 次）：executeCommand 均在 6001-6002ms 超时挂死。" +
+          "对照组（workbench.action.closeQuickOpen 并发）：206ms 返回，但返回值为 undefined，触发 `if (!networkAddress) return;` 取消分支，未执行诊断。" +
+          "单测覆盖：Extension.coverage.test.ts:710-726（覆盖取消、合法地址及非法地址全部前置分支）。",
+        null,
+        null,
+      ],
     ];
     for (const [name, reason, coveredBy, requires] of delegated) {
       if (coveredBy) {

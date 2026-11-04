@@ -312,6 +312,30 @@ LA_E2E_PROBE=1 xvfb-run -a node tests/e2e/vscode/lib/runner.cjs --scenario _prob
 
 ---
 
+## 六点八、⚠️ 模态交互命令在真宿主下的阻塞机理与 not_exercised 留痕
+
+在 `commands-coverage` 场景中，`connectDevice`、`startCapture`、`networkDiagnostics` 3 条命令被诚实登记为 `not_exercised`，而非假绿。
+
+### 1. 阻塞机理实测（探针 `_probe-dialog-blocking`，2026-11-04）
+- **真宿主行为**：VS Code 的 `vscode.window.showWarningMessage`（带选项按钮）与 `vscode.window.showInputBox` 在 `ExtensionMode.Test` 下处于模态等待状态，若无人工点击或交互，其返回的 Promise **永不 resolve**。
+- **实测数据**：直接调用时，三条命令在 6000ms 超时限制下 **连续 3 次 100% 稳定超时挂死**（`connectDevice` 6001–6028ms，`startCapture` 6000–6002ms，`networkDiagnostics` 6001–6002ms）。
+
+### 2. 为什么 `repeatCapture` / `configureWiFi` 能直接真执行
+- 在 `extension.ts:282` / `:406` 中，调用 `vscode.window.showWarningMessage(...)` 时**没有写 `await`**（fire-and-forget），因此命令函数能立即返回并发出通知（实测 0–1ms 返回）；
+- 而 `connectDevice`（`:143`）、`startCapture`（`:234`）和 `networkDiagnostics`（`:365`）显式 `await` 了弹窗返回值，整条命令被挂死在用户交互上。
+
+### 3. 为什么并发 `notifications.clearAll` 不是合法解法（伪造假绿）
+- 对照组实测：在命令触发后并发发送 `notifications.clearAll` 或 `closeQuickOpen`，`startCapture` 与 `networkDiagnostics` 会在 ~200ms 返回，**但返回值均为 `undefined`**；
+- 这意味着它走入的是代码中 `if (!action) return;` / `if (!networkAddress) return;` 的**用户取消分支**，核心业务逻辑（设备连接、参数构造、数据采集、网络诊断）一行都没有跑过！
+- 若以此判绿，是将“用户取消了操作”伪装成“功能被验证通过”，属于最危险的假绿。
+
+### 4. `connectDevice` 前置耗时特性
+- 对照组实测：`connectDevice` 在弹窗前会先调用 `hardwareDriverManager.detectHardware()` 探测 5 个硬件驱动；
+- 在无真机环境下，各驱动等待超时（`detectorTimeout = 5000ms`），整个检测过程耗时约 5.5s；
+- 弹窗在第 5 秒末才出现，因此并发 200ms 的 `clearAll` 根本打不到弹窗上，依然在 6015ms 超时挂死。
+
+---
+
 ## 七、目录结构
 
 ```
