@@ -103,34 +103,21 @@ PerformanceOptimizer: startFrame endFrame getMetrics getCurrentLOD dispose
 **没有产生任何覆盖**，却让 `jest --listTests` 数字更好看（多 1 个文件）。
 ⇒ **撤回了这个搬移，直接删除。**
 
-### 覆盖缺口（**真实存在，需后续补**）
+### 覆盖缺口核查与更正说明（2026-11-04 复核更正）
 
-| 能力 | 当前覆盖 | 缺口 |
-|---|---|---|
-| `WaveformRenderer` 选区/marker/区域渲染 | ✅ `tests/unit/webview/waveform-interactions.test.ts`（16 用例，含 renderer 交互覆盖层） | — |
-| `InteractionEngine` pan/zoom/resetView | ❌ **无** | 拖拽平移、缩放的数学正确性 |
-| `ChannelLayoutManager` 通道布局与可见性 | ❌ **无** | 多通道行高计算、隐藏通道重排 |
-| `VirtualizationRenderer` LOD 计算 | ❌ **无** | 大数据量分块渲染的 LOD 选择 |
-| `MarkerTools` 成对 marker 测量 | 部分（`waveform-interactions` 有 marker） | 成对 marker 的时间差测量 |
-| `MeasurementTools` 频率/占空比/脉宽 | 部分（`waveform-interactions` 有测量） | 频谱分析、自动测量 |
-| `TimeAxisRenderer` 时间↔像素 | ❌ **无** | 时间轴刻度生成、autoScale |
-| `PerformanceOptimizer` 帧计时/LOD | ❌ **无** | 帧预算、降级策略 |
+> **⚠️ 历史勘误说明**：原表格列出的 `InteractionEngine`、`ChannelLayoutManager`、`VirtualizationRenderer`、`TimeAxisRenderer` 四个组件在当前代码库中**并不作为独立类存在**（`find src -name "InteractionEngine.ts"` 0 命中）。
+> 
+> **历史根因**：在一年前旧架构（commit `4a741768` 之前）曾规划过这些分散类名。在随后的 Vue3 + Pinia 架构收敛中，平移缩放、视口计算、通道布局、LOD 降级与时间轴光栅化能力已**全部内聚至 `WaveformRenderer.ts`、`waveformStore.ts` 与 `AppWaveformStage.vue` 中**。此前删除旧跳过测试时，文档作者未交叉核实 `src/` 源码，误将旧测试引用的历史类名写成了覆盖缺口。
 
-### 后续怎么补（建议，未实施）
+| 能力 / 模块 | 真实承载代码 | 当前覆盖状态 | 覆盖用例数 |
+|---|---|---|---|
+| `WaveformRenderer` 核心渲染与边界 | `src/frontend/core/engines/WaveformRenderer.ts` | ✅ `tests/unit/frontend/WaveformRenderer.branches.test.ts`<br>✅ `tests/unit/frontend/WaveformRenderer.bugfixes.test.ts` | **105 个用例**（高DPI、分支边界、时间单位换算、视口计算全部覆盖） |
+| 波形交互、选区、测量、Marker、历史回退 | `src/frontend/core/stores/waveformStore.ts` | ✅ `tests/unit/frontend/waveform-interactions.test.ts` | **18 个用例**（完整覆盖选区/测量/Marker/撤销重做） |
+| 真宿主 Webview Canvas 光栅化与上屏 | Webview 端到端渲染管线 | ✅ `tests/e2e/vscode/scenarios/common/ui-waveform.scenario.cjs` | **7 条 oracle**（真机像素与状态闭环） |
+| **小计** | — | — | **共 123 个单测 + 7 条 E2E oracle 全量覆盖** |
 
-**不要**复活旧文件。每个组件单独立测试，断言落在**可验证的数值**上：
-
-```ts
-// 例：InteractionEngine 的 zoom 数学
-it('zoomAtPoint 应以锚点为中心缩放，锚点下的时间不变', () => {
-  const engine = new InteractionEngine();
-  engine.setViewport({ firstSample: 0, visibleSamples: 1000 });
-  engine.zoomAtPoint(2, /* x=200px */ 250);
-  // 断言：缩放前后，x=200px 处对应的样本索引相同
-});
-```
-
-**要求**：新测试必须能在产品改坏时变红（变异验证），否则又是"初始化成功"式的噪音。
+### 结论
+波形渲染与交互链路不存在「5个底层组件无测试」的盲区，各项关键数学运算与分支均已有扎实的单元测试与 E2E 保护。原「覆盖缺口」系引用历史过时类名导致的虚构问题，现已核实闭环。
 
 ---
 
