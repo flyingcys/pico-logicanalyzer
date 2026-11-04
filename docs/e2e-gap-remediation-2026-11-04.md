@@ -210,7 +210,20 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
    - 后果：项 3 删 1/2/3/4 时，该测试里的「通道控制 (4)1切换通道1…」断言会一起变，
      才发现同一个提交里绑了两个议题。
    - **规矩**：加分项先问，验收方有权不接；已接受的，必须在下一项交付里**显式说明连带影响**。
-7. **⚠️ 验收方的变异验证不得在共享工作区做**（2026-11-04 实际踩到）
+7. **每项交付必须跑「全量单测」，贴汇总行**（2026-11-04 项 4/5 实际踩到）
+   - 项 4 给 `resolveNetworkStabilityConfig` 加 `maxRetries` 后，
+     `tests/unit/extension/LACEditorProvider.coverage.test.ts:2205` 的 `toEqual` 精确比对变红。
+     **05 报告「4 个相关套件 145 passed」不含该文件；b3 验收也只跑了两个文件 —— 双方都漏。**
+   - 该红测试一路活到项 5，直到 b3 跑 `npx jest tests/unit` 才暴露。
+   - **根因不是「忘改一条断言」，是验证矩阵一直是「跑我改的那几个文件」而不是「跑全量」。**
+     同族模式已出现两次（项 2→3 的 `ShortcutHelpDialog` 绑死风险、项 4 的 `maxRetries` 漏网）。
+   - **规矩**：每项交付贴 `npx jest tests/unit` 的 `Tests:` 汇总行；不只是改动的文件。
+8. **`pre-commit` 从不跑单测**（2026-11-04 查清）
+   - `package.json` 的 `validate:local` 里是 `ci-test-runner --layer=quick --dry-run`，
+     **`--dry-run` 只打印计划，不真跑测试**。
+   - 所以红测试无法被 pre-commit 拦住。这是结构性问题，**改它会显著拖慢提交，属独立议题**，
+     与项 6（e2e 进 CI）一起评估，不混入任何单项。
+9. **⚠️ 验收方的变异验证不得在共享工作区做**（2026-11-04 实际踩到）
    - b3 在 05 的工作区直接 `sed -i` 打 MUTANT 补丁做验收，与 05 自己的变异实验撞车，
      双方备份链脱节，一度分不清「谁还原失败了」。
    - **正确做法**：`cp -r <repo> /tmp/verify-<ts>/` 用隔离副本；或采信对方的原始输出 + 要求能复跑。
@@ -227,7 +240,8 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 | 2 | P0-1b 删 Ctrl+Shift+M | ✅ 已验收 | `a2c4639f` | 产品源码零残留；b3 隔离副本反向变异（加回声明）→ 注册表 + 用户可见清单**双层同时击红** |
 | 3 | P0-1c 删 1/2/3/4 | ✅ 已验收 | `6c67cb3d` | 产品源码零残留（含 `triggerChannelToggle` 死代码）；b3 隔离副本反向变异 → 双层同时击红；`ShortcutHelpDialog` 测试改为模式匹配断言 |
 | 4 | P0-2b maxRetries | ✅ 已验收 | `1e12627c` | fallback=5；b3 三个变异（M1 fallback→3 / M2 删读取 / **M3 删调用点**）全部击红。05 额外自查出 `Extension.coverage.test.ts:285` 的 `toEqual` 也会红，并加哨兵值 7 锁住调用点 |
-| 5 | P0-2a defaultSampleRate（选项 1） | 🔄 实现中 | — | 5 处改动；**a4-3 `browserHost.ts` 最易漏**（web-app 入口，测试薄） |
+| 5 | P0-2a defaultSampleRate（选项 1） | 🔄 第一次已验收（a1/a2/a3） | `e3747f35` | b3 两个真宿主变异正交：M1 写死→只红①②、M2 fallback 漂移→只红③，三条判据各自独立。a4 跨端契约待做 |
+| 5b | 补项 4 漏网断言（`LACEditorProvider.coverage.test.ts:2205`） | 🔄 待修 | — | 项 4 加 `maxRetries` 后此条 `toEqual` 变红，被双方漏检 |
 | 6 | P1-1 e2e 进 CI | ⬜ 待实现 | — | — |
 | 7 | P1-2 needsHardware 门控 | ⬜ 待实现 | — | — |
 | 8 | P2-1 mock 改由 webview 驱动 | ⬜ 待实现 | — | — |
