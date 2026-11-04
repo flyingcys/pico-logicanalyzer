@@ -539,6 +539,10 @@ describe('LogicAnalyzerDriver 核心驱动逻辑测试', () => {
       });
 
       await driver.connect();
+      // 本组用例只验采集启动请求与状态，不验二进制帧接收；
+      // 真实 startDataReading 会注册 60s 超时定时器且不在此处清理，
+      // Jest 结束后触发回调访问 mock stream 上不存在的 off() 会崩进程。
+      jest.spyOn(driver as any, 'startDataReading').mockImplementation(() => {});
     });
 
     it('应该正确启动Edge触发采集', async () => {
