@@ -1,5 +1,13 @@
 # VSCode 逻辑分析器插件 - 开发任务清单
 
+> 📦 **【历史归档文档 / HISTORICAL ARCHIVE】**
+> - **原文档基线日期**：2026-04-28（早期开发规划与分阶段路线图）
+> - **归档说明**：本文档为 2025–2026-04 阶段的初始架构验证清单与历史路线图。文档中大量“未完成/占位”项（如 Webview 基础通信、多硬件统一数据格式、基础解码器移植、8个文件的旧 utest/mocks 迁移等）**早已在后续版本中全部解决，成为当前仓库的成熟基础设施**。
+> - **当前有效信息索引**：
+>   - 当前测试架构与运行：[`tests/e2e/vscode/README.md`](../tests/e2e/vscode/README.md) 与 [`docs/test-architecture-2026-11-03.md`](test-architecture-2026-11-03.md)
+>   - 当前待裁定事项：[`docs/open-decisions-2026-11-03.md`](open-decisions-2026-11-03.md)
+>   - 当前真实覆盖缺口：[`docs/test-coverage-gaps-2026-11-03.md`](test-coverage-gaps-2026-11-03.md)
+
 ## 当前修正结论（2026-04-28）
 
 本文件保留历史阶段任务，但大量“已完成”“生产级”“100%”结论来自早期计划或阶段总结，不能直接作为当前发布状态。最新深度 review、风险排序和后续任务总清单见 `docs/code-review-and-next-tasks-2026-04-28.md`。当前摘要：

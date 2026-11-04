@@ -1,5 +1,13 @@
 # 剩余任务规范 (Remaining Tasks Spec) & Subagent 并行/串行计划
 
+> 📦 **【历史归档文档 / HISTORICAL ARCHIVE】**
+> - **原文档基线日期**：2026-07-22
+> - **归档说明**：本文档记录的是 2026-07 阶段的类型安全清理与协议解码器补全规划。文档中列出的主要待办（7 种协议解码器、any 降到 0、资源泄漏清理、数据库配置同步等）**已在 2026-07-22 阶段全部完成并闭环**（见文末 §3.2 执行状态更新）。
+> - **当前有效信息索引**：
+>   - 最新待裁定与产品决策：[`docs/open-decisions-2026-11-03.md`](open-decisions-2026-11-03.md)
+>   - 最新 E2E 覆盖矩阵与缺陷：[`docs/e2e-coverage-matrix-2026-11-03.md`](e2e-coverage-matrix-2026-11-03.md) 与 [`docs/e2e-found-product-bugs-2026-11-03.md`](e2e-found-product-bugs-2026-11-03.md)
+>   - 当前真实覆盖缺口：[`docs/test-coverage-gaps-2026-11-03.md`](test-coverage-gaps-2026-11-03.md)
+
 根据 @docs/当前项目问题清单.md (2026-07-22 更新后) 整理的未完成内容，按优先级和模块分类。已排除已完成项（如 SaleaeLogicDriver.ts、DecoderBenchmark.ts、extension.ts、TypeScriptCodeGenerator.ts、DatabaseManager.ts、StreamingDecoder.ts 等）。
 
 所有文档使用中文，计划遵循 TDD + 并行 subagent 原则：独立模块并行，避免写面重叠；依赖关系串行；每个 subagent 独立 review 通过后再合并。
