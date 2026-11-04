@@ -1414,11 +1414,6 @@ export const vsCodeAPI = new VSCodeAPI();
         "default": 10000000,
         "description": "Maximum buffer size in samples"
       },
-      "logicAnalyzer.autoDetectDevices": {
-        "type": "boolean",
-        "default": true,
-        "description": "Automatically detect connected devices"
-      },
       "logicAnalyzer.theme": {
         "type": "string",
         "enum": ["light", "dark", "auto"],
@@ -1465,10 +1460,6 @@ class Configuration {
   
   get maxBufferSize(): number {
     return this.get<number>('maxBufferSize') || 10000000;
-  }
-  
-  get autoDetectDevices(): boolean {
-    return this.get<boolean>('autoDetectDevices') ?? true;
   }
   
   get theme(): 'light' | 'dark' | 'auto' {

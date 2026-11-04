@@ -308,12 +308,15 @@ override async sendNetworkConfig(...): Promise<boolean> {
 
 ### D-11：Webview 侧栏「扫描网络」硬编码 `timeoutMs: 5000`，不遵从 `logicAnalyzer.network.scanTimeoutMs` 工作区配置
 
+> **状态：✅ 已修（2026-11-04，T6/T7 阶段）** —— 前端去掉硬编码（传 `{}`），宿主实现 4 项配置缺省兜底，e2e 双判据（耗时与载荷解耦）均通过。
+
 | 字段 | 内容 |
 |---|---|
 | 严重度 | Important（**配置被前端硬编码吞掉，双入口行为分裂**） |
 | 发现方式 | 真实探针对照 `_probe-sidebar-scan-config`（2026-11-04） |
+| 解决时间 | 2026-11-04 |
 | 涉及文件 | `src/frontend/app/components/AppSidebarLeft.vue:127`<br>`src/providers/LACEditorProvider.ts:877` |
-| 对应 e2e 判据 | `network-scan` 场景的 `sidebar-scan-honors-config`（当前 **fail**，真实红） |
+| 对应 e2e 判据 | `network-scan` 场景的 `sidebar-scan-honors-config` 与 `sidebar-payload-decoupled`（均 **pass**） |
 
 #### 现状与根因
 - **前端硬编码**：`AppSidebarLeft.vue:127` 点击「扫描网络」时调用 `captureCommands.scanNetworkDevices({ timeoutMs: 5000 })`，直接把 5000ms 写死在代码中。
@@ -354,7 +357,36 @@ override async sendNetworkConfig(...): Promise<boolean> {
      ```
    - **最终效果**：常规扫描自动遵从工作区配置（1200ms 立即生效）；若调用方显式指定了 `timeoutMs` 则原样放行，互不干扰。
 
-**当前处置**：在产品修复前，e2e 场景通过 `sidebar-scan-honors-config` 判据真实报红（EXIT=1），待产品按照 A+B 修复后自动转绿。
+**修复记录**：
+1. `src/frontend/app/components/AppSidebarLeft.vue:127`：移除硬编码 `{ timeoutMs: 5000 }`；
+2. `src/providers/LACEditorProvider.ts:873-908`：对 `scanTimeoutMs`、`maxConcurrentConnections`、`defaultPorts`、`enableBroadcastDiscovery` 4 项参数完成缺省合并；
+3. `tests/e2e/vscode/scenarios/common/network-scan.scenario.cjs`：设立耗时基准双判据与载荷解耦判据，单测与真实 e2e 均绿。
+
+---
+
+### D-12：`detectHardware()` 在无硬件环境下固定耗时 5.5s 的架构决策 —— **本轮不改（决策非遗漏）**
+
+> **状态：🔒 维持现状（用户裁定不改，2026-11-04）**
+> - **裁定结论**：本轮不改动 5.5s 探测时序与侧栏无缓存刷新参数；已作为架构既有事实留痕记录，明确本轮不改是决策不是遗漏。
+
+| 字段 | 内容 |
+|---|---|
+| 严重度 | Minor / Architecture Decision（非功能缺陷，系冷探测超时防护） |
+| 发现时间 | 2026-11-04（UI 侧边栏场景基准耗时摸底） |
+| 涉及模块 | `src/services/DeviceManager.ts`（`detectHardware`）<br>`src/frontend/app/components/AppSidebarLeft.vue:221`<br>`src/providers/LACEditorProvider.ts:932` |
+
+#### 现象与排查事实
+在无真实硬件连接的测试与日常开发环境下，触发硬件检测固定耗时约 5.5 秒（5500ms），排查确认如下事实：
+1. **并发探测与超时保护**：`DeviceManager.detectHardware()` 内部通过 `Promise.race` 并发调用 5 类硬件探测器（Pico、FT232、FX2、DSLogic、Network）。网络与特定总线探测器在丢包/SYN 黑洞环境下，必须依赖内部设定的 `detectorTimeout = 5000ms` 进行超时兜底。5000ms 超时加上上下文切换与结果聚合耗时，形成了稳定的 5.5s 执行周期。
+2. **侧栏显式穿透缓存**：`DeviceManager` 本身实现了 30 秒有效期的 `detectionCache`。但在 Webview 侧栏中，用户点击「检测」按钮（`AppSidebarLeft.vue:221` -> `LACEditorProvider.ts:932`）时，显式传递了 `detectHardware(false)`（`useCache: false`），强制绕过缓存执行全量重扫。
+3. **单测覆盖缺失**：当前测试套件中，对硬件探测器的单元测试绝大部分依赖 mock（模拟探测成功或快速返回空数组），真实探测器在真实网络/物理接口上的超时降级行为缺少专门的自动化测试保护。
+
+#### 为什么裁定「本轮不改」
+1. **防范弱网环境误判漏检**：若草率缩短 `detectorTimeout`（如从 5000ms 降至 1000ms），在真实用户的高延迟网络环境或响应较慢的嵌入式硬件上，将直接导致合法设备被误判为「未连接」；
+2. **侧栏「检测」按钮语义要求真实穿透**：用户在侧栏主动点击「检测」按钮的真实心理预期是「我已经插上了设备，请立刻帮我重新检测」，若去掉 `useCache: false` 而复用 30 秒缓存，将导致用户即使插入设备后反复点击检测仍然显示未连接，严重损害交互可信度；
+3. **无真实硬件单测护航下的回归风险**：在缺乏真实物理探测器回归保护的前提下改动核心探测时序，收益仅是无设备环境缩短几秒空转，风险却是可能导致真实设备连接通道失效。
+
+**结论**：保持 5.5s 探测与无缓存刷新逻辑不变。后续若需优化，应在引入硬件仿真器/微秒级套接字探活架构后，再作为独立专项推进。
 
 ---
 
@@ -433,6 +465,7 @@ Tests:       2472 passed, 2472 total          ← 用例 100% 通过
 | D-9 | 网络驱动发 JSON、固件只认二进制帧（WiFi 采集从未可用） | **Critical** | **C′**（改指向 `LogicAnalyzerDriver`，保留旧类 `@deprecated`） | ✅ **已修（2026-11-04）** |
 | D-10 | `sendNetworkConfig` 网络模式直接返回 false ⇒ `configureWiFi` 对网络设备无效 | Important | 移除 `_isNetwork` 短路，网络串口走同一套 0x02 帧 | ✅ **已修（2026-11-04）** |
 | D-11 | Webview 侧栏扫描硬编码 5000ms 不遵从配置 | Important | **A+B**（前端去掉硬编码 + 宿主缺省兜底） | ✅ **已修（2026-11-04）** |
+| D-12 | detectHardware() 5.5s 探测与侧栏无缓存刷新 | Minor | 维持现状（决策非遗漏，防弱网漏检真实设备） | ✅ **维持现状（2026-11-04）** |
 | D-4 | 真机 e2e（烧固件） | — | 取决于你 | ⏸ |
 | D-5 | 继续加 UI 场景 | — | **暂停** | ⏸ |
 | ~~D-6~~ | ~~10 个红的 unit 套件~~ | — | **已消解**（合并远程后 2472 用例全过） | ✅ 无需裁定 |

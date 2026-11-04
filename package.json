@@ -139,11 +139,6 @@
     "configuration": {
       "title": "Logic Analyzer",
       "properties": {
-        "logicAnalyzer.autoDetectDevices": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically detect connected logic analyzer devices"
-        },
         "logicAnalyzer.defaultSampleRate": {
           "type": "number",
           "default": 24000000,
