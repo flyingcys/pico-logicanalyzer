@@ -49,7 +49,9 @@ const {
   sweepStaleProfileDirs,
 } = require("./profile.cjs");
 const { evaluateExitCode } = require("./knownIncompleteGate.cjs");
+const { detectHardwareAvailability } = require("./hardwareProbe.cjs");
 const knownIncomplete = require("./known-incomplete.cjs");
+const knownHardwareScenarios = require("./known-hardware-scenarios.cjs");
 const scenarios = require("../scenarios/index.cjs");
 
 const e2eRoot = resolve(__dirname, "..");
@@ -162,7 +164,46 @@ async function main() {
   const declaredCommands = readDeclaredCommands(repoRoot);
   const summary = [];
 
+  // ---- 硬件可用性：只探测一次；needsHardware 场景据此诚实跳过并留痕 ----
+  const needsHardwareScenarios = selected.filter(s => s.needsHardware === true);
+  const hardwareScenarioIds = needsHardwareScenarios.map(s => s.id);
+  let hardwareAvailability = null;
+  if (needsHardwareScenarios.length > 0) {
+    hardwareAvailability = await detectHardwareAvailability();
+    console.log(
+      `\n🔌 硬件探测：${hardwareAvailability.available ? "可用" : "不可用"} —— ${hardwareAvailability.reason}`
+    );
+  }
+
   for (const scenario of selected) {
+    // 硬件门控：不启动宿主，生成诚实的 not_exercised 记录（必须留痕，不能静默跳过）
+    if (scenario.needsHardware === true && hardwareAvailability && !hardwareAvailability.available) {
+      console.log(`\n▶ 场景 ${scenario.id} —— ${scenario.title || ""}`);
+      console.log(`  ⏭️  跳过（无硬件）：${hardwareAvailability.reason}`);
+      summary.push({
+        scenarioId: scenario.id,
+        overall: "not_exercised",
+        hardwareGated: true,
+        oracles: [
+          {
+            id: "hardware-unavailable",
+            status: "not_exercised",
+            detail: `needsHardware: true，但${hardwareAvailability.reason}`,
+          },
+        ],
+        delegates: [],
+        counts: null,
+        hostError: null,
+        launchFailed: false,
+        reapedProcesses: 0,
+        // 没有启动宿主，也没有创建 profile，因此「已清理」为真（不是残留）
+        profileRemoved: true,
+        profileDirKept: null,
+      });
+      console.log("  ⚠️ hardware-unavailable — 未执行任何产品断言（见 summary.json）");
+      continue;
+    }
+
     let profileDir = createProfileDir();
     let resultPath = join(profileDir, "host-result.json");
     let workspaceDir = join(profileDir, "workspace");
@@ -435,6 +476,8 @@ async function main() {
     delegateProblems,
     options,
     registered: knownIncomplete,
+    hardwareRegistered: knownHardwareScenarios,
+    hardwareScenarioIds,
   });
 
   for (const message of verdict.problems) {
@@ -450,6 +493,9 @@ async function main() {
       console.log("\n✅ 全部场景通过");
     } else if (verdict.mode === "registered-incomplete") {
       console.log(`\n✅ 无 fail，且 ${verdict.matched} 条未完成项全部命中已登记白名单（已登记边界不构成失败）`);
+      if (verdict.hardwareSkipped > 0) {
+        console.warn(`\n⚠️ 另有 ${verdict.hardwareSkipped} 个已登记硬件场景因无硬件跳过，未执行任何产品断言`);
+      }
     } else {
       console.log("\n✅ 退出码 0（--allow-incomplete 仅本地排查用）");
     }

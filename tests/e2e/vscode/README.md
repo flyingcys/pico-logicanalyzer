@@ -83,6 +83,21 @@ oracles.delegate("not-executed:openAnalyzer", "有副作用，由 open-analyzer 
    ```
 2. 在 `scenarios/index.cjs` 里 `require` 一行
 3. 跑 `npm run test:e2e:list` 确认登记成功
+4. **若声明 `needsHardware: true`，还必须登记进 `lib/known-hardware-scenarios.cjs`**
+   （人工审核的快照，含 `scenarioId` / `reason` / `registeredAt`）
+
+> ⚠️ **`needsHardware: true` 不是「自动就算 not_exercised」**。
+> 无硬件时 runner 会**跳过该场景、不启动宿主**，但仍生成一条
+> `overall=not_exercised` 的 summary 记录（oracle 名 `hardware-unavailable`，
+> 原因写清探测了什么、没命中什么）—— 不允许静默跳过。
+>
+> **未登记却声明 `needsHardware: true` 会导致退出码非 0**（`EXIT=1`，点名未登记）。
+> 这条防的是「给任意场景加个 needsHardware 让它的 oracle 全部消失」的后门：
+> 想跳过就必须先人工审核登记，与 `known-incomplete.cjs` 同构。
+>
+> 硬件判定顺序（`lib/hardwareProbe.cjs`）：`LA_E2E_HARDWARE=1/0` 显式声明优先，
+> 未设置才真实探测串口，且只认产品同源 USB ID（`1209:3020` / `2E8A:0003`）；
+> 探测失败按**不可用**处理，绝不猜。
 
 **硬性要求**（review 会逐条核）：
 
@@ -387,13 +402,18 @@ tests/e2e/vscode/
 │   ├── profile.cjs     # profile 隔离、进程回收、残留清扫
 │   ├── oracles.cjs     # 结果契约（pass/fail/not_exercised/blocked + 最差状态汇总）
 │   ├── mockDevice.cjs      # 协议级模拟设备（严格按固件线协议实现）
-│   └── _selftest-mockDevice.cjs  # 模拟器自测（11 条，含与产品 serialize() 逐字节对账）
+│   ├── _selftest-mockDevice.cjs  # 模拟器自测（11 条，含与产品 serialize() 逐字节对账）
+│   ├── known-incomplete.cjs        # 已登记未完成项快照（人工审核）
+│   ├── known-hardware-scenarios.cjs # 已登记硬件场景快照（人工审核）
+│   ├── knownIncompleteGate.cjs     # 退出码判定（白名单/stale/硬件门控）
+│   ├── hardwareProbe.cjs           # 硬件可用性探测（env 优先，否则按 USB ID 探串口）
+│   └── _selftest-known-incomplete.cjs # 门禁自检（17 例，含硬件门控）
 ├── host-driver.cjs     # 宿主内入口（extensionTestsPath）
 ├── scenarios/
 │   ├── index.cjs       # 场景注册表（**单一来源**，新场景必须登记）
 │   ├── common/         # 与硬件无关
 │   │   └── _probe-fakegreen.scenario.cjs   # ⚠️ 防复发探针，见 §6.5
-│   └── hardware/       # 需要真机（默认 not_exercised）
+│   └── hardware/       # 需要真机（**声明 needsHardware: true 后还必须登记进 known-hardware-scenarios.cjs**，否则退出码非 0）
 └── artifacts/latest/   # 每次跑的 summary.json（可机读）
 ```
 

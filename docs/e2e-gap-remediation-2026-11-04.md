@@ -143,12 +143,13 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 
 | 字段 | 内容 |
 |---|---|
-| **缺陷** | `runner.cjs:91` 只 `console.log`，**不做任何运行时门控** |
-| **影响** | README 写的「`hardware/` 目录默认登记为 not_exercised」机制不存在；将来真机场景写 `needsHardware: true` 会在无硬件环境直接 fail |
-| **改动位置** | `tests/e2e/vscode/lib/runner.cjs` |
-| **判据** | 造一个 `needsHardware: true` 的场景，无硬件时记为 `not_exercised` 而非 `fail` |
-| **变异验证** | 删掉门控 → 该场景变成 `fail` |
-| **状态** | ⬜ 待实现 |
+| **缺陷** | `runner.cjs` 原先只 `console.log`，**不做任何运行时门控** |
+| **影响** | README 写的「`hardware/` 目录默认登记为 not_exercised」机制不存在；真机场景写 `needsHardware: true` 会在无硬件环境直接 fail |
+| **改动位置** | `lib/runner.cjs`、新增 `lib/hardwareProbe.cjs`、新增 `lib/known-hardware-scenarios.cjs`、`lib/knownIncompleteGate.cjs`、`lib/_selftest-known-incomplete.cjs`、README |
+| **判据** | ① 已登记硬件场景 + 无硬件 → 跳过但生成 `not_exercised` summary（`hardware-unavailable`），默认仍 EXIT=3 ② **未登记却声明 needsHardware → 非 0 并点名**（堵「加个标记让 oracle 消失」的后门）③ 登记表 stale（登记了但场景不存在/未声明）→ 非 0 ④ 硬件跳过项不参与白名单比对，但必须留痕 |
+| **变异验证** | ① 删掉门控 → 场景变 fail ② 给未登记场景加 `needsHardware: true` → EXIT 非 0 ③ 登记表写一个不存在的场景 → EXIT 非 0 ④ 已登记场景无硬件 → EXIT=0 且 summary 有记录、`profileRemoved=true` |
+| **实测要点** | `profileRemoved` 必须显式 `true`（未启动宿主即无残留），否则 gate 判为残留 → EXIT=1；子集运行（`--scenario`）时未跑到的登记项**不算 stale**，只对本次已执行场景强制 |
+| **状态** | 🔄 已实现，待验收 |
 
 ### 项 8 — P2-1：`network-capture-mock` 改由 webview 驱动
 

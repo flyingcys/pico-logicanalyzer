@@ -79,9 +79,21 @@ function run(name, overrides, expectations) {
   );
 
   run(
-    "3 清单 stale → 非 0 且点名",
-    { registered: [...REGISTRY, { scenarioId: "s9", oracleId: "o9", status: "blocked", reason: "r", registeredAt: "2026-11-05" }] },
-    { exitCode: 4, mode: "registry-mismatch", problemsInclude: ["白名单 stale", "s9/o9"] }
+    "3 清单 stale（已执行场景的登记项没出现）→ 非 0 且点名",
+    {
+      // s1 本次执行了，但登记的 s1/o-stale 没出现 ⇒ 真的 stale
+      registered: [...REGISTRY, { scenarioId: "s1", oracleId: "o-stale", status: "not_exercised", reason: "r", registeredAt: "2026-11-05" }],
+    },
+    { exitCode: 4, mode: "registry-mismatch", problemsInclude: ["白名单 stale", "s1/o-stale"] }
+  );
+
+  run(
+    "3b 子集运行：登记场景本次没跑 → 不算 stale",
+    {
+      // s9 本次根本没执行（--scenario 子集），其登记项未出现属于「没验」不是 stale
+      registered: [...REGISTRY, { scenarioId: "s9", oracleId: "o9", status: "blocked", reason: "r", registeredAt: "2026-11-05" }],
+    },
+    { exitCode: 0, mode: "registered-incomplete" }
   );
 
   run(
@@ -129,7 +141,99 @@ function run(name, overrides, expectations) {
     { exitCode: 3, mode: "default", problemsInclude: ["这不算通过"] }
   );
 
-  console.log("knownIncompleteGate 自检全部通过（10 例）");
+  // ---------------- 项 7：硬件场景门控 ----------------
+  const HARDWARE_REGISTRY = [
+    { scenarioId: "hw1", reason: "需要真机", registeredAt: "2026-11-05" },
+  ];
+  const HARDWARE_SKIPPED_RECORD = {
+    scenarioId: "hw1",
+    overall: "not_exercised",
+    hardwareGated: true,
+    oracles: [
+      { id: "hardware-unavailable", status: "not_exercised", detail: "LA_E2E_HARDWARE=0 显式声明无硬件" },
+    ],
+    delegates: [],
+    profileRemoved: true,
+    hostError: null,
+    launchFailed: false,
+  };
+
+  run(
+    "7-a 已登记硬件场景无硬件 → 跳过但 EXIT=0（白名单模式）",
+    {
+      summary: [...base.summary, HARDWARE_SKIPPED_RECORD],
+      hardwareRegistered: HARDWARE_REGISTRY,
+      hardwareScenarioIds: ["hw1"],
+    },
+    { exitCode: 0, mode: "registered-incomplete" }
+  );
+
+  run(
+    "7-b 未登记硬件场景 → EXIT=4 且点名（堵后门）",
+    {
+      summary: [...base.summary, { ...HARDWARE_SKIPPED_RECORD, scenarioId: "hw-rogue" }],
+      hardwareRegistered: HARDWARE_REGISTRY,
+      hardwareScenarioIds: ["hw1", "hw-rogue"],
+    },
+    { exitCode: 1, mode: "hard-failure", problemsInclude: ["未登记的硬件场景：hw-rogue"] }
+  );
+
+  run(
+    "7-c 登记表 stale（登记了但场景未声明 needsHardware）→ 非 0",
+    {
+      summary: [...base.summary, HARDWARE_SKIPPED_RECORD],
+      hardwareRegistered: [
+        ...HARDWARE_REGISTRY,
+        { scenarioId: "hw-gone", reason: "r", registeredAt: "2026-11-05" },
+      ],
+      hardwareScenarioIds: ["hw1"],
+    },
+    { exitCode: 1, mode: "hard-failure", problemsInclude: ["硬件场景登记表 stale：hw-gone"] }
+  );
+
+  run(
+    "7-d 硬件跳过项不污染白名单比对（无 stale/新增误报）",
+    {
+      summary: [...base.summary, HARDWARE_SKIPPED_RECORD],
+      hardwareRegistered: HARDWARE_REGISTRY,
+      hardwareScenarioIds: ["hw1"],
+    },
+    { exitCode: 0, mode: "registered-incomplete" }
+  );
+
+  run(
+    "7-e 被跳过的硬件场景 profileRemoved=true 不算残留",
+    {
+      summary: [...base.summary, { ...HARDWARE_SKIPPED_RECORD, profileRemoved: true }],
+      hardwareRegistered: HARDWARE_REGISTRY,
+      hardwareScenarioIds: ["hw1"],
+    },
+    { exitCode: 0, mode: "registered-incomplete" }
+  );
+
+  run(
+    "7-f 硬件跳过 + 默认模式 → EXIT=3 且点名硬件跳过",
+    {
+      summary: [...base.summary, HARDWARE_SKIPPED_RECORD],
+      hardwareRegistered: HARDWARE_REGISTRY,
+      hardwareScenarioIds: ["hw1"],
+      options: {},
+    },
+    { exitCode: 3, mode: "default", problemsInclude: ["因无硬件被跳过"] }
+  );
+
+  run(
+    "7-g 硬件跳过不能把「全 pass」洗成 all-pass",
+    {
+      summary: [scenario("s3", "pass", [{ id: "ok", status: "pass" }]), HARDWARE_SKIPPED_RECORD],
+      registered: [],
+      hardwareRegistered: HARDWARE_REGISTRY,
+      hardwareScenarioIds: ["hw1"],
+    },
+    { exitCode: 0, mode: "registered-incomplete" }
+  );
+
+  console.log("knownIncompleteGate 自检全部通过（17 例）");
 })().catch(error => {
   console.error("knownIncompleteGate 自检失败：", error);
   process.exit(1);
