@@ -32,6 +32,7 @@ module.exports = [
   require("./common/ui-trigger-config.scenario.cjs"),
   require("./common/ui-export-button.scenario.cjs"),
   require("./common/ui-decoder.scenario.cjs"),
+  require("./common/ui-decoder-spi.scenario.cjs"),
   require("./common/network-capture-mock.scenario.cjs"),
   // ⚠️ 探针场景：**默认不注册**，只在变异验证时显式打开
   //    （`LA_E2E_PROBE=1`）。
