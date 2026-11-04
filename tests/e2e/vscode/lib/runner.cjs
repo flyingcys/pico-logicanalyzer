@@ -48,6 +48,8 @@ const {
   removeProfileDir,
   sweepStaleProfileDirs,
 } = require("./profile.cjs");
+const { evaluateExitCode } = require("./knownIncompleteGate.cjs");
+const knownIncomplete = require("./known-incomplete.cjs");
 const scenarios = require("../scenarios/index.cjs");
 
 const e2eRoot = resolve(__dirname, "..");
@@ -70,12 +72,19 @@ const VSCODE_VERSION = "1.74.3";
 const MAX_INFRA_RETRIES = 2;
 
 function parseArgs(argv) {
-  const options = { scenarioIds: [], list: false, keepProfile: false, allowIncomplete: false };
+  const options = {
+    scenarioIds: [],
+    list: false,
+    keepProfile: false,
+    allowIncomplete: false,
+    allowRegisteredIncomplete: false,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--list") options.list = true;
     else if (arg === "--keep-profile") options.keepProfile = true;
     else if (arg === "--allow-incomplete") options.allowIncomplete = true;
+    else if (arg === "--allow-registered-incomplete") options.allowRegisteredIncomplete = true;
     else if (arg === "--scenario" && argv[i + 1]) {
       options.scenarioIds.push(argv[i + 1]);
       i += 1;
@@ -406,60 +415,51 @@ async function main() {
   );
   console.log(`\n📄 汇总：${summaryPath}`);
 
-  // ---- 退出码：**只有全 pass 才 0** ----
+  // ---- 退出码：由 knownIncompleteGate 统一判定 ----
   //
-  // ⚠️ `hostError` / `launchFailed` 必须独立参与判定，不能只看 `overall`。
+  // ⚠️ `hostError` / `launchFailed` / `fail` / delegate 对账 / profile 残留
+  // 一律硬失败，任何白名单开关都不能豁免（见 knownIncompleteGate.cjs）。
+  //
+  // 三种合法模式：
+  //  1. 默认：有任何非 pass → EXIT=3（"没验"不算通过，禁止伪装成 0）
+  //  2. --allow-incomplete：一刀切放行，仅供本地排查，CI 禁用
+  //  3. --allow-registered-incomplete：逐条比对 known-incomplete.cjs，
+  //     新增未登记 / 清单 stale 都返回 EXIT=4（机制化白名单，不靠枚举免责）
   //
   // 2026-11-03 实测的 Critical 假绿：场景在第一条 oracle 前抛异常 ⇒
-  // 结果 JSON 里 `oracles: []`、`overall` 由旧的零-oracle 逻辑算成 pass
-  // ⇒ 这条 if 不进 ⇒ 打印「✅ 全部场景通过」+ EXIT=0。
-  //
+  // 结果 JSON 里 `oracles: []`、`overall` 由旧的零-oracle 逻辑算成 pass。
   // 现在三层都收紧了（oracles 零条 → not_exercised；host-driver 用 hostError
-  // 覆盖 overall；runner 这里再兜一道），任何一层漏掉都不会让崩溃变成绿。
-  if (summary.some(s => s.hostError && s.overall === "pass")) {
-    console.error(
-      "\n❌ 有场景 overall=pass 但 hostError 非空 —— 这是不可能同时成立的组合，" +
-        "说明某一层的降级逻辑被绕过了"
-    );
-    return 1;
-  }
-  if (summary.some(s => s.launchFailed && s.overall === "pass" && !s.hostError)) {
-    console.error("\n❌ 有场景宿主没启动成功却报了 pass（launchFailed 未参与判定）");
-    return 1;
-  }
-  if (summary.some(s => s.overall === "fail")) {
-    console.error("\n❌ 有场景失败");
-    return 1;
-  }
-  if (!options.keepProfile && summary.some(s => !s.profileRemoved)) {
-    console.error("\n❌ 有 profile 目录未被清理（残留）");
-    return 1;
-  }
-  if (delegateProblems.length) {
-    console.error("\n❌ delegate 对账失败（见上）—— 有覆盖率被「交给」了没接住的场景");
-    return 1;
-  }
-  if (summary.some(s => s.overall !== "pass")) {
-    /**
-     * ⚠️ **这里必须非 0**，不能 `return 0`。
-     *
-     * 参考仓踩过「全 skip 也算 EXIT=0」——把「没验」伪装成「验过了」。
-     * 只要有任何场景不是 pass，本次运行就**不是一个"通过"的证据**，
-     * 让 CI 拿到 0 等于允许它把未验证当成已验证。
-     *
-     * 想"只看有没有 fail"的场景，用 `--allow-incomplete` 显式声明 ——
-     * **要留痕**，不能让默认行为悄悄变成 0。
-     */
-    console.warn("\n⚠️ 无 fail，但有 not_exercised / blocked —— 这不算通过");
-    if (!options.allowIncomplete) {
-      console.error("  （如需只看 fail，加 --allow-incomplete；但那不构成通过证据）");
-      return 3;
+  // 覆盖 overall；gate 这里再兜一道），任何一层漏掉都不会让崩溃变成绿。
+  const verdict = evaluateExitCode({
+    summary,
+    delegateProblems,
+    options,
+    registered: knownIncomplete,
+  });
+
+  for (const message of verdict.problems) {
+    if (message.startsWith("有场景") || message.startsWith("场景 ") || message.startsWith("白名单") || message.startsWith("新增") || message.startsWith("delegate") || message.startsWith("有 profile")) {
+      console.error(`\n❌ ${message}`);
+    } else {
+      console.warn(`\n⚠️ ${message}`);
     }
-    console.warn("  --allow-incomplete 已指定：本次退出码不反映「未验证」部分");
+  }
+
+  if (verdict.exitCode === 0) {
+    if (verdict.allPassed) {
+      console.log("\n✅ 全部场景通过");
+    } else if (verdict.mode === "registered-incomplete") {
+      console.log(`\n✅ 无 fail，且 ${verdict.matched} 条未完成项全部命中已登记白名单（已登记边界不构成失败）`);
+    } else {
+      console.log("\n✅ 退出码 0（--allow-incomplete 仅本地排查用）");
+    }
     return 0;
   }
-  console.log("\n✅ 全部场景通过");
-  return 0;
+
+  if (verdict.mode === "default") {
+    console.error("  （如需只看 fail，加 --allow-incomplete；CI 请用 --allow-registered-incomplete）");
+  }
+  return verdict.exitCode;
 }
 
 main()

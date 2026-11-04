@@ -41,6 +41,13 @@ jobs:
       - name: ESLint 检查
         run: npm run lint
 
+      # ⚠️ 必须紧贴单元测试之前：tests/unit/cli/CliExportCommand.test.ts
+      # 真进程导出需要 out/cli/index.js；CI 此前只 npm ci 不 build，
+      # 导致全量单测第一步就红、后面 6 个门禁从未执行（8 连红事故）。
+      # typecheck / strict / lint 不需要构建产物，先跑可以更快失败。
+      - name: 构建产物（CLI / extension / webview）
+        run: npm run build
+
       - name: 单元测试与覆盖率门禁（不含压力/性能/e2e）
         run: npm run test:unit -- --coverage
 
@@ -61,3 +68,27 @@ jobs:
 
       - name: VSIX 打包 dry run
         run: npm run package:dry
+
+      # ---- 真宿主 E2E（外进程启动 VS Code 1.74.3，约 98 秒）----
+      - name: 安装 xvfb（真宿主 E2E 需要虚拟显示）
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: 缓存 VS Code 测试宿主
+        uses: actions/cache@v4
+        with:
+          path: .vscode-test
+          key: vscode-test-1.74.3-${{ runner.os }}
+
+      # ⚠️ 顺序不可调整：npm run build 的 clean 会抹掉 out/e2e-libs/，
+      # 所以 build:e2e-libs 必须在 build 之后、e2e 之前单独跑。
+      # 调序会让 network-capture-mock 等 needsE2eLibs 场景静默失效。
+      - name: 构建 E2E 依赖库（build 之后必须重建）
+        run: npm run build:e2e-libs
+
+      - name: 真宿主 E2E（14 场景 / 107 oracle）
+        # 禁止 continue-on-error：fail / hostError / delegate 对账 /
+        # 新增未登记或 stale 的未完成项都会返回非 0。
+        # EXIT=0 代表「无 fail，且所有非 pass 项都命中已登记白名单」。
+        # ⚠️ 用 test:e2e:noxvfb + 单层 xvfb-run：test:e2e 脚本本身已带
+        # xvfb-run，再套会产生无意义嵌套；但 noxvfb 脚本仍需外层虚拟显示。
+        run: xvfb-run -a npm run test:e2e:noxvfb -- --allow-registered-incomplete
