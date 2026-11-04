@@ -166,6 +166,97 @@ module.exports = {
       }
     }
 
+    // ---- 4b. 两条「无副作用前置分支」的命令：真执行 + 断言发出的通知 ----
+    //
+    // ⚠️ 2026-11-04 修正：这两条原先登记为 `not_exercised`，理由是
+    //    「`await showWarningMessage` ⇒ 真宿主永不 resolve」。
+    //    **该理由对这两条是错的** —— 实测（探针 `_probe-notify-commands`）：
+    //      ✅ repeatCapture    → 返回 undefined，通知「没有可重复执行的采集配置」
+    //      ✅ configureWiFi    → 返回 undefined，通知「请先连接到设备」
+    //    ⚠️ **判据是「能否在 10s 内返回」，不是「多快返回」。**
+    //       repeatCapture 实测 246–280ms（8 次采样），configureWiFi 0–1ms；
+    //       这只是环境噪声（xvfb / IO / 并发），**不可当基线，也不能用来推断机制**。
+    //       （不要用单次数值推断机制 —— 我曾凭一次 1502ms 编出"冷启动固有开销"的解释，
+    //         8 次采样后证伪。）
+    //    根因：这两处 `showWarningMessage` **没有 await**（`extension.ts:282` / `:406`）；
+    //    而 `connectDevice`（`:140`）与 `startCapture`（`:234`）确实 `await` 了，那两条才真的挂。
+    //
+    // 判据落点是**产品发出的通知内容**，不是"命令没抛错" —— 后者太弱：
+    // 命令被改坏成空实现也能"没抛错"。
+    const notificationCases = [
+      {
+        command: "logicAnalyzer.repeatCapture",
+        oracleId: "executes:repeatCapture",
+        expected: "没有可重复执行的采集配置",
+        why: "无 lastCaptureConfig 时（本次会话从未采集过）",
+      },
+      {
+        command: "logicAnalyzer.configureWiFi",
+        oracleId: "executes:configureWiFi",
+        expected: "请先连接到设备",
+        why: "无已连接设备时",
+      },
+    ];
+
+    for (const item of notificationCases) {
+      const notifications = [];
+      const originals = {
+        showWarningMessage: vscode.window.showWarningMessage,
+        showInformationMessage: vscode.window.showInformationMessage,
+        showErrorMessage: vscode.window.showErrorMessage,
+      };
+      // 透明拦截：记录后**照原样调用真实实现**（不注入响应、不改返回值）
+      for (const key of Object.keys(originals)) {
+        vscode.window[key] = (...args) => {
+          notifications.push(String(args[0]));
+          return originals[key].apply(vscode.window, args);
+        };
+      }
+
+      let returned = false;
+      let elapsedMs = 0;
+      let thrown = null;
+      try {
+        const startedAt = Date.now();
+        await withTimeout(
+          vscode.commands.executeCommand(item.command),
+          10000,
+          `executeCommand(${item.command})`
+        );
+        elapsedMs = Date.now() - startedAt;
+        returned = true;
+      } catch (error) {
+        elapsedMs = Date.now() - (elapsedMs ? Date.now() - elapsedMs : Date.now());
+        thrown = String(error && error.message ? error.message : error);
+        returned = false;
+      } finally {
+        for (const key of Object.keys(originals)) {
+          vscode.window[key] = originals[key];
+        }
+      }
+
+      if (!returned) {
+        oracles.record(
+          item.oracleId,
+          "fail",
+          `${item.command} 未在 10s 内返回（${thrown}）—— 前置分支里出现了 await 弹窗`
+        );
+      } else if (!notifications.includes(item.expected)) {
+        oracles.record(
+          item.oracleId,
+          "fail",
+          `${item.command} 已返回，但未发出预期通知「${item.expected}」；` +
+            `实际通知：${notifications.length ? JSON.stringify(notifications) : "（无）"}`
+        );
+      } else {
+        oracles.record(
+          item.oracleId,
+          "pass",
+          `${item.command}（${item.why}）正常返回并发出「${item.expected}」（${elapsedMs}ms）`
+        );
+      }
+    }
+
     // ---- 5. 登记「本场景刻意不执行」的命令，并写明交给谁 ----
     //
     // 不做出无痕：不验也要留痕，否则后人会以为"漏了"而顺手补一条假绿。
@@ -201,11 +292,25 @@ module.exports = {
         ["scan-completes-in-budget", "config-takes-effect", "stats-observable"],
       ],
       // 下面几条**没有承接场景**，所以是真正的 not_exercised —— 原因必须可核实
-      ["connectDevice", "无设备时 await showWarningMessage ⇒ 真宿主永不 resolve（实测 2026-11-03）", null, null],
-      ["startCapture", "依赖已连接设备；且 getCaptureConfiguration() 走 showInputBox ⇒ 永不 resolve", null, null],
-      ["repeatCapture", "依赖 lastCaptureConfig（需先成功采集过一次）", null, null],
-      ["networkDiagnostics", "依赖网络扫描成功", null, null],
-      ["configureWiFi", "await showInputBox ⇒ 真宿主永不 resolve（实测 2026-11-03）", null, null],
+      //
+      // ⚠️ 2026-11-04 修正理由措辞：原来把「await 弹窗永不 resolve」这条原因
+      //    一并套给了 `repeatCapture` / `configureWiFi`，那是错的 —— 这两处的
+      //    `showWarningMessage` **没有 await**，已改为真执行（见上面 4b 段），
+      //    现在作为 `executes:*` oracle 记录。
+      //    保留在这里的是**真的会挂**的两条，以及与弹窗无关的两条。
+      [
+        "connectDevice",
+        "无设备时 `const action = await showWarningMessage(...)`（extension.ts:140）⇒ 真宿主永不 resolve（实测 2026-11-03）",
+        null,
+        null,
+      ],
+      [
+        "startCapture",
+        "依赖已连接设备；且 `getCaptureConfiguration()` 走 `await showInputBox` ⇒ 永不 resolve（extension.ts:234 同样是 await 弹窗）",
+        null,
+        null,
+      ],
+      ["networkDiagnostics", "依赖网络扫描成功且需要 `await showInputBox` 输入地址", null, null],
     ];
     for (const [name, reason, coveredBy, requires] of delegated) {
       if (coveredBy) {
