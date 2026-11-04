@@ -55,6 +55,8 @@ export interface FrontendBootstrapData {
   host: FrontendHostKind;
   document?: FrontendDocumentData;
   capabilities: FrontendCapabilities;
+  /** 宿主注入的默认采样率 (Hz)，供 web-app 的 status 传给前端表单。 */
+  defaultSampleRate?: number;
 }
 
 export interface HostMessageBase<TType extends string, TPayload> {

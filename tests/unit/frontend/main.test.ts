@@ -671,6 +671,65 @@ describe('bootstrap 初始化流程', () => {
 });
 
 describe('deviceStore 采集工作流状态', () => {
+  const makeLastCaptureConfig = (frequency: number) => ({
+    frequency,
+    preTriggerSamples: 100,
+    postTriggerSamples: 1000,
+    triggerType: 'Edge' as const,
+    triggerChannel: 0,
+    triggerInverted: false,
+    loopCount: 0,
+    measureBursts: false,
+    channels: [{ number: 0, name: 'CH1', enabled: true }]
+  });
+
+  it('applyStatus 优先级 A：有 lastCaptureConfig 时不能被 defaultSampleRate 覆盖', () => {
+    const actualPinia = jest.requireActual('pinia');
+    const { useDeviceStore } = jest.requireActual('../../../src/frontend/core/stores/deviceStore');
+    actualPinia.setActivePinia(actualPinia.createPinia());
+    const store = useDeviceStore();
+
+    store.applyStatus({
+      isConnected: true,
+      isCapturing: false,
+      lastCaptureConfig: makeLastCaptureConfig(8000000),
+      defaultSampleRate: 16000000
+    });
+
+    // 两个非默认值互不相同：若实现被 defaultSampleRate 覆盖会精确收到 16000000。
+    expect(store.captureConfig.frequency).toBe(8000000);
+  });
+
+  it('applyStatus 优先级 B：无 lastCaptureConfig 时应使用 defaultSampleRate', () => {
+    const actualPinia = jest.requireActual('pinia');
+    const { useDeviceStore } = jest.requireActual('../../../src/frontend/core/stores/deviceStore');
+    actualPinia.setActivePinia(actualPinia.createPinia());
+    const store = useDeviceStore();
+
+    store.applyStatus({
+      isConnected: true,
+      isCapturing: false,
+      defaultSampleRate: 16000000
+    });
+
+    // 非默认哨兵：忽略 defaultSampleRate / 写死 1000000 都会红。
+    expect(store.captureConfig.frequency).toBe(16000000);
+  });
+
+  it('applyStatus 优先级 C：两者都无时保持 1000000 兜底', () => {
+    const actualPinia = jest.requireActual('pinia');
+    const { useDeviceStore } = jest.requireActual('../../../src/frontend/core/stores/deviceStore');
+    actualPinia.setActivePinia(actualPinia.createPinia());
+    const store = useDeviceStore();
+
+    store.applyStatus({
+      isConnected: true,
+      isCapturing: false
+    });
+
+    expect(store.captureConfig.frequency).toBe(1000000);
+  });
+
   it('applyStatus 应保存设备、limits 和采集状态', async () => {
     const actualPinia = jest.requireActual('pinia');
     const { useDeviceStore } = jest.requireActual('../../../src/frontend/core/stores/deviceStore');
@@ -1993,7 +2052,8 @@ describe('vscodeHost 实现', () => {
           canExport: true,
           canStartCapture: true,
           canConnectDevice: true
-        }
+        },
+        defaultSampleRate: 1000000
       });
     });
   });
@@ -2872,6 +2932,45 @@ describe('deviceCaptureCommands', () => {
         content: '{"Settings":{},"Samples":[]}'
       });
       expect(notify.error).not.toHaveBeenCalled();
+    });
+  });
+
+  it('getStatus 注入 defaultSampleRate 后首次采集 payload 应带上配置值', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const actualPinia = jest.requireActual('pinia');
+      actualPinia.setActivePinia(actualPinia.createPinia());
+      const { useDeviceStore } = jest.requireActual('../../../src/frontend/core/stores/deviceStore');
+      const { createDeviceCaptureCommands } = await import(
+        '../../../src/frontend/app/composables/deviceCaptureCommands'
+      );
+
+      const deviceStore = useDeviceStore();
+      deviceStore.applyStatus({
+        isConnected: true,
+        isCapturing: false,
+        defaultSampleRate: 16000000
+      });
+      deviceStore.isConnected = true;
+
+      const host = {
+        sendCommand: jest.fn().mockResolvedValue({
+          success: true,
+          data: { isConnected: true, isCapturing: false }
+        })
+      };
+      const actions = createDeviceCaptureCommands({
+        host: host as any,
+        deviceStore,
+        sessionStore: { applyDocument: jest.fn() } as any,
+        notify: { error: jest.fn(), success: jest.fn() }
+      });
+
+      await actions.startCapture();
+
+      // 非默认哨兵：若 status 默认值未进入 captureConfig，payload 仍是 1000000。
+      expect(host.sendCommand).toHaveBeenCalledWith('startCapture', {
+        config: expect.objectContaining({ frequency: 16000000 })
+      });
     });
   });
 

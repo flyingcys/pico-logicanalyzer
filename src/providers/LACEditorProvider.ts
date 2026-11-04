@@ -314,6 +314,9 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
       fileName: path.basename(document.uri.fsPath),
       content: document.getText()
     };
+    const sampleRateConfig = typeof vscode.workspace?.getConfiguration === 'function'
+      ? vscode.workspace.getConfiguration('logicAnalyzer')
+      : undefined;
     const bootstrap = JSON.stringify({
       host: 'vscode',
       document: documentData,
@@ -322,7 +325,8 @@ export class LACEditorProvider implements vscode.CustomTextEditorProvider {
         canExport: true,
         canStartCapture: true,
         canConnectDevice: true
-      }
+      },
+      defaultSampleRate: sampleRateConfig?.get<number>('defaultSampleRate', 1000000) ?? 1000000
     }).replace(/</g, '\\u003c');
 
     return `<!DOCTYPE html>
@@ -1527,6 +1531,12 @@ ${webviewScriptTags}
     const currentDevice = hardwareDriverManager.getCurrentDevice();
     const currentDeviceInfo = hardwareDriverManager.getCurrentDeviceInfo();
     const deviceInfo = currentDevice?.getDeviceInfo();
+    // 与 extension.ts 的 readDefaultSampleRate 共用同一个 manifest 配置键，
+    // 让 Webview 首次采集表单与新建 .lac / 命令面板输入框保持同源。
+    const sampleRateConfig = typeof vscode.workspace?.getConfiguration === 'function'
+      ? vscode.workspace.getConfiguration('logicAnalyzer')
+      : undefined;
+    const defaultSampleRate = sampleRateConfig?.get<number>('defaultSampleRate', 1000000) ?? 1000000;
 
     return {
       isConnected: Boolean(currentDevice),
@@ -1545,7 +1555,8 @@ ${webviewScriptTags}
           maxTotalSamples: limit.maxTotalSamples
         }))
       } : null,
-      lastCaptureConfig: this.lastCaptureConfig ?? null
+      lastCaptureConfig: this.lastCaptureConfig ?? null,
+      defaultSampleRate
     };
   }
 

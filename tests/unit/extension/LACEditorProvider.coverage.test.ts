@@ -1520,6 +1520,21 @@ describe('executeHostCommand 命令分发', () => {
   });
 
   describe('createDeviceStatus', () => {
+    it('应向 Webview 注入 defaultSampleRate 配置（哨兵，非 fallback）', async () => {
+      const getMock = jest.fn((key: string, defaultValue?: unknown) => {
+        if (key === 'defaultSampleRate') return 16000000;
+        return defaultValue;
+      });
+      getConfiguration.mockReturnValue({ get: getMock });
+
+      const provider = createProvider();
+      const status = await (provider as any).createDeviceStatus();
+
+      expect(getConfiguration).toHaveBeenCalledWith('logicAnalyzer');
+      expect(getMock).toHaveBeenCalledWith('defaultSampleRate', 1000000);
+      expect(status.defaultSampleRate).toBe(16000000);
+    });
+
     it('无设备时 limits 应为 null', async () => {
       const provider = createProvider();
       const status = await (provider as any).createDeviceStatus();

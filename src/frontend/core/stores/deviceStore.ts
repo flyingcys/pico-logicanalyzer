@@ -4,6 +4,8 @@ export type FrontendTriggerType = 'Edge' | 'Fast' | 'Complex' | 'Blast';
 export type FrequencyJitterLevel = 'normal' | 'medium' | 'high';
 
 const DEFAULT_BLAST_FREQUENCY = 100_000_000;
+/** 与 package.json 的 logicAnalyzer.defaultSampleRate 保持一致；host 未提供时兜底。 */
+const DEFAULT_SAMPLE_RATE = 1_000_000;
 
 export interface FrontendCaptureChannelConfig {
   number: number;
@@ -57,6 +59,8 @@ export interface FrontendDeviceStatus {
   currentDevice?: FrontendDetectedDevice | null;
   limits?: FrontendDeviceLimits | null;
   lastCaptureConfig?: FrontendCaptureConfig | null;
+  /** 宿主注入的默认采样率；仅在无 lastCaptureConfig 时用于初始化采集表单。 */
+  defaultSampleRate?: number;
   error?: string;
 }
 
@@ -70,7 +74,7 @@ function createDefaultChannels(count = 8): FrontendCaptureChannelConfig[] {
 
 function createDefaultCaptureConfig(): FrontendCaptureConfig {
   return {
-    frequency: 1000000,
+    frequency: DEFAULT_SAMPLE_RATE,
     preTriggerSamples: 100,
     postTriggerSamples: 1000,
     triggerType: 'Edge',
@@ -202,13 +206,19 @@ export const useDeviceStore = defineStore('frontend-device', {
       this.error = status.error ?? '';
 
       if (status.lastCaptureConfig) {
+        // 优先级 A：上次采集配置最贴近用户意图，不能被 host 默认值覆盖。
         this.lastCaptureConfig = cloneCaptureConfig(status.lastCaptureConfig);
         this.captureConfig = normalizeCaptureConfig(
           cloneCaptureConfig(status.lastCaptureConfig),
           this.limits
         );
       } else {
-        this.captureConfig = normalizeCaptureConfig(this.captureConfig, this.limits);
+        // 优先级 B：host 注入的默认采样率（来自 VS Code / web-app 配置）。
+        // 优先级 C：两者都无时保持 store 自身的 DEFAULT_SAMPLE_RATE 兜底。
+        const baseConfig = typeof status.defaultSampleRate === 'number'
+          ? { ...cloneCaptureConfig(this.captureConfig), frequency: status.defaultSampleRate }
+          : this.captureConfig;
+        this.captureConfig = normalizeCaptureConfig(baseConfig, this.limits);
       }
 
       if (this.captureConfig.triggerType === 'Blast') {

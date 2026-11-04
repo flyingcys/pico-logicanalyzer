@@ -884,7 +884,10 @@ export function createBrowserHost(): HostAdapter {
     isCapturing,
     currentDevice,
     limits: currentDevice ? browserHostLimits : null,
-    lastCaptureConfig: lastCaptureConfig ? cloneCaptureConfig(lastCaptureConfig) : null
+    lastCaptureConfig: lastCaptureConfig ? cloneCaptureConfig(lastCaptureConfig) : null,
+    // web-app 与 vscode 插件共用同一套前端代码：bootstrap 携带的默认值
+    // 必须同样进入 status，否则 web-app 首次采集表单会与插件行为分裂。
+    defaultSampleRate: bootstrap.defaultSampleRate
   });
   const runSyntheticCapture = (payload: unknown): HostCommandResult<FrontendDeviceStatus & {
     capturedDocument: FrontendDocumentData;
@@ -1074,6 +1077,7 @@ export function readBrowserBootstrap(): FrontendBootstrapData {
   return {
     host: 'html',
     document: createDefaultDocument(),
-    capabilities: defaultCapabilities
+    capabilities: defaultCapabilities,
+    defaultSampleRate: 1000000
   };
 }

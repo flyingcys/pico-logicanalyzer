@@ -197,6 +197,7 @@ export function readVsCodeBootstrap(): FrontendBootstrapData {
   return {
     host: 'vscode',
     document: undefined,
-    capabilities: defaultCapabilities
+    capabilities: defaultCapabilities,
+    defaultSampleRate: 1000000
   };
 }

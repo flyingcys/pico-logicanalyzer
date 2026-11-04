@@ -26,6 +26,34 @@ describe('browserHost', () => {
     expect((result.data as { isConnected: boolean }).isConnected).toBe(false);
   });
 
+  it('getStatus 应携带 bootstrap 中的 defaultSampleRate（web-app 与插件同源）', async () => {
+    (global.window as Window & typeof globalThis & {
+      __FRONTEND_BOOTSTRAP__?: unknown;
+    }).__FRONTEND_BOOTSTRAP__ = {
+      host: 'html',
+      capabilities: {
+        canSave: true,
+        canExport: true,
+        canStartCapture: true,
+        canConnectDevice: true
+      },
+      defaultSampleRate: 16000000
+    };
+
+    try {
+      const host = createBrowserHost();
+      const result = await host.sendCommand('getStatus');
+      expect(result.success).toBe(true);
+      // 哨兵值 16000000（非 manifest default 1000000）：
+      // 删掉 browserHost.createStatus 的字段或写死 1000000 都必须红。
+      expect((result.data as { defaultSampleRate?: number }).defaultSampleRate).toBe(16000000);
+    } finally {
+      delete (global.window as Window & typeof globalThis & {
+        __FRONTEND_BOOTSTRAP__?: unknown;
+      }).__FRONTEND_BOOTSTRAP__;
+    }
+  });
+
   it('connectDevice 后应进入已连接状态', async () => {
     const host = createBrowserHost();
     const connectResult = await host.sendCommand('connectDevice', { type: 'serial' });
