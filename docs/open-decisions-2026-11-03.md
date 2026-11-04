@@ -283,14 +283,16 @@ network-capture-mock：12 条 oracle 全 pass（此前 6✅/2❌/1⚠️）
 
 ### D-10：`LogicAnalyzerDriver.sendNetworkConfig` 在网络模式直接返回 false —— `configureWiFi` 对网络设备无效
 
+> **状态：✅ 已修（2026-11-04，commit `afa3fff4`）** —— 移除 `this._isNetwork` 短路，网络与串口共用同一套 0x02 配置帧。单测已补充网络模式发送断言与变异验证。
+
 | 字段 | 内容 |
 |---|---|
 | 严重度 | Important |
 | 来源 | D-9 修复（C′）时的能力核查 |
-| 状态 | ⏸ **未修**（P2 待做） |
+| 状态 | ✅ **已修**（2026-11-04） |
 
 ```ts
-// src/drivers/LogicAnalyzerDriver.ts:310-313
+// src/drivers/LogicAnalyzerDriver.ts:310-313（修复前）
 override async sendNetworkConfig(...): Promise<boolean> {
   // 对于网络设备，不需要配置网络   ← 这个前提是错的
   if (this._isNetwork) {
@@ -300,15 +302,69 @@ override async sendNetworkConfig(...): Promise<boolean> {
 
 **为什么这个前提错**：`configureWiFi` 的真实用法是 ——
 **设备插在 USB 上，用户告诉它"连哪个 SSID、连上后用哪个 IP"，然后拔掉 USB 走无线。**
-所以恰恰是"USB 连着的设备"最需要它。当前写法把网络模式短路为 `false`，
+即使是已走网络连接的设备，重新配置 WiFi 也是合理运维动作。此前写法把网络模式短路为 `false`，
 导致 `logicAnalyzer.configureWiFi` 在网络设备上一律报"WiFi配置发送失败"。
 
 **固件侧是支持的**：`LogicAnalyzer.c:310-342` 的 `case 2` 完整处理
 `WIFI_SETTINGS_REQUEST`（33 字节 SSID + 64 字节密码 + 16 字节 IP + 2 字节端口），
 回 `SETTINGS_SAVED`。
 
-**修法**（P2）：去掉 `_isNetwork` 短路，让网络模式也发命令字节 2 的二进制帧；
-改正那句错误注释；补"串口 + 网络"两种模式的单测；变异验证（把短路改回去必须红）。
+**修复记录**：
+1. `src/drivers/LogicAnalyzerDriver.ts`：移除 `if (this._isNetwork) return false;` 短路；
+2. `tests/unit/drivers/LogicAnalyzerDriver.test.ts`：新增用例验证网络模式（`_isNetwork=true`）下同样组装并发送 0x02 二进制配置包；
+3. 变异验证：将短路恢复，网络模式测试用例确凿报红。
+
+---
+
+### D-11：Webview 侧栏「扫描网络」硬编码 `timeoutMs: 5000`，不遵从 `logicAnalyzer.network.scanTimeoutMs` 工作区配置
+
+| 字段 | 内容 |
+|---|---|
+| 严重度 | Important（**配置被前端硬编码吞掉，双入口行为分裂**） |
+| 发现方式 | 真实探针对照 `_probe-sidebar-scan-config`（2026-11-04） |
+| 涉及文件 | `src/frontend/app/components/AppSidebarLeft.vue:127`<br>`src/providers/LACEditorProvider.ts:877` |
+| 对应 e2e 判据 | `network-scan` 场景的 `sidebar-scan-honors-config`（当前 **fail**，真实红） |
+
+#### 现状与根因
+- **前端硬编码**：`AppSidebarLeft.vue:127` 点击「扫描网络」时调用 `captureCommands.scanNetworkDevices({ timeoutMs: 5000 })`，直接把 5000ms 写死在代码中。
+- **宿主零合并**：`LACEditorProvider.ts:877` 收到 `scanNetworkDevices` / `scanForDevices` 的 hostCommand 时，直接把 payload 透传给 `WiFiDeviceDiscovery.scanForDevices(payload)`，完全没有读取 `vscode.workspace.getConfiguration('logicAnalyzer.network').get('scanTimeoutMs')` 进行兜底或合并。
+- **对照差异**：命令面板入口 `logicAnalyzer.scanNetworkDevices`（`extension.ts:300-302`）正确读取了工作区配置并在 1200ms 下耗时 ~1230ms；而侧边栏入口在 1200ms 配置下仍固定跑 5000ms，发出的 postMessage payload 锁定为 `{"timeoutMs": 5000}`。
+
+#### 影响面
+用户在 VS Code 设置中修改 `scanTimeoutMs` 后，在 UI 侧边栏点击扫描网络时完全不生效，配置形同虚设。
+
+#### 方案对比
+
+| 方案 | 做法 | 优点 | 缺点 |
+|---|---|---|---|
+| A. 宿主侧无条件覆盖 | `LACEditorProvider.ts` 收到扫描 hostCommand 时，直接用工作区配置强制覆写 `payload.timeoutMs` | 纯宿主层改动，不依赖 Webview 重新打包 | ❌ **有严重副作用**（见下方副作用评估）：踩死调用方显式传参的意图 |
+| B. 仅前端 Webview 改动 | Webview 侧栏从写死 5000 改为从宿主拉取配置并传递 | 宿主保持纯透传 | 需重新打包 Webview；两端配置动态同步成本高 |
+| **A+B. 缺省兜底协同（推荐）** | **前端不传硬编码值（传 `{}`），宿主实现配置缺省兜底** | ✅ 完美兼容：侧栏遵从配置，同时保留调用方显式自定义参数的能力 | 需要改动两端（但契约最干净） |
+
+#### ⚠️ 方案 A 的语义变化与副作用评估（重点）
+
+`LACEditorProvider.ts:876` 目前是将 Webview 发来的 `payload` 原样透传给 `wifiDiscovery.scanForDevices(payload)`。
+若宿主采取"读取工作区配置强行覆盖 `payload.timeoutMs`"，会带来明确的**语义破坏**：
+
+1. **副作用表现**：
+   若将来某个调用方（如快捷探活、高级调试面板或自定义插件）有明确意图传入特定的 `timeoutMs`（例如 500ms 快速探测，或 30000ms 深度扫网），宿主的**无条件覆写会直接抹杀调用方的显式入参**，违反了软件设计中"显式参数优先于默认配置"的基本契约。
+2. **两难困境的根因**：
+   当前前端 `AppSidebarLeft.vue:127` 硬编码的 `5000` 恰好等于 `package.json` 中的默认配置值。
+   - 若宿主仅在 `payload.timeoutMs === undefined` 时取配置：因为前端传了 5000，宿主兜底永远不触发，缺陷依然存在；
+   - 若宿主无条件覆写：前端彻底丧失参数化自由；
+   - 若宿主猜测 `=== 5000` 时覆写：引入脆弱的魔数嗅探。
+3. **架构收敛推导（A+B 协同）**：
+   - **前端责任**：`AppSidebarLeft.vue:127` 停止传递写死的 `{ timeoutMs: 5000 }`，改为无参调用 `captureCommands.scanNetworkDevices()`，语义为"使用系统/用户配置的时长"；
+   - **宿主责任**：`LACEditorProvider.ts` 实现标准的参数合并：
+     ```ts
+     const configTimeout = vscode.workspace.getConfiguration('logicAnalyzer.network').get<number>('scanTimeoutMs', 5000);
+     const effectiveTimeout = (this.isRecord(payload) && typeof payload.timeoutMs === 'number')
+       ? payload.timeoutMs
+       : configTimeout;
+     ```
+   - **最终效果**：常规扫描自动遵从工作区配置（1200ms 立即生效）；若调用方显式指定了 `timeoutMs` 则原样放行，互不干扰。
+
+**当前处置**：在产品修复前，e2e 场景通过 `sidebar-scan-honors-config` 判据真实报红（EXIT=1），待产品按照 A+B 修复后自动转绿。
 
 ---
 
@@ -385,7 +441,8 @@ Tests:       2472 passed, 2472 total          ← 用例 100% 通过
 | D-7 | 4 个网络配置声明了但从未读取 | Important | **C**（文档标注未实现） | ⏸ |
 | D-8 | 20 个测试垃圾已被提交进仓库 | Minor | **A**（`git rm --cached`） | ⏸ **需你确认** |
 | D-9 | 网络驱动发 JSON、固件只认二进制帧（WiFi 采集从未可用） | **Critical** | **C′**（改指向 `LogicAnalyzerDriver`，保留旧类 `@deprecated`） | ✅ **已修（2026-11-04）** |
-| D-10 | `sendNetworkConfig` 网络模式直接返回 false ⇒ `configureWiFi` 对网络设备无效 | Important | 去掉 `_isNetwork` 短路，改发命令字节 2（P2） | ⏸ |
+| D-10 | `sendNetworkConfig` 网络模式直接返回 false ⇒ `configureWiFi` 对网络设备无效 | Important | 移除 `_isNetwork` 短路，网络串口走同一套 0x02 帧 | ✅ **已修（2026-11-04）** |
+| D-11 | Webview 侧栏扫描硬编码 5000ms 不遵从配置 | Important | **A+B**（前端去掉硬编码 + 宿主缺省兜底） | ⏸ |
 | D-4 | 真机 e2e（烧固件） | — | 取决于你 | ⏸ |
 | D-5 | 继续加 UI 场景 | — | **暂停** | ⏸ |
 | ~~D-6~~ | ~~10 个红的 unit 套件~~ | — | **已消解**（合并远程后 2472 用例全过） | ✅ 无需裁定 |

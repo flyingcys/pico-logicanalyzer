@@ -185,6 +185,18 @@ function loadProductModule(relativePath) {
 
 > 加载的仍是**产品代码**（同一份 `src/` 的编译产物），不是测试侧替身。
 
+### ⚠️ webpack 的 `clean: true` 会清空 `out/`，破坏 `e2e-libs`
+
+`npm run build` 中的 webpack 配置了 `clean: true`，构建时会直接抹掉整个 `out/` 目录（包括之前编译好的 `out/e2e-libs/`）。
+因此，**改动产品代码后的完整构建命令必须是：**
+
+```sh
+npm run build && npm run build:e2e-libs      # ← 两个都要执行
+```
+
+若漏跑 `npm run build:e2e-libs`，声明了 `needsE2eLibs: true` 的场景（如 `network-capture-mock`）在运行前会被 runner 拦截报错：
+`❌ out/e2e-libs/ 缺失 —— 本场景需要按类名加载产品模块`。
+
 ---
 
 ## 六点五、⚠️ `_probe-fakegreen` 探针 —— **不要删**
@@ -248,7 +260,7 @@ LA_E2E_PROBE=1 xvfb-run -a node tests/e2e/vscode/lib/runner.cjs --scenario _prob
 
 ```
 ① 还原源码        cp /tmp/fixed.ts src/...
-② 重建产物        npm run build
+② 重建产物        npm run build && npm run build:e2e-libs
 ③ 验产物内容      grep "变异标记" out/
 ```
 
@@ -257,6 +269,19 @@ LA_E2E_PROBE=1 xvfb-run -a node tests/e2e/vscode/lib/runner.cjs --scenario _prob
 ```
 ④ 用产物跑一遍关键判据   xvfb-run ... --scenario <受影响的场景>
 ```
+
+### ⚠️ 重建产物时的构建范围
+- 改 `.ts` 文件（插件主进程）：需要 `npm run build && npm run build:e2e-libs`；
+- 改 `.vue` 文件（Webview 前端）：同样需要 `npm run build && npm run build:e2e-libs`（由 webpack 打包前端资产，随后补齐 `out/e2e-libs/`）；
+- 无论改动何处，**两种情况都必须补跑 `npm run build:e2e-libs`**，因为 webpack 的 `clean: true` 会抹掉 `out/e2e-libs/`。
+
+### ⚠️ "双向敏感验证"的对象是「产品行为 → 判据」，不是「判据期望值 → 判据」
+
+**教训（2026-11-04）**：
+- **错误做法**：修改测试用例里的断言期望值（比如把 `assert(val === 1200)` 改成 `assert(val === 5000)`），让断言迎合当前 bug 从而变绿。
+  ⇒ **这验证的是"断言能被操纵"，而不是"产品修好后判据能变绿"**。任何硬编码断言（包括恒绿代码）这样改都能通过，这是最危险的假绿伪装。
+- **正确做法**：**改被测实现的代码行为**（例如在 `AppSidebarLeft.vue:127` 中将写死的 5000 改为 1200 并重建产物），观察真实判据是否因产品行为改变而由红变绿；随后还原产品代码，观察判据是否恢复报红。
+  ⇒ **这验证的才是判据与产品行为之间的因果链**。
 
 ### 为什么 ①②③ 不够
 

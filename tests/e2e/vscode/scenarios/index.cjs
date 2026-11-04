@@ -43,6 +43,7 @@ module.exports = [
     ? [
         require("./common/_probe-fakegreen.scenario.cjs"),
         require("./common/_probe-notify-commands.scenario.cjs"),
+        require("./common/_probe-sidebar-scan-config.scenario.cjs"),
       ]
     : []),
 ];

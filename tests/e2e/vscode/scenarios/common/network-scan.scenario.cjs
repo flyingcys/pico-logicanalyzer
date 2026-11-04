@@ -13,13 +13,14 @@
  * 那是**恒绿**的 —— 它不判别任何东西，而且测的是"环境耗时"不是"产品行为"。
  * 产品把并发修好、耗时降到 1s，它反而报"可能由于网络环境或缓存机制"，**把修复吞掉**。
  *
- * ## 现在的三条判据（各自独立，都有判别力）
+ * ## 现在的四条判据（各自独立，都有判别力）
  *
  * | oracle | 判据 | 产品改坏了会怎样 |
  * |---|---|---|
  * | `scan-completes-in-budget` | 命令在 `BUDGET_MS` 内返回 | 并发死代码没修 → 超预算 → 红 |
  * | `config-takes-effect` | `scanTimeoutMs=1200` 与 `=5000` 的耗时**显著不同** | 配置没被读 → 两次耗时一样 → 红 |
  * | `stats-observable` | 返回结构里有 `stats.aborted` 与 `stats.probedIps` | 没加 stats → 红（并说明"产品缺可观测性"） |
+ * | `sidebar-scan-honors-config` | 侧栏发出的 postMessage payload 遵从配置 | 前端写死 5000 且宿主未合并配置 → 红（见 D-11） |
  *
  * `config-takes-effect` 是**关键的判别力来源**：
  * 只测"耗时没超预算"是不够的 —— 一个"直接 return 空结果"的产品也能通过。
@@ -32,13 +33,21 @@
  * - **BUG-3**：UDP 广播发现对官方固件无效（固件零监听 4046），所以"扫不到设备"
  *   不能归因于"没设备"，也是扫描路径本身不完备。
  * - **BUG-4**：webview 传 `timeoutMs`，服务要 `timeout`，字段名对不上 ⇒ 静默失效。
+ * - **D-11**（`docs/open-decisions-2026-11-03.md`）：侧栏「扫描网络」写死 `{ timeoutMs: 5000 }`，
+ *   宿主 `LACEditorProvider.ts` 未从工作区配置合并覆盖，导致双入口行为分裂。
  *
  * ## 变异证据
  *
  * - 删掉 Worker 限流（回到全并发）→ `scan-completes-in-budget` 红
  * - 删掉 `scanTimeoutMs` 读取（硬编码）→ `config-takes-effect` 红
  * - 删掉 `stats` 字段 → `stats-observable` 红
+ * - 侧栏 payload 遵从配置（改为 1200）→ `sidebar-scan-honors-config` 转绿（双向敏感）
  */
+
+const { copyFileSync, existsSync } = require("node:fs");
+const { join, resolve } = require("node:path");
+
+const LAC_EDITOR_VIEW_TYPE = "logicAnalyzer.lacEditor";
 
 /**
  * 扫描的时间预算。
@@ -65,10 +74,10 @@ const MIN_TIMEOUT_DELTA_MS = 1500;
 
 module.exports = {
   id: "network-scan",
-  title: "经 scanNetworkDevices 验证扫描预算 / 配置生效 / 可观测性",
+  title: "经 scanNetworkDevices 验证扫描预算 / 配置生效 / 可观测性 / 侧栏配置遵从",
   needsHardware: false,
 
-  async run({ vscode, oracles, withTimeout }) {
+  async run({ vscode, workspaceDir, oracles, waitFor, withTimeout }) {
     const extension = vscode.extensions.getExtension("logic-analyzer-team.vscode-logic-analyzer");
     if (!extension) {
       oracles.record("extension-present", "fail", "未找到扩展");
@@ -190,25 +199,119 @@ module.exports = {
       }
     }
 
-    // ---- oracle 4：BUG-4 —— webview 传的 `timeoutMs` 必须被认 ----
+    // ---- oracle 4：侧栏「扫描网络」按钮遵从工作区 scanTimeoutMs 配置 ----
     //
-    // 为什么**本 e2e 验不了**，以及为什么不硬凑：
-    //   `extension.ts`（命令路径）**同时传了 `scanTimeout` 和 `timeoutMs`**，
-    //   所以只要 `scanTimeout` 生效，就从命令返回值得不到"`timeoutMs` 是否被认"的证据。
-    //   而真正需要这条兼容的是 **webview**（`AppSidebarLeft.vue:108` 只传 `timeoutMs`），
-    //   但 webview 的 hostCommand 通道在宿主侧不可达（README §5.2），
-    //   `ext.exports` 也是 undefined（拿不到 discovery 实例）。
+    // 依据与调查历程（见 docs/open-decisions-2026-11-03.md D-11）：
+    // - 命令面板入口（extension.ts:300）正确从工作区配置读取了 scanTimeoutMs；
+    // - 而 Webview 侧栏按钮（AppSidebarLeft.vue:127）写死了 captureCommands.scanNetworkDevices({ timeoutMs: 5000 })；
+    // - 宿主侧 LACEditorProvider.ts:877 收到 hostCommand 后直接透传，未做任何配置合并；
+    // - 探针 _probe-sidebar-scan-config 实测确证两端行为分裂：配置 1200ms 下侧栏 postMessage 仍硬编码发 5000ms。
     //
-    // ⇒ 登记为 not_exercised，并**点名承接方**：这条必须由 unit 测试覆盖。
-    //   （我曾想直接 new 一个 WiFiDeviceDiscovery 来验 —— 但那验的是"我自己 new 的实例"，
-    //    不是"产品里那个实例"，属于替产品绕过，不做。）
-    oracles.record(
-      "webview-timeoutMs-honored",
-      "not_exercised",
-      "观测面缺失：命令路径同时传 scanTimeout+timeoutMs，分不出 timeoutMs 是否生效；" +
-        "webview 通道在宿主侧不可达（README §5.2），ext.exports 为 undefined。" +
-        "承接方：unit 测试需有 `scanForDevices({ timeoutMs: X })` → X 生效的断言。"
-    );
+    // 判据具备双向敏感性：
+    // - 当捕获的 payload.timeoutMs === SHORT_TIMEOUT_MS (1200) 时，pass；
+    // - 当为 5000 或与配置不符时，fail 并指出产品缺陷位置。
+    if (!workspaceDir || !existsSync(workspaceDir)) {
+      oracles.record("sidebar-scan-honors-config", "fail", `工作区目录不可用：${workspaceDir}`);
+    } else {
+      const fixtureSource = resolve(__dirname, "../../../../fixtures/lac/current-lowercase-samples.lac");
+      if (!existsSync(fixtureSource)) {
+        oracles.record("sidebar-scan-honors-config", "fail", `Fixture 不存在: ${fixtureSource}`);
+      } else {
+        const testFileName = "network_scan_sidebar.lac";
+        const testFilePath = join(workspaceDir, testFileName);
+        copyFileSync(fixtureSource, testFilePath);
+
+        const fileUri = vscode.Uri.file(testFilePath);
+        await withTimeout(vscode.commands.executeCommand("vscode.open", fileUri), 30000, "vscode.open");
+
+        let tabInfo = null;
+        await waitFor(
+          () => {
+            const tabs = vscode.window.tabGroups.all.flatMap(g => g.tabs);
+            tabInfo = tabs.find(
+              t => t.input && String(t.input.uri?.fsPath).endsWith(testFileName) && t.input.viewType === LAC_EDITOR_VIEW_TYPE
+            );
+            return Boolean(tabInfo);
+          },
+          15000,
+          "等待 tab 出现"
+        );
+
+        if (!tabInfo) {
+          oracles.record("sidebar-scan-honors-config", "fail", "未找到自定义编辑器 tab");
+        } else {
+          const target = {
+            viewType: LAC_EDITOR_VIEW_TYPE,
+            uri: fileUri.toString()
+          };
+
+          // 预热：等待扫描网络按钮在 DOM 中就绪
+          await vscode.commands.executeCommand(
+            "logicAnalyzer.__runEditorScenario",
+            [{ type: "waitForElement", selector: ".app-sidebar-left__commands button:nth-child(2)" }],
+            target
+          );
+
+          // 确保当前配置为 SHORT_TIMEOUT_MS (1200)
+          await configuration.update("scanTimeoutMs", SHORT_TIMEOUT_MS, vscode.ConfigurationTarget.Workspace);
+
+          const actions = [
+            { type: "startCaptureMessages" },
+            { type: "click", selector: ".app-sidebar-left__commands button:nth-child(2)" },
+            { type: "sleep", ms: 100 },
+            { type: "stopCaptureMessages" },
+            { type: "waitForElement", selector: ".el-message", timeoutMs: 15000 }
+          ];
+
+          let sidebarRes = null;
+          try {
+            sidebarRes = await withTimeout(
+              vscode.commands.executeCommand("logicAnalyzer.__runEditorScenario", actions, target),
+              20000,
+              `sidebarScan@${SHORT_TIMEOUT_MS}`
+            );
+          } catch (err) {
+            console.error(`[la-e2e] sidebarScan failed: ${String(err)}`);
+          }
+
+          const captured = Array.isArray(sidebarRes?.capturedMessages) ? sidebarRes.capturedMessages : [];
+          const scanCmdMsg = captured.find(
+            m => m && m.type === "hostCommand" && (m.command === "scanNetworkDevices" || m.command === "scanForDevices")
+          );
+
+          if (!scanCmdMsg) {
+            oracles.record(
+              "sidebar-scan-honors-config",
+              "fail",
+              "点击侧栏扫描按钮未捕获到 hostCommand: scanNetworkDevices 消息"
+            );
+          } else {
+            const payloadTimeout = scanCmdMsg.payload && typeof scanCmdMsg.payload === "object"
+              ? scanCmdMsg.payload.timeoutMs
+              : undefined;
+
+            if (payloadTimeout === SHORT_TIMEOUT_MS) {
+              oracles.record(
+                "sidebar-scan-honors-config",
+                "pass",
+                `侧栏发出的 postMessage payload timeoutMs 正确遵从工作区配置 (${SHORT_TIMEOUT_MS}ms)`
+              );
+            } else {
+              oracles.record(
+                "sidebar-scan-honors-config",
+                "fail",
+                `侧栏 postMessage payload timeoutMs 为 ${payloadTimeout}，未遵从配置 ${SHORT_TIMEOUT_MS}。` +
+                  "根因见 D-11：AppSidebarLeft.vue:127 写死 timeoutMs: 5000，且 LACEditorProvider.ts:877 未合并工作区配置。"
+              );
+            }
+          }
+
+          try {
+            await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+          } catch (_) {}
+        }
+      }
+    }
 
     // ---- 登记：设备发现本身不在本场景验 ----
     //
