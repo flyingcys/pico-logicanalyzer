@@ -2187,13 +2187,15 @@ describe('executeHostCommand 命令分发', () => {
       expect(a).toBe(b);
     });
 
-    it('创建 NetworkStabilityService 实例时应从工作区配置读取三项参数注入（D-7）', () => {
+    it('创建 NetworkStabilityService 实例时应从工作区配置读取四项参数注入（D-7）', () => {
       networkStabilityServiceConstructor.mockClear();
       getConfiguration.mockReturnValue({
         get: jest.fn((key: string, defaultValue?: unknown) => {
           if (key === 'heartbeatIntervalMs') return 8888;
           if (key === 'connectionTimeoutMs') return 18888;
           if (key === 'enableAutoReconnect') return false;
+          // 11 是哨兵值，不是 manifest default 5：产品写死 5 时本断言必须红。
+          if (key === 'maxRetries') return 11;
           return defaultValue;
         })
       });
@@ -2205,7 +2207,8 @@ describe('executeHostCommand 命令分发', () => {
       expect(networkStabilityServiceConstructor).toHaveBeenCalledWith({
         heartbeatInterval: 8888,
         connectionTimeout: 18888,
-        autoReconnect: false
+        autoReconnect: false,
+        maxRetries: 11
       });
     });
   });
