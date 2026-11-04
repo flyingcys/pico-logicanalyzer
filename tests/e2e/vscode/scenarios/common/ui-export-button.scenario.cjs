@@ -19,7 +19,9 @@
  * 2. L2-export-enabled-with-data: 打开有样本会话（文件 B），导出按钮变为启用状态（禁用类与属性消失）
  * 3. L3-export-command-dispatched: 点击导出按钮后，透明拦截到向宿主发送的 { type: 'hostCommand', command: 'exportData' }
  * 4. L4-export-payload-valid: 校验捕获的 payload 载荷：format 为 'csv'，且 selectedChannels 包含有效非空通道数组
- * 5. export-persistence: blocked（如实记录真宿主弹窗不可自动化落盘，注明由 CLI 与单测承接）
+ * 5. export-persistence: blocked（真宿主弹窗不可自动化；各段单测已覆盖，
+ *    「真实 DataExportService 落盘」由 LACEditorProvider.exportPersistence.test.ts 补，
+ *    「webview 构造 payload」这一段仍无覆盖 —— 见 oracle 里的完整说明）
  *
  * ## 变异矩阵
  * - 变异 A（测 canExportData 恒 false）：AppHeader.vue:51 canExportData 恒返回 false → L2/L3/L4 因果链红，L1 仍 pass
@@ -260,7 +262,14 @@ module.exports = {
     oracles.record(
       "export-persistence",
       "blocked",
-      "依据 VS Code 真宿主已知限制（README §5.1），showSaveDialog 永不 resolve；落盘已由 CLI export 子命令与 DataExportService.test.ts 100% 覆盖闭环"
+      "**webview → 宿主 → 落盘** 这条链在真宿主中未验：`showSaveDialog` 永不 resolve（README §5.1），" +
+        "而 `exportData` 是 `LACEditorProvider` 的 private 方法（无 `vscode.commands` 入口），" +
+        "e2e 无法在不让测试替产品做决策的前提下传入目标路径。" +
+        "各段已有单测覆盖（`export.test.ts` 11 条 + CLI export 真落盘），" +
+        "但「真实 DataExportService 落盘」此前**被 mock 掩盖** —— 现由 " +
+        "`LACEditorProvider.exportPersistence.test.ts` 用临时目录真写文件补上" +
+        "（断言文件存在 + 内容非空 + 格式正确）。" +
+        "⚠️ 仍缺的是「webview 构造 payload」这一段 —— 本条 oracle 无法覆盖它。"
     );
   }
 };
