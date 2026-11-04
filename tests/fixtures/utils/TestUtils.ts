@@ -47,9 +47,8 @@ async function setupTestConfiguration(configManager: ConfigurationManager): Prom
   // 基础设备配置
   await configManager.set('autoDetectDevices', false);
   await configManager.set('defaultSampleRate', 1000000);
-  
+
   // 网络测试配置
-  await configManager.set('network.enableAutoDiscovery', false);
   await configManager.set('network.scanTimeoutMs', 1000);
   await configManager.set('network.maxConcurrentConnections', 5);
 }
