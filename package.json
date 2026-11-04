@@ -149,11 +149,6 @@
           "default": 24000000,
           "description": "Default sample rate in Hz"
         },
-        "logicAnalyzer.network.enableAutoDiscovery": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable automatic discovery of network devices"
-        },
         "logicAnalyzer.network.scanTimeoutMs": {
           "type": "number",
           "default": 5000,

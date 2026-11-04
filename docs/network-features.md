@@ -107,7 +107,6 @@ VSCode Logic Analyzer扩展支持通过WiFi/网络连接到Pico Logic Analyzer�
 
 ```json
 {
-  "logicAnalyzer.network.enableAutoDiscovery": true,
   "logicAnalyzer.network.scanTimeoutMs": 5000,
   "logicAnalyzer.network.maxConcurrentConnections": 50,
   "logicAnalyzer.network.defaultPorts": [4045, 10429, 5555, 5025, 111],
@@ -121,7 +120,6 @@ VSCode Logic Analyzer扩展支持通过WiFi/网络连接到Pico Logic Analyzer�
 
 ### 配置说明
 
-- `enableAutoDiscovery`: 启用自动设备发现
 - `scanTimeoutMs`: 扫描超时时间 (1-30秒)
 - `maxConcurrentConnections`: 最大并发连接数 (5-200)
 - `defaultPorts`: 默认扫描端口列表。`4045` 是 Pico TCP 端口，`10429` 是 Saleae Logic 2 API，`5555/5025/111` 是常见 SCPI 入口。

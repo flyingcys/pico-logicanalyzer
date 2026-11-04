@@ -71,33 +71,23 @@ A/B 都要改固件（成本高且当前用户裁定不烧固件）。
 
 ---
 
-### D-7：`package.json` 声明了 4 个网络配置，产品从未读取（**新发现**）
+### D-7：`package.json` 声明了 4 个网络配置，此前产品从未读取（**已解决**）
+
+> **状态：✅ 已解决（2026-11-04，T8 阶段）**
+> - **3 项有功能未接线配置**：`heartbeatIntervalMs`、`connectionTimeoutMs`、`enableAutoReconnect` 已通过纯映射函数 `resolveNetworkStabilityConfig` 显式接线到 `NetworkStabilityService`（在 `extension.ts` 与 `LACEditorProvider.ts` 两处创建点均完成接线，并由单测与变异严格锁定）；
+> - **1 项无实现虚假声明**：`enableAutoDiscovery` 全仓 0 引用且底层无自动轮询机制，经用户裁定已从 `package.json` 与 `docs/network-features.md` 彻底移除。
 
 | 字段 | 内容 |
 |---|---|
-| 严重度 | Important（**文档承诺了、产品没实现**） |
+| 严重度 | Important |
 | 发现时间 | 2026-11-03（T1 排查配置读取路径时） |
+| 解决时间 | 2026-11-04 |
 
-声明了但产品零读取：
-```
-logicAnalyzer.network.enableAutoDiscovery     (默认 true)
-logicAnalyzer.network.heartbeatIntervalMs     (默认 5000)
-logicAnalyzer.network.connectionTimeoutMs     (默认 10000)
-logicAnalyzer.network.enableAutoReconnect
-```
-`docs/network-features.md:116,130` 把它们写成了可用配置。
-
-**风险**：用户在设置面板里改了这 4 项，**不会有任何效果**，且无任何提示。
-
-**方案**：
-
-| 方案 | 成本 | 效果 |
-|---|---|---|
-| A. 删掉这 4 条声明 + 更正文档 | 低 | 诚实，但用户失去"将来会支持"的暗示 |
-| B. 补上实现 | 中-高 | 完整，但属于功能开发 |
-| C. 文档标注"暂未实现" | 最低 | 保留声明，明确告知 |
-
-**我的建议**：**C**（本期只收技术债，不扩功能）。下期若要动网络模块再按 B 处理。
+**修复记录**：
+1. `src/services/NetworkStabilityService.ts`：导出 `resolveNetworkStabilityConfig` 显式字段映射纯函数，新增 `getCurrentConfig()` 只读快照接口；
+2. `src/extension.ts`：在 `activate` 构造 `networkStabilityService` 时传入解析的工作区配置；
+3. `src/providers/LACEditorProvider.ts`：在 `getNetworkStabilityService` 构造实例时同步传入解析的工作区配置；
+4. `package.json` & `docs/network-features.md`：移除虚假承诺的 `logicAnalyzer.network.enableAutoDiscovery` 声明。
 
 ---
 
@@ -438,11 +428,11 @@ Tests:       2472 passed, 2472 total          ← 用例 100% 通过
 | D-1 | BUG-3 广播发现无效 | Important | **C + D**（记住端口 + 文档化） | ⏸ |
 | D-2 | webview 导出落盘不可自动化 | Minor | **A**（接受现状） | ⏸ |
 | D-3 | `Extension.coverage` Promise 泄漏 | Important | **已修（T1）** | ✅ |
-| D-7 | 4 个网络配置声明了但从未读取 | Important | **C**（文档标注未实现） | ⏸ |
+| D-7 | 4 个网络配置声明了但从未读取 | Important | 3项接线 + 1项无实现声明移除 | ✅ **已修（2026-11-04）** |
 | D-8 | 20 个测试垃圾已被提交进仓库 | Minor | **A**（`git rm --cached`） | ⏸ **需你确认** |
 | D-9 | 网络驱动发 JSON、固件只认二进制帧（WiFi 采集从未可用） | **Critical** | **C′**（改指向 `LogicAnalyzerDriver`，保留旧类 `@deprecated`） | ✅ **已修（2026-11-04）** |
 | D-10 | `sendNetworkConfig` 网络模式直接返回 false ⇒ `configureWiFi` 对网络设备无效 | Important | 移除 `_isNetwork` 短路，网络串口走同一套 0x02 帧 | ✅ **已修（2026-11-04）** |
-| D-11 | Webview 侧栏扫描硬编码 5000ms 不遵从配置 | Important | **A+B**（前端去掉硬编码 + 宿主缺省兜底） | ⏸ |
+| D-11 | Webview 侧栏扫描硬编码 5000ms 不遵从配置 | Important | **A+B**（前端去掉硬编码 + 宿主缺省兜底） | ✅ **已修（2026-11-04）** |
 | D-4 | 真机 e2e（烧固件） | — | 取决于你 | ⏸ |
 | D-5 | 继续加 UI 场景 | — | **暂停** | ⏸ |
 | ~~D-6~~ | ~~10 个红的 unit 套件~~ | — | **已消解**（合并远程后 2472 用例全过） | ✅ 无需裁定 |
