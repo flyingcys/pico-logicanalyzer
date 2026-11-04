@@ -250,8 +250,8 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 | 4 | P0-2b maxRetries | ✅ 已验收 | `1e12627c` | fallback=5；b3 三个变异（M1 fallback→3 / M2 删读取 / **M3 删调用点**）全部击红。05 额外自查出 `Extension.coverage.test.ts:285` 的 `toEqual` 也会红，并加哨兵值 7 锁住调用点 |
 | 5 | P0-2a defaultSampleRate（选项 1） | ✅ 已验收 | `e3747f35` + `d36f5f05` | 后端 b3 两个真宿主变异正交（M1 写死→只红①②、M2 fallback 漂移→只红③）；前端 5 个单测变异（M4a/b/c/M5/M6）加 1 个 e2e 变异全部独立击红。05 **推翻了 b3 的预判**（M5 预判绿、实测红）。额外发现第 4 处构造点 `FrontendBootstrapData` |
 | 5b | 补项 4 漏网断言 | ✅ 已验收 | `d9be6fa4` | 哨兵 `maxRetries: 11`；b3 独立复跑全量单测 2452 passed；并变异「写死 5」验证判据有效 |
-| 6 | P1-1 e2e 进 CI | 🔄 范围已定稿，实现中 | — | **范围因新发现而扩大**：CI 已连续 8 次全红（根因 CI 不 `npm run build`，缺 `out/cli/`），后续 6 个门禁从未执行。拆为 6a（补 build）/ 6b（confirm 绿）/ 6c-1（`known-incomplete` 白名单机制）/ 6c-2（加 e2e） |
-| 7 | P1-2 needsHardware 门控 | ⬜ 待实现 | — | — |
+| 6 | P1-1 e2e 进 CI | ✅ 已验收 | `ceb4b269` `aa8c1f61` `a798f1ed` | **CI 24 步首次全绿**（run `41882205445`），含 e2e 真跑。b3 做了 6 个独立变异（含 status 改名、stale）全部符合预期；EXIT=3 默认语义未被洗掉。CI 过程中还暴露并修掉两个既有缺陷：`LogicAnalyzerDriver.test.ts` 遗留 60s 定时器崩溃、`safeDetect` 定时器泄漏（**产品真 bug**） |
+| 7 | P1-2 needsHardware 门控 | 🔄 范围待定 | — | b3 已提两方案（复用白名单 vs 独立门控），倾向独立，待 05 回应 |
 | 8 | P2-1 mock 改由 webview 驱动 | ⬜ 待实现 | — | — |
 
 **图例**：⬜ 待实现 / 🔄 实现中 / 🔍 待验收 / ✅ 已验收 / ❌ 验收未通过
