@@ -17,9 +17,9 @@ jest.mock('vscode', () => ({
     getConfiguration: jest.fn(() => ({
       get: jest.fn((key) => {
         // 模拟VSCode配置的真实行为
-        const mockConfigs: Record<string, string> = {
+        const mockConfigs: Record<string, string | boolean> = {
           'general.language': 'zh-CN',
-          'autoDetectDevices': true,
+          'display.showGrid': true,
           'display.theme': 'auto'
         };
         return mockConfigs[key];
@@ -400,13 +400,13 @@ describe('ConfigurationManager 精准业务逻辑测试', () => {
       
       // 验证关键配置存在
       expect('general.language' in configs).toBe(true);
-      expect('autoDetectDevices' in configs).toBe(true);
+      expect('display.showGrid' in configs).toBe(true);
       expect('display.theme' in configs).toBe(true);
       expect('general.autoSave' in configs).toBe(true);
-      
+
       // 验证配置值的类型
       expect(typeof configs['general.language']).toBe('string');
-      expect(typeof configs['autoDetectDevices']).toBe('boolean');
+      expect(typeof configs['display.showGrid']).toBe('boolean');
     });
 
     it('应该正确导出配置到文件', async () => {

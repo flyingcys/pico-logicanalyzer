@@ -48,10 +48,10 @@ describe('ConfigurationManager 基础功能测试', () => {
 
   describe('基础配置读写', () => {
     it('应该能够获取默认配置值', () => {
-      const autoDetect = configManager.getBoolean('autoDetectDevices');
+      const showGrid = configManager.getBoolean('display.showGrid');
       const defaultRate = configManager.getNumber('defaultSampleRate');
-      
-      expect(autoDetect).toBe(true);
+
+      expect(showGrid).toBe(true);
       expect(defaultRate).toBe(24000000);
     });
 

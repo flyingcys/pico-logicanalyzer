@@ -210,24 +210,6 @@ export class ConfigurationManager extends ServiceLifecycleBase {
 
       // 硬件设置
       {
-        key: 'autoDetectDevices',  // 测试中使用的key
-        category: ConfigurationCategory.Hardware,
-        displayName: '自动检测设备',
-        description: '启动时自动检测连接的设备',
-        type: 'boolean',
-        defaultValue: true,
-        scope: 'both'
-      },
-      {
-        key: 'hardware.autoDetect',
-        category: ConfigurationCategory.Hardware,
-        displayName: '自动检测设备',
-        description: '启动时自动检测连接的设备',
-        type: 'boolean',
-        defaultValue: true,
-        scope: 'both'
-      },
-      {
         key: 'hardware.connectionTimeout',
         category: ConfigurationCategory.Hardware,
         displayName: '连接超时',

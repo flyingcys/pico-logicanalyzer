@@ -45,7 +45,7 @@ async function createTestFile(dataPath: string, filename: string, content: Buffe
  */
 async function setupTestConfiguration(configManager: ConfigurationManager): Promise<void> {
   // 基础设备配置
-  await configManager.set('autoDetectDevices', false);
+  await configManager.set('display.showGrid', false);
   await configManager.set('defaultSampleRate', 1000000);
 
   // 网络测试配置
