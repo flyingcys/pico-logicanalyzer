@@ -91,12 +91,19 @@ A/B 都要改固件（成本高且当前用户裁定不烧固件）。
 
 ---
 
-### D-8：20 个测试垃圾文件**已被提交进仓库**，要不要 `git rm --cached`
+### D-8：20 个测试垃圾文件**已被提交进仓库**，要不要 `git rm --cached`（**已解决**）
+
+> **状态：✅ 已解决（commit `e041aebd`）**
+> - **已执行方案 A**：通过 `git rm -r --cached .recovery-checkpoints/` 清理了仓库中 20 个历史残留运行产物（自 HEAD 起不再跟踪，保持历史提交不受破坏）；
+> - **防回退**：在 `.gitignore:148` 增加了 `.recovery-checkpoints/` 忽略规则；本地该目录已彻底删除；
+> - ⚠️ 注：当前运行 `git check-ignore -v .recovery-checkpoints` 无输出系因本地该目录已彻底删除，规则真实生效于 `.gitignore:148`；
+> - **产生侧闭环**：`RecoveryManager` 已在 commit `50b6528b` 将默认检查点改到 `os.tmpdir()` 并在 `cleanup()` 中执行真实删除。
 
 | 字段 | 内容 |
 |---|---|
 | 严重度 | Minor（不影响功能，但污染仓库、会干扰 `git status`） |
 | 发现时间 | 2026-11-03（修 `/tmp` 泄漏门禁时） |
+| 解决时间 | 2026-11-03（commit `e041aebd`） |
 
 ```sh
 $ git ls-files .recovery-checkpoints/ | wc -l
@@ -461,7 +468,7 @@ Tests:       2472 passed, 2472 total          ← 用例 100% 通过
 | D-2 | webview 导出落盘不可自动化 | Minor | **A**（接受现状） | ⏸ |
 | D-3 | `Extension.coverage` Promise 泄漏 | Important | **已修（T1）** | ✅ |
 | D-7 | 4 个网络配置声明了但从未读取 | Important | 3项接线 + 1项无实现声明移除 | ✅ **已修（2026-11-04）** |
-| D-8 | 20 个测试垃圾已被提交进仓库 | Minor | **A**（`git rm --cached`） | ⏸ **需你确认** |
+| D-8 | 20 个测试垃圾已被提交进仓库 | Minor | **A**（`git rm --cached`） | ✅ **已修（commit `e041aebd`）** |
 | D-9 | 网络驱动发 JSON、固件只认二进制帧（WiFi 采集从未可用） | **Critical** | **C′**（改指向 `LogicAnalyzerDriver`，保留旧类 `@deprecated`） | ✅ **已修（2026-11-04）** |
 | D-10 | `sendNetworkConfig` 网络模式直接返回 false ⇒ `configureWiFi` 对网络设备无效 | Important | 移除 `_isNetwork` 短路，网络串口走同一套 0x02 帧 | ✅ **已修（2026-11-04）** |
 | D-11 | Webview 侧栏扫描硬编码 5000ms 不遵从配置 | Important | **A+B**（前端去掉硬编码 + 宿主缺省兜底） | ✅ **已修（2026-11-04）** |
