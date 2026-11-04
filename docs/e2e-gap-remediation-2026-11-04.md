@@ -223,7 +223,15 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
      **`--dry-run` 只打印计划，不真跑测试**。
    - 所以红测试无法被 pre-commit 拦住。这是结构性问题，**改它会显著拖慢提交，属独立议题**，
      与项 6（e2e 进 CI）一起评估，不混入任何单项。
-9. **⚠️ 验收方的变异验证不得在共享工作区做**（2026-11-04 实际踩到）
+9. **⚠️ CI 红了必须有人看**（2026-11-04 事故，比任何单项都严重）
+   - `gh run list --limit 8`：**连续 8 次全红**，从 `41803296988`（09:25）到 `41847284387`。
+   - **CI 在「单元测试」这一步就死，后面 6 个门禁（integration / quick / web-app / driver /
+     decoder / package:dry）从头到尾没执行过。**
+   - 两个不同根因：最早是 CI 从不 `npm run build` ⇒ 缺 `out/cli/` ⇒ `CliExportCommand.test.ts` 5 条红；
+     项 4 后叠加 `LACEditorProvider.coverage.test.ts`（正是我们本地发现、`d9be6fa4` 修掉的那条）。
+   - **⇒ 我们之前判断的「全量单测没人跑」是错的：CI 一直在跑，只是红了没人看。**
+   - **纪律**：每次 push 后 `gh run list --limit 3` 看一眼。这是流程问题，代码解不了。
+10. **⚠️ 验收方的变异验证不得在共享工作区做**（2026-11-04 实际踩到）
    - b3 在 05 的工作区直接 `sed -i` 打 MUTANT 补丁做验收，与 05 自己的变异实验撞车，
      双方备份链脱节，一度分不清「谁还原失败了」。
    - **正确做法**：`cp -r <repo> /tmp/verify-<ts>/` 用隔离副本；或采信对方的原始输出 + 要求能复跑。
@@ -242,7 +250,7 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 | 4 | P0-2b maxRetries | ✅ 已验收 | `1e12627c` | fallback=5；b3 三个变异（M1 fallback→3 / M2 删读取 / **M3 删调用点**）全部击红。05 额外自查出 `Extension.coverage.test.ts:285` 的 `toEqual` 也会红，并加哨兵值 7 锁住调用点 |
 | 5 | P0-2a defaultSampleRate（选项 1） | ✅ 已验收 | `e3747f35` + `d36f5f05` | 后端 b3 两个真宿主变异正交（M1 写死→只红①②、M2 fallback 漂移→只红③）；前端 5 个单测变异（M4a/b/c/M5/M6）加 1 个 e2e 变异全部独立击红。05 **推翻了 b3 的预判**（M5 预判绿、实测红）。额外发现第 4 处构造点 `FrontendBootstrapData` |
 | 5b | 补项 4 漏网断言 | ✅ 已验收 | `d9be6fa4` | 哨兵 `maxRetries: 11`；b3 独立复跑全量单测 2452 passed；并变异「写死 5」验证判据有效 |
-| 6 | P1-1 e2e 进 CI | 🔄 范围待定 | — | **b3 提出可能应同时把全量单测加入 CI 门禁**（根因：`validate:local` 是 `--dry-run` 不真跑测试），已请 05 先答范围问题 |
+| 6 | P1-1 e2e 进 CI | 🔄 范围已定稿，实现中 | — | **范围因新发现而扩大**：CI 已连续 8 次全红（根因 CI 不 `npm run build`，缺 `out/cli/`），后续 6 个门禁从未执行。拆为 6a（补 build）/ 6b（confirm 绿）/ 6c-1（`known-incomplete` 白名单机制）/ 6c-2（加 e2e） |
 | 7 | P1-2 needsHardware 门控 | ⬜ 待实现 | — | — |
 | 8 | P2-1 mock 改由 webview 驱动 | ⬜ 待实现 | — | — |
 
