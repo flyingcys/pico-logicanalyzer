@@ -220,22 +220,30 @@ describe('MemoryManager 专注业务逻辑测试', () => {
       expect(manager.get('nonexistentPool', 'testData')).toBeNull();
     });
 
-    it('应该保持访问时间的递增顺序', async () => {
-      manager.allocate('accessTestPool', 'data1', 'content1');
-      manager.allocate('accessTestPool', 'data2', 'content2');
+    it('应该保持访问时间的递增顺序', () => {
+      let currentTime = 1000000;
+      const dateNowSpy = jest.spyOn(Date, 'now').mockImplementation(() => {
+        currentTime += 10;
+        return currentTime;
+      });
 
-      // 添加小延迟确保时间戳不同
-      await new Promise(resolve => setTimeout(resolve, 1));
-      manager.get('accessTestPool', 'data1');
-      
-      await new Promise(resolve => setTimeout(resolve, 1));
-      manager.get('accessTestPool', 'data2');
+      try {
+        // 先分配 data2 后分配 data1（初始分配时间 block1 > block2）
+        manager.allocate('accessTestPool', 'data2', 'content2');
+        manager.allocate('accessTestPool', 'data1', 'content1');
 
-      const pool = manager.getPoolInfo('accessTestPool');
-      const block1 = pool?.blocks.get('data1');
-      const block2 = pool?.blocks.get('data2');
+        // 依次访问 data1，后访问 data2
+        manager.get('accessTestPool', 'data1');
+        manager.get('accessTestPool', 'data2');
 
-      expect(block2?.lastAccessedAt).toBeGreaterThan(block1?.lastAccessedAt || 0);
+        const pool = manager.getPoolInfo('accessTestPool');
+        const block1 = pool?.blocks.get('data1');
+        const block2 = pool?.blocks.get('data2');
+
+        expect(block2?.lastAccessedAt).toBeGreaterThan(block1?.lastAccessedAt || 0);
+      } finally {
+        dateNowSpy.mockRestore();
+      }
     });
   });
 
