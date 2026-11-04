@@ -44,4 +44,11 @@ module.exports = [
     registeredAt: "2026-11-04",
     reason: "showSaveDialog 永不 resolve（README §5.1）；DataExportService 落盘由 LACEditorProvider.exportPersistence.test.ts 单测覆盖",
   },
+  {
+    scenarioId: "network-capture-mock",
+    oracleId: "quality-monitoring",
+    status: "not_exercised",
+    registeredAt: "2026-11-05",
+    reason: "startQualityMonitoring 间隔 30s（NetworkStabilityService.ts:475-479），e2e 等不了；由 NetworkStabilityService.accurate.test.ts 定时器用例覆盖",
+  },
 ];

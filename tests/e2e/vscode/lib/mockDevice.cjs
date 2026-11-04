@@ -372,6 +372,15 @@ function startMockDevice(options = {}) {
     frames: [],
     /** 被丢弃的非帧字节数（产品发 JSON 时会全部落在这里）。 */
     discardedBytes: 0,
+    /**
+     * 收到的**独立 0x00 心跳字节**数。
+     *
+     * `NetworkStabilityService.sendHeartbeat()` 发的是 `Buffer.from([0x00])`，
+     * 它不是固件帧，会被 `extractFrames` 跳过并计进 `discardedBytes`。
+     * 但「有丢失字节」既可能是心跳、也可能是产品发 JSON —— 两者含义完全不同，
+     * 所以单独计数，供心率判据区分。
+     */
+    heartbeatBytes: 0,
     /** 回传采集样本流的次数（固件 `capturing` 分支）。 */
     captureDataSent: 0,
     /** 回传采集样本流的总字节数。 */
@@ -408,7 +417,20 @@ function startMockDevice(options = {}) {
       buffer = Buffer.concat([buffer, chunk]);
 
       const { frames, rest } = extractFrames(buffer);
-      stats.discardedBytes += buffer.length - rest.length - sumFrameBytes(buffer, frames);
+      const discardedThisChunk = buffer.length - rest.length - sumFrameBytes(buffer, frames);
+      stats.discardedBytes += discardedThisChunk;
+
+      /**
+       * 心跳统计（精确判定，不靠启发式）：
+       * `NetworkStabilityService` 用的是**独立的 socket**，且只发 `Buffer.from([0x00])`，
+       * 从不说固件帧。而帧 socket 的载荷里也可能出现 0x00（转义只处理 AA/55/F0）。
+       * ⇒ 只有当「本次没解析出任何帧」且「消费区段全是 0x00」时才计心跳，
+       *    这样不会把含有 0x00 的帧载荷误算成心跳。
+       */
+      const consumed = buffer.subarray(0, buffer.length - rest.length);
+      if (frames.length === 0 && consumed.length > 0 && consumed.every(byte => byte === 0x00)) {
+        stats.heartbeatBytes += consumed.length;
+      }
       buffer = rest;
 
       for (const frame of frames) {

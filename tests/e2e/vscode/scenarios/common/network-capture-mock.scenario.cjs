@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * 场景：**协议级模拟设备**下的网络采集端到端。
+ * 场景：**协议级模拟设备**下的网络采集端到端（**经 Webview 侧栏驱动**）。
  *
  * ## 这个场景与 `network-scan` 的分工
  *
@@ -10,12 +10,39 @@
  * | 关注 | 扫描命令的**受控性**（超时、并发、可中止） | 扫描之后**能不能真连上并采集** |
  * | 设备 | 无（只验扫描本身） | **协议级模拟设备** |
  *
+ * ## 为什么主路径必须走 Webview（项 8，2026-11-05）
+ *
+ * 旧版本直接调 `out/e2e-libs/` 的 `hardwareDriverManager.connectToDevice(...)`，
+ * **绕过了产品真正的连接入口** `LACEditorProvider.connectToNetworkDevice`，
+ * 于是 `NetworkStabilityService.connect()` / `startHeartbeat()` /
+ * `startQualityMonitoring()` 这三件事一条都没被验过。
+ *
+ * 现在主路径改为：真宿主里打开 Custom Editor → 侧栏填 `host:port` →
+ * 点「网络」按钮 → 点「开始采集」。这一切都发生在 **bundle 内**，
+ * 走的是用户真实点击的那条路。
+ *
+ * ## ⚠️ DOM 选择器（踩过的坑，别重试错的那几个）
+ *
+ * 网络输入框的 append 按钮**唯一正确**写法：
+ * ```
+ * .connection-fields .el-input:nth-of-type(2) .el-input-group__append button
+ * ```
+ * 实测错误的三种：
+ * - `.connection-fields .el-input__append button`        → 0 命中（类名是 `el-input-group__append`）
+ * - `.connection-fields button:last-of-type`             → 点到「断开」
+ * - `.connection-fields .el-input__append button`（变体）→ 0 命中
+ *
+ * 输入框本身用 `input[placeholder="192.168.1.100:4045"]`。
+ *
  * ## 判据设计（每条都能被变异抓红）
  *
  * - **D1 设备可被发现**：产品自己的 `scanForDevices` 扫到了模拟设备
  * - **D2 握手内容正确**：产品解析出的 `version` / 通道数等，与模拟设备自报的一致
  * - **D3 采集请求可达**：产品向设备发出了 `CAPTURE_REQUEST`（命令字节 1）
  * - **D4 请求参数正确**：频率/通道/触发类型与用户配置一致（从设备侧视角验，不是从产品侧）
+ * - **D6 Webview 连接链路**：侧栏点「网络」后 UI 显示已连接、StabilityService 真的建了第二条连接
+ * - **D7 心跳**：`heartbeatIntervalMs=1000` 下设备侧收到 `0x00` 心跳字节
+ * - **D8 驱动契约**：设备侧收到的是固件二进制帧而非 JSON
  *
  * D3/D4 的判据**落在设备侧**（模拟器记录的原始帧），
  * 而不是"产品说自己发了" —— 这是本场景区别于所有其他场景的地方：
@@ -31,6 +58,8 @@
  * 正确修法是改产品网络驱动（见 `docs/open-decisions-2026-11-03.md` D-9）。
  */
 
+const { copyFileSync } = require("node:fs");
+const { join, resolve } = require("node:path");
 const {
   startMockDevice,
   buildFrame,
@@ -39,6 +68,9 @@ const {
   DEVICE_ID_LINE,
   DEFAULT_CAPS,
 } = require("../../lib/mockDevice.cjs");
+
+/** 本插件 Custom Editor 的 viewType（与 LACEditorProvider 常量同源）。 */
+const LAC_EDITOR_VIEW_TYPE = "logicAnalyzer.lacEditor";
 
 /**
  * 产品解析出的样本数是否与设备发出的不一致。
@@ -89,7 +121,7 @@ function loadProductModule(relativePath) {
 
 module.exports = {
   id: "network-capture-mock",
-  title: "协议级模拟设备：网络发现 → 握手 → 采集请求",
+  title: "协议级模拟设备：经 Webview 侧栏连接 → 握手 → 心跳 → 采集请求",
   needsHardware: false,
   /**
    * 本场景按**类名**加载产品模块（`WiFiDeviceDiscovery` / `HardwareDriverManager` /
@@ -99,7 +131,7 @@ module.exports = {
    */
   needsE2eLibs: true,
 
-  async run({ vscode, oracles, withTimeout }) {
+  async run({ vscode, workspaceDir, oracles, waitFor, withTimeout }) {
     // ---- 0. 起模拟设备 ----
     let device = null;
     try {
@@ -253,6 +285,263 @@ module.exports = {
           );
         }
       }
+
+      // ---- D6/D7/D8：**经 Webview 侧栏**连接 + 心跳 + 驱动契约（项 8 主路径）----
+      //
+      // 这一段的观测点是「用户真实点击那条路」：真宿主里打开 Custom Editor，
+      // 侧栏填 host:port → 点「网络」→ 等 UI 显示已连接 → 点「开始采集」。
+      //
+      // ⚠️ 心跳间隔要能被 e2e 等：`heartbeatIntervalMs` 的 manifest minimum 是 1000，
+      //    所以设 1000ms（不是 500，否则 VS Code 会按 minimum 钳制住）。
+      //    用 waitFor 轮询设备侧字节增长，不用固定 sleep（固定 sleep 是 flaky 来源）。
+      const HEARTBEAT_INTERVAL_MS = 1000;
+      await vscode.workspace
+        .getConfiguration("logicAnalyzer.network")
+        .update("heartbeatIntervalMs", HEARTBEAT_INTERVAL_MS, vscode.ConfigurationTarget.Workspace);
+
+      // ⚠️ 判据必须是**相对增量**，不能用绝对阈值（`>= 2`）：
+      //    本场景前面 D1 发现链路与后面 D3/D4/D5 驱动直连都会建连接，
+      //    删掉 `networkService.connect()` 后总数只是 4→3，`>=2` 仍然过 ⇒ **假绿**。
+      //    实测就是这么发现的（M1 变异时该判据没红，只有心跳红了）。
+      const connectionsBeforeWebview = device.stats.connections;
+
+      let webviewState = null;
+      let webviewError = null;
+      {
+        const fixtureSource = resolve(
+          __dirname,
+          "../../../../fixtures/lac/current-lowercase-samples.lac"
+        );
+        const targetFileName = "network_capture_mock_webview.lac";
+        const targetFilePath = join(workspaceDir, targetFileName);
+        copyFileSync(fixtureSource, targetFilePath);
+        const fileUri = vscode.Uri.file(targetFilePath);
+
+        try {
+          await withTimeout(
+            vscode.commands.executeCommand("vscode.open", fileUri),
+            30000,
+            "vscode.open"
+          );
+
+          let tabInfo = null;
+          try {
+            await waitFor(
+              () => {
+                const tabs = vscode.window.tabGroups.all.flatMap(group => group.tabs);
+                tabInfo = tabs.find(tab => {
+                  const input = tab.input;
+                  return (
+                    input &&
+                    typeof input === "object" &&
+                    input.uri &&
+                    String(input.uri.fsPath).endsWith(targetFileName) &&
+                    input.viewType === LAC_EDITOR_VIEW_TYPE
+                  );
+                });
+                return Boolean(tabInfo);
+              },
+              15000,
+              "tabGroups 出现该 .lac 面板"
+            );
+          } catch {
+            /* 下方统一判 */
+          }
+          if (!tabInfo) throw new Error("未找到 custom editor tab");
+
+          const networkSelector = 'input[placeholder="192.168.1.100:4045"]';
+          const actions = [
+            { type: "waitForElement", selector: networkSelector, timeoutMs: 15000 },
+            { type: "input", selector: networkSelector, value: `${device.host}:${device.port}` },
+            { type: "readValue", selector: networkSelector },
+            // ⚠️ 唯一正确的选择器，详见文件头「DOM 选择器」段
+            {
+              type: "click",
+              selector: ".connection-fields .el-input:nth-of-type(2) .el-input-group__append button",
+            },
+            { type: "sleep", ms: 1500 },
+            { type: "readTextOptional", selector: ".app-sidebar-left__summary" },
+            { type: "countElements", selector: "button.connection-fields__disconnect:not([disabled])" },
+            { type: "countElements", selector: '[data-testid="webview-start-capture-button"]:not([disabled])' },
+            { type: "startCaptureMessages" },
+            { type: "click", selector: '[data-testid="webview-start-capture-button"]' },
+            { type: "sleep", ms: 5000 },
+            { type: "stopCaptureMessages" },
+            { type: "readTextOptional", selector: ".waveform-stage__meta" },
+          ];
+
+          webviewState = await withTimeout(
+            vscode.commands.executeCommand("logicAnalyzer.__runEditorScenario", actions, {
+              viewType: LAC_EDITOR_VIEW_TYPE,
+              uri: fileUri.toString(),
+            }),
+            60000,
+            "__runEditorScenario(webview network)"
+          );
+        } catch (error) {
+          webviewError = String(error && error.message ? error.message : error);
+        }
+      }
+
+      const webviewEvents = (webviewState && webviewState.events) || [];
+      /**
+       * ⚠️ 事件下标必须与 `actions` **逐项对齐**（`waitForElement` 也占一个位置，
+       * 只是 result 为 undefined）。实测踩过一次：按「不产出 event」假设写错一位，
+       * 把 summary 当成断开按钮数读了，得出"UI 未进入已连接态"的假红。
+       *   [0] waitForElement
+       *   [1] input
+       *   [2] readValue
+       *   [3] click
+       *   [4] sleep
+       *   [5] readTextOptional(summary)
+       *   [6] countElements(disconnect)
+       *   [7] countElements(capture button)
+       */
+      const inputValue = webviewEvents[2]?.result;
+      const sidebarSummary = webviewEvents[5]?.result;
+      const disconnectEnabled = webviewEvents[6]?.result;
+      const captureEnabled = webviewEvents[7]?.result;
+      const capturedMessages = (webviewState && webviewState.capturedMessages) || [];
+
+      // ---- D6：Webview 侧栏连接链路 ----
+      if (webviewError) {
+        oracles.record("webview-connect-button-works", "fail", `驱动 Webview 失败：${webviewError}`);
+      } else if (disconnectEnabled !== 1) {
+        oracles.record(
+          "webview-connect-button-works",
+          "fail",
+          `点「网络」后 UI 未进入已连接态（断开按钮可用数=${disconnectEnabled}，summary=${JSON.stringify(sidebarSummary)}）`
+        );
+      } else {
+        oracles.record(
+          "webview-connect-button-works",
+          "pass",
+          `侧栏填 ${JSON.stringify(inputValue)} 点「网络」后 UI 显示已连接（summary=${JSON.stringify(sidebarSummary).slice(0, 80)}）`
+        );
+      }
+
+      // ---- D7：StabilityService 在本次 Webview 连接里真的建了连接 ----
+      //
+      // 一次成功的 Webview「网络」点击会产生 **2 条** 新连接：
+      //   ① `NetworkStabilityService.connect()`（心跳/质量监控用）
+      //   ② `hardwareDriverManager.connectToDevice('network', ...)`（驱动）
+      // 删掉 ① 后增量会掉到 1 ⇒ 本判据红。用增量而不是总数，避免被其它阶段的
+      // 连接数冲淡（M1 变异实测过：总数 4→3 时 `>=2` 没红，是假绿）。
+      const connectionsAdded = device.stats.connections - connectionsBeforeWebview;
+      if (connectionsAdded >= 2) {
+        oracles.record(
+          "stability-service-connected",
+          "pass",
+          `本次 Webview 连接新增 ${connectionsAdded} 条 TCP 连接（StabilityService + 驱动）`
+        );
+      } else {
+        oracles.record(
+          "stability-service-connected",
+          "fail",
+          `本次 Webview 连接只新增 ${connectionsAdded} 条 TCP 连接（期望 2）—— ` +
+            `NetworkStabilityService.connect() 未被调用`
+        );
+      }
+
+      // ---- D7b：心跳字节真的被发出（waitFor 轮询，不用固定 sleep）----
+      //
+      // ⚠️ 等待窗口必须**小于默认心跳间隔 5000ms**，否则「配置没接线、用了默认值」
+      //    也会在这段时间内发出一次心跳 ⇒ 判据假绿。
+      //    实测踩过（M2 变异）：窗口给 5s + 默认间隔 5s，恰好在边界收到 2 字节，判据没红。
+      //    ⇒ 窗口 = 配置间隔的 2 倍（2s），远小于默认 5s；配置真生效时至少能收到 1–2 次。
+      const heartbeatBaseline = device.stats.heartbeatBytes || 0;
+      let heartbeatObserved = device.stats.heartbeatBytes || 0;
+      try {
+        await waitFor(
+          () => {
+            heartbeatObserved = device.stats.heartbeatBytes || 0;
+            return heartbeatObserved > heartbeatBaseline;
+          },
+          HEARTBEAT_INTERVAL_MS * 2,
+          "设备侧收到心跳字节"
+        );
+      } catch {
+        /* 下方统一判 */
+      }
+      if (heartbeatObserved > heartbeatBaseline) {
+        oracles.record(
+          "heartbeat-reaches-device",
+          "pass",
+          `设备侧收到 ${heartbeatObserved} 字节心跳（间隔配置 ${HEARTBEAT_INTERVAL_MS}ms）`
+        );
+      } else {
+        oracles.record(
+          "heartbeat-reaches-device",
+          "fail",
+          `设备侧未收到任何心跳字节 —— startHeartbeat() 未生效或 heartbeatIntervalMs 未接线`
+        );
+      }
+
+      // ---- D8：驱动契约（设备侧看：驱动 socket 上收到的是固件帧，不是 JSON）----
+      //
+      // ⚠️ 判据里必须**扣掉心跳字节**：`discardedBytes` 同时包含
+      //    ① StabilityService 的心跳 0x00（合法）
+      //    ② 驱动发 JSON 的字节（缺陷）
+      //    只看 discarded>0 会把正常心跳判成协议错误（实测假红过一次）。
+      const framesDuringWebview = device.stats.frames.length;
+      const nonHeartbeatDiscards = device.stats.discardedBytes - device.stats.heartbeatBytes;
+      if (framesDuringWebview > 0 && nonHeartbeatDiscards <= 0) {
+        oracles.record(
+          "network-protocol-is-firmware-binary",
+          "pass",
+          `设备侧收到 ${framesDuringWebview} 个合法固件帧、非心跳丢弃 ${nonHeartbeatDiscards} 字节 ` +
+            `（心跳 ${device.stats.heartbeatBytes} 字节已扣除）—— 走的是二进制协议驱动`
+        );
+      } else {
+        oracles.record(
+          "network-protocol-is-firmware-binary",
+          "fail",
+          `设备侧收到 ${framesDuringWebview} 个合法帧、非心跳丢弃 ${nonHeartbeatDiscards} 字节 —— ` +
+            `产品发的不是固件二进制帧（见 D-9）`
+        );
+      }
+
+      // ---- D9：采集由 Webview 触发，且 payload 与侧栏表单一致 ----
+      const startCaptureMessage = capturedMessages.find(message => {
+        const payload = message && message.payload;
+        return message && message.command === "startCapture" && payload && payload.config;
+      });
+      const formConfig = startCaptureMessage && startCaptureMessage.payload.config;
+      if (!startCaptureMessage) {
+        oracles.record(
+          "capture-config-matches-form",
+          "fail",
+          `Webview 未发出 startCapture（捕获消息 ${capturedMessages.length} 条）`
+        );
+      } else if (formConfig.frequency !== 1000000 || formConfig.channels.length !== 24) {
+        oracles.record(
+          "capture-config-matches-form",
+          "fail",
+          `payload.config 与侧栏表单不一致：frequency=${formConfig.frequency}, channels=${formConfig.channels.length}`
+        );
+      } else {
+        oracles.record(
+          "capture-config-matches-form",
+          "pass",
+          `Webview 发出的 payload.config：frequency=${formConfig.frequency}, ` +
+            `channels=${formConfig.channels.length}（与侧栏表单一致）`
+        );
+      }
+
+      // ---- D10：startQualityMonitoring 间隔 30s，e2e 等不了 ----
+      //
+      // ⚠️ 这里**不用 delegate**：runner 的 delegate 对账只认「另一个 e2e 场景的
+      //    oracle」，而这条能力由 **jest 单测** 覆盖（`NetworkStabilityService.accurate.test.ts`
+      //    的定时器用例），不在 e2e 场景清单里。硬塞一个不相干的承接场景
+      //    （比如 network-scan）会让对账"通过"，但那正是 README 警告的
+      //    「写个任意 coveredBy 就把覆盖率挪走」的免责声明形态。
+    //    ⇒ 诚实记 not_exercised，并把承接方**具体到测试文件与用例**。
+      oracles.record(
+        "quality-monitoring",
+        "not_exercised",
+        "startQualityMonitoring 间隔 30s（NetworkStabilityService.ts:475-479），e2e 无法等待；" +
+          "由 tests/unit/services/NetworkStabilityService.accurate.test.ts 的定时器用例覆盖"
+      );
 
       // ---- D3/D4：产品主动发采集请求时，设备侧能否读懂 ----
       //
