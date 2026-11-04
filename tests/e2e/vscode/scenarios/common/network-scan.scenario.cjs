@@ -348,16 +348,23 @@ module.exports = {
       }
     }
 
-    // ---- 登记：设备发现本身不在本场景验 ----
+    // ---- 委托：设备发现链路的握手与解析由协议级模拟场景承接 ----
     //
-    // 本机没有网络逻辑分析器（且 BUG-3 说广播发现对官方固件无效），
-    // 所以"能不能真发现一台设备"在本环境**不可验**。
-    // 不要把它写成 pass，也不要写成 fail —— 它是 not_exercised，带原因。
-    oracles.record(
+    // 用户裁定（2026-11-04）：协议级模拟设备能让产品真实走完
+    // 「握手 → 解析」链路 ⇒ 算验证通过。
+    //
+    // 边界：`network-capture-mock` 用的是 `refreshDevice(ip, port)`，其内部就是
+    // `verifyPicoDevice`，因此握手与设备信息解析层面是等价的；但它**不覆盖**
+    // `scanForDevices` 里「扫描 254 个 IP 的端口探测」那一步。
+    // 后者由本场景的 `scan-completes-in-budget` / `config-takes-effect` 验。
+    oracles.delegate(
       "discovers-real-device",
-      "not_exercised",
-      "本机无网络逻辑分析器；且 BUG-3 已证 UDP 广播对官方固件无效，" +
-        "需一台真设备才能验。「扫不到设备」在本机不构成产品缺陷证据。"
+      "局域网无物理逻辑分析器；已委托 network-capture-mock 经固件二进制协议模拟器 " +
+        "验证握手与解析全链路（verifyPicoDevice + parseDeviceResponse）。" +
+        "⚠️ 该委托覆盖「握手与设备信息解析」；「扫描 254 个 IP 的端口探测」由本场景的 " +
+        "scan-completes-in-budget / config-takes-effect 覆盖。两者合起来才是完整的发现链路。",
+      "network-capture-mock",
+      ["product-discovers-mock", "handshake-content-matches"]
     );
   },
 };
