@@ -169,7 +169,9 @@ function run(name, overrides, expectations) {
   );
 
   run(
-    "7-b 未登记硬件场景 → EXIT=4 且点名（堵后门）",
+    // ⚠️ 走的是 hard-failure 分支（EXIT=1），不是 registry-mismatch（EXIT=4）：
+    //    「未登记就声明 needsHardware」属于硬失败，不可通过改清单以外的方式豁免。
+    "7-b 未登记硬件场景 → EXIT=1（hard-failure）且点名（堵后门）",
     {
       summary: [...base.summary, { ...HARDWARE_SKIPPED_RECORD, scenarioId: "hw-rogue" }],
       hardwareRegistered: HARDWARE_REGISTRY,
