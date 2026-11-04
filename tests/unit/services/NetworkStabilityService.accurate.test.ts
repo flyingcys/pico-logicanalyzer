@@ -124,6 +124,7 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
             if (key === 'heartbeatIntervalMs') return 8000;
             if (key === 'connectionTimeoutMs') return 18000;
             if (key === 'enableAutoReconnect') return false;
+            if (key === 'maxRetries') return 9;
             return defaultValue;
           })
         };
@@ -132,11 +133,25 @@ describe('NetworkStabilityService 精准业务逻辑测试', () => {
         expect(resolved).toEqual({
           heartbeatInterval: 8000,
           connectionTimeout: 18000,
-          autoReconnect: false
+          autoReconnect: false,
+          maxRetries: 9
         });
         expect(mockSource.get).toHaveBeenCalledWith('heartbeatIntervalMs', 5000);
         expect(mockSource.get).toHaveBeenCalledWith('connectionTimeoutMs', 10000);
         expect(mockSource.get).toHaveBeenCalledWith('enableAutoReconnect', true);
+        expect(mockSource.get).toHaveBeenCalledWith('maxRetries', 5);
+      });
+
+      it('resolveNetworkStabilityConfig 缺省时 maxRetries 应为 5（与 manifest default 一致）', () => {
+        // 模拟 VS Code：manifest 声明了 default 时 get() 返回 default，
+        // 而不是返回 undefined（后者属于「键完全不存在」的类型降级分支）。
+        const source = {
+          get: jest.fn((_key: string, defaultValue?: unknown) => defaultValue)
+        };
+
+        const resolved = resolveNetworkStabilityConfig(source);
+        expect(resolved.maxRetries).toBe(5);
+        expect(source.get).toHaveBeenCalledWith('maxRetries', 5);
       });
 
       it('resolveNetworkStabilityConfig 在未传源或类型不匹配时优雅降级', () => {

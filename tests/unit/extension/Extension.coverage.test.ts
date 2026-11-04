@@ -57,6 +57,7 @@ jest.mock('vscode', () => ({
           if (key === 'heartbeatIntervalMs') return 6666;
           if (key === 'connectionTimeoutMs') return 16666;
           if (key === 'enableAutoReconnect') return false;
+          if (key === 'maxRetries') return 7;
           return defaultValue ?? true;
         }),
       };
@@ -285,7 +286,8 @@ describe('VSCode Extension 主入口 — 覆盖率补充', () => {
       expect(networkStabilityServiceConstructor).toHaveBeenCalledWith({
         heartbeatInterval: 6666,
         connectionTimeout: 16666,
-        autoReconnect: false
+        autoReconnect: false,
+        maxRetries: 7
       });
     });
   });

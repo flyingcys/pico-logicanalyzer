@@ -85,6 +85,7 @@ export interface NetworkConfigurationSource {
  * - heartbeatIntervalMs -> heartbeatInterval（心跳检测间隔）
  * - connectionTimeoutMs -> connectionTimeout（连接超时时间）
  * - enableAutoReconnect -> autoReconnect（是否启用自动重连）
+ * - maxRetries -> maxRetries（最大重试次数）
  */
 export function resolveNetworkStabilityConfig(
   source?: NetworkConfigurationSource
@@ -96,11 +97,15 @@ export function resolveNetworkStabilityConfig(
   const heartbeatInterval = source.get<number>('heartbeatIntervalMs', 5000);
   const connectionTimeout = source.get<number>('connectionTimeoutMs', 10000);
   const autoReconnect = source.get<boolean>('enableAutoReconnect', true);
+  // fallback 5 与 package.json 的 logicAnalyzer.network.maxRetries default 及
+  // 本文件 defaultConfig.maxRetries 保持一致。
+  const maxRetries = source.get<number>('maxRetries', 5);
 
   return {
     ...(typeof heartbeatInterval === 'number' ? { heartbeatInterval } : {}),
     ...(typeof connectionTimeout === 'number' ? { connectionTimeout } : {}),
-    ...(typeof autoReconnect === 'boolean' ? { autoReconnect } : {})
+    ...(typeof autoReconnect === 'boolean' ? { autoReconnect } : {}),
+    ...(typeof maxRetries === 'number' ? { maxRetries } : {})
   };
 }
 
