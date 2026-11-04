@@ -171,6 +171,7 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 | **`connectDevice` / `startCapture` / `networkDiagnostics`** | 真宿主弹窗挂死 | 已实测 3 次，各 6000-6028ms 超时；单测已覆盖前置分支 |
 | **`export-persistence`** | `showSaveDialog` 不可自动化 | 底层落盘已由 `LACEditorProvider.exportPersistence.test.ts` 真写临时目录覆盖 |
 | **webview 采集主路径原不读配置** | 已由项 5 的 a4 覆盖 | 需求方选选项 1 |
+| **`.eslintcache` 被 git 跟踪** | 待单独清理，不属任何项 | `grep -n eslintcache .gitignore` → `:68`（已忽略）<br>但 `git ls-files` 显示仍被跟踪<br>`git log -- .eslintcache` → 历史遗留（`c2674d80` 等）<br>⇒ 每次 lint 产生无意义 diff。**修法**：`git rm --cached .eslintcache` |
 
 ---
 
@@ -203,6 +204,12 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
    Co-Authored-By: Claude Code <noreply@anthropic.com>
    ```
 5. **判据测的维度必须 == 出错的维度**；「改了却不红」要先自证是探针没打在生效路径上还是判据不判别
+6. **⚠️ 验收方的变异验证不得在共享工作区做**（2026-11-04 实际踩到）
+   - b3 在 05 的工作区直接 `sed -i` 打 MUTANT 补丁做验收，与 05 自己的变异实验撞车，
+     双方备份链脱节，一度分不清「谁还原失败了」。
+   - **正确做法**：`cp -r <repo> /tmp/verify-<ts>/` 用隔离副本；或采信对方的原始输出 + 要求能复跑。
+   - **变异验证一律加 `--no-cache`**：jest 缓存会让「恢复后的绿」是假的
+     （实测：源码仍有 `// MUTANT` 残留时，不带 `--no-cache` 跑出 4 passed）。
 
 ---
 
@@ -210,8 +217,8 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 
 | # | 项 | 状态 | commit | 验收结论 |
 |---|---|---|---|---|
-| 1 | P0-1a F1/Ctrl+Shift+D listener | ⬜ 待实现 | — | — |
-| 2 | P0-1b 删 Ctrl+Shift+M | ⬜ 待实现 | — | — |
+| 1 | P0-1a F1/Ctrl+Shift+D listener | ✅ 已验收 | `ff277a7c` | b3 在隔离副本跑 4 类变异（删两个监听 / toggle 改赋值 / 删清理），**每个只红对应判据**，确认判据相互独立 |
+| 2 | P0-1b 删 Ctrl+Shift+M | 🔄 实现中 | — | — |
 | 3 | P0-1c 删 1/2/3/4 | ⬜ 待实现 | — | — |
 | 4 | P0-2b maxRetries | ⬜ 待实现 | — | — |
 | 5 | P0-2a defaultSampleRate（选项 1） | ⬜ 待实现 | — | — |
