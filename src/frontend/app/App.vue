@@ -4,7 +4,7 @@ import {
   buildWebviewExportRequest,
   mergeWaveformRegionsIntoLacDocument
 } from '../core/services/exportRequestService';
-import { bindHostDocumentUpdates, initializeFrontend } from '../core/services/bootstrapService';
+import { bindHostDocumentUpdates, bindShortcutEvents, initializeFrontend } from '../core/services/bootstrapService';
 import { useSessionStore } from '../core/stores/sessionStore';
 import { useWaveformStore } from '../core/stores/waveformStore';
 import type { HostAdapter } from '../platform/host/types';
@@ -22,6 +22,7 @@ const host = inject<HostAdapter>('host');
 const title = computed(() => sessionStore.fileName || 'Logic Analyzer');
 const hasDocument = computed(() => Boolean(sessionStore.fileName));
 let stopHostDocumentUpdates: (() => void) | null = null;
+let stopShortcutEvents: (() => void) | null = null;
 
 function readExportFormat(payload: unknown): 'lac' | 'csv' | 'json' | 'vcd' {
   if (typeof payload !== 'object' || payload === null) {
@@ -68,6 +69,7 @@ onMounted(async () => {
   }
 
   keyboardShortcutManager.setCommandDispatcher(dispatchHostCommand);
+  stopShortcutEvents = bindShortcutEvents();
   stopHostDocumentUpdates = bindHostDocumentUpdates(host, document => {
     sessionStore.applyDocument(document);
   });
@@ -77,6 +79,8 @@ onMounted(async () => {
 onUnmounted(() => {
   stopHostDocumentUpdates?.();
   stopHostDocumentUpdates = null;
+  stopShortcutEvents?.();
+  stopShortcutEvents = null;
   keyboardShortcutManager.setCommandDispatcher(null);
 });
 </script>
