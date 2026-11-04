@@ -158,23 +158,45 @@ describe('ConfigurationManager 精准业务逻辑测试', () => {
     });
 
     it('应该按最后使用时间排序设备列表', async () => {
-      const device1: DeviceConfiguration = { ...testDevice, deviceId: 'device-1', lastUsed: '2023-01-01T00:00:00.000Z' };
-      const device2: DeviceConfiguration = { ...testDevice, deviceId: 'device-2', lastUsed: '2023-01-02T00:00:00.000Z' };
-      
-      await configManager.saveDeviceConfiguration(device1);
-      await configManager.saveDeviceConfiguration(device2);
-      
-      const devices = configManager.getAllDeviceConfigurations();
-      expect(devices.length).toBe(2);
-      
-      // 错误驱动学习发现：实际排序是按保存顺序，而不是时间戳
-      // 验证排序逻辑的真实行为
-      expect(devices[0].deviceId).toBe('device-1');
-      expect(devices[1].deviceId).toBe('device-2');
-      
-      // 验证时间戳确实被更新
-      expect(devices[0].lastUsed).not.toBe('2023-01-01T00:00:00.000Z');
-      expect(devices[1].lastUsed).not.toBe('2023-01-02T00:00:00.000Z');
+      let callCount = 0;
+      const mockedTimes = [
+        '2023-01-01T10:00:00.000Z', // device-1 save
+        '2023-01-01T10:00:05.000Z'  // device-2 save (5秒后，更新)
+      ];
+
+      const RealDate = global.Date;
+      const dateSpy = jest.spyOn(global, 'Date').mockImplementation(((...args: any[]) => {
+        if (args.length === 0) {
+          const ts = mockedTimes[callCount++] || '2023-01-01T12:00:00.000Z';
+          return new RealDate(ts);
+        }
+        return new (RealDate as any)(...args);
+      }) as any);
+      (global.Date as any).now = RealDate.now;
+      (global.Date as any).parse = RealDate.parse;
+      (global.Date as any).UTC = RealDate.UTC;
+
+      try {
+        const device1: DeviceConfiguration = { ...testDevice, deviceId: 'device-1' };
+        const device2: DeviceConfiguration = { ...testDevice, deviceId: 'device-2' };
+
+        await configManager.saveDeviceConfiguration(device1);
+        await configManager.saveDeviceConfiguration(device2);
+
+        const devices = configManager.getAllDeviceConfigurations();
+        expect(devices.length).toBe(2);
+
+        // 修正原测试断言反向缺陷：产品契约是按最后使用时间降序排序，最新使用的 device-2 应排在第一位
+        expect(devices[0].deviceId).toBe('device-2');
+        expect(devices[1].deviceId).toBe('device-1');
+
+        // 验证时间戳确实按降序排列
+        expect(new Date(devices[0].lastUsed).getTime()).toBeGreaterThan(new Date(devices[1].lastUsed).getTime());
+        expect(devices[0].lastUsed).toBe('2023-01-01T10:00:05.000Z');
+        expect(devices[1].lastUsed).toBe('2023-01-01T10:00:00.000Z');
+      } finally {
+        dateSpy.mockRestore();
+      }
     });
 
     it('应该能够删除设备配置', async () => {
