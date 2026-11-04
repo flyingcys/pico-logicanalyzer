@@ -226,8 +226,8 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 | 1 | P0-1a F1/Ctrl+Shift+D listener | ✅ 已验收 | `ff277a7c` | b3 在隔离副本跑 4 类变异（删两个监听 / toggle 改赋值 / 删清理），**每个只红对应判据**，确认判据相互独立 |
 | 2 | P0-1b 删 Ctrl+Shift+M | ✅ 已验收 | `a2c4639f` | 产品源码零残留；b3 隔离副本反向变异（加回声明）→ 注册表 + 用户可见清单**双层同时击红** |
 | 3 | P0-1c 删 1/2/3/4 | ✅ 已验收 | `6c67cb3d` | 产品源码零残留（含 `triggerChannelToggle` 死代码）；b3 隔离副本反向变异 → 双层同时击红；`ShortcutHelpDialog` 测试改为模式匹配断言 |
-| 4 | P0-2b maxRetries | 🔄 实现中 | — | fallback=5；三个判据坑已在任务中写明 |
-| 5 | P0-2a defaultSampleRate（选项 1） | ⬜ 待实现 | — | — |
+| 4 | P0-2b maxRetries | ✅ 已验收 | `1e12627c` | fallback=5；b3 三个变异（M1 fallback→3 / M2 删读取 / **M3 删调用点**）全部击红。05 额外自查出 `Extension.coverage.test.ts:285` 的 `toEqual` 也会红，并加哨兵值 7 锁住调用点 |
+| 5 | P0-2a defaultSampleRate（选项 1） | 🔄 实现中 | — | 5 处改动；**a4-3 `browserHost.ts` 最易漏**（web-app 入口，测试薄） |
 | 6 | P1-1 e2e 进 CI | ⬜ 待实现 | — | — |
 | 7 | P1-2 needsHardware 门控 | ⬜ 待实现 | — | — |
 | 8 | P2-1 mock 改由 webview 驱动 | ⬜ 待实现 | — | — |
