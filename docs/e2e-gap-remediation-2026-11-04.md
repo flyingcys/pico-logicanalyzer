@@ -307,3 +307,113 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 | B | 删除三文件死代码簇 | ✅ 已验收 | `049e0621` | 净删 1025 行。**bundle 字节数删前后完全相同（2,427,381）**，配合「临时 import → +565,167 字节」变异，双向证明不进产物。b3 额外核了「删除是否丢失覆盖」：六个模块各有独立单测 |
 
 **图例**：⬜ 待实现 / 🔄 实现中 / 🔍 待验收 / ✅ 已验收 / ❌ 验收未通过
+
+---
+
+## 六、覆盖缺口与后续推进台账（2026-11-05 需求方裁定）
+
+> **裁定原话**：「保留现在的 14/113，把以上写清留在台账，等真机到了推进，现在只更新文档」；
+> 对「UI 场景用 `copyFileSync` 准备 fixture、不走 `showSaveDialog` 另建一份」这一项，
+> 需求方问「打开真文件这个有价值吗」，评估结论为**低价值、不单独开项**（见 §6.3）。
+>
+> ⚠️ **本节的「不做」不是遗漏**：每一条都写明为什么不做、由什么承接，防止后人「顺手补上」。
+
+### 6.1 当前软件层基线（2026-11-05 实跑复核，非凭印象）
+
+```
+$ xvfb-run -a npm run test:e2e:noxvfb -- --allow-registered-incomplete   → EXIT=0
+$ cat tests/e2e/vscode/artifacts/latest/summary.json
+scenarioCount: 14
+oracle: {'pass': 108, 'fail': 0, 'blocked': 1, 'not_exercised': 4}   total: 113
+delegateProblems: []
+默认模式（不带开关）：EXIT=3（语义未被洗掉，见 README §三）
+白名单模式：EXIT=0（5 条未完成项全部命中 known-incomplete.cjs）
+
+全量单测: 2458 passed / 107 skipped / 0 failed（96 suites）
+CI:       连续 5 次绿，含真宿主 e2e 步骤真跑
+```
+
+| 场景 | oracle | overall |
+|---|---|---|
+| commands-coverage | 10 | not_exercised（3 条登记未验） |
+| open-analyzer | 7 | pass |
+| create-synthetic-capture | 5 | pass |
+| network-scan | 5 | pass |
+| ui-waveform | 6 | pass |
+| ui-channel-config | 7 | pass |
+| ui-trigger-config | 10 | pass |
+| ui-export-button | 5 | blocked（1 条登记未验） |
+| ui-decoder / -spi / -uart / -can | 7 / 9 / 9 / 10 | pass |
+| ui-default-sample-rate | 5 | pass |
+| network-capture-mock | 18 | not_exercised（1 条登记未验） |
+
+**已覆盖的软件层能力**：命令注册对账与前置分支、`.lac` 真落盘与解析、DSL→LAC、
+网络扫描预算/配置/可观测、Waveform Canvas 三层渲染、通道/触发/解码四大总线 UI 参数联动、
+导出按钮状态机、`defaultSampleRate` 从 manifest → 宿主 → Webview 全链路、
+Webview 侧栏连接 → `NetworkStabilityService` → 心跳 → 采集帧 → 设备侧逐字节对账。
+
+### 6.2 五条未到 pass 的 oracle：**明确不做，永久登记（等真机再议）**
+
+| oracle | 状态 | 为什么自动化做不到 | 现在由谁承接 | 处置 |
+|---|---|---|---|---|
+| `commands-coverage / not-executed:connectDevice` | not_exercised | `extension.ts:143` `await showWarningMessage` 在真宿主**永不 resolve**（探针实测各 3 次 6001-6028ms 超时）；并发 `notifications.clearAll` 对照组仍 6015ms 超时 | `Extension.coverage.test.ts:602-635`（3 条单测覆盖网络连接分支、缺端口、非法端口） | **不补 e2e**。已在 `known-incomplete.cjs` 登记；真机/可交互宿主到位后再评估 |
+| `commands-coverage / not-executed:startCapture` | not_exercised | `extension.ts:234` `await showWarningMessage` 同上；对照组 208ms 返回但走「用户取消」分支，未触达采集逻辑 | `Extension.coverage.test.ts:728-755`（覆盖无设备点击连接/取消、采集参数取消） | **不补 e2e**，同上 |
+| `commands-coverage / not-executed:networkDiagnostics` | not_exercised | `extension.ts:365` `await showInputBox` 同上；对照组 206ms 返回但走取消分支 | `Extension.coverage.test.ts:710-726`（覆盖取消、合法地址、非法地址） | **不补 e2e**，同上 |
+| `ui-export-button / export-persistence` | blocked | `LACEditorProvider.exportData:463` 的 `showSaveDialog` 永不 resolve（README §5.1）；它是 private 方法、无 `vscode.commands` 入口，**不能加 `targetUri` 测试后门**（e2e 第一原则） | `LACEditorProvider.exportPersistence.test.ts`（临时目录真写文件，4 种格式 + 用户取消分支） | **不补 e2e**，已在白名单登记；真机/可交互宿主到位后再评估 |
+| `network-capture-mock / quality-monitoring` | not_exercised | `NetworkStabilityService.ts:475-479` 质量监控间隔 30s，e2e 等不起；**故意不缩短**（改产品配置迁就测试＝绕过产品机制） | `NetworkStabilityService.accurate.test.ts` 定时器用例 | **不补 e2e**，已在白名单登记 |
+
+> ⚠️ 这 5 条是**机制层面做不到**，不是「还没写」。
+> 任何一条要从 `known-incomplete.cjs` 移除、或有人想用 `continue-on-error` /
+> `--allow-incomplete` 洗成绿，都必须先改白名单 + 跑 17 例自检 + 在台账留痕。
+
+### 6.3 「打开真文件」：**明确不做**（需求方 2026-11-05 裁定）
+
+- **议题**：12 个 UI 场景用 `copyFileSync(fixture → workspaceDir)` 准备输入、再
+  `vscode.open(fileUri)` 拉起 Custom Editor；有人提出应改成走产品 `showSaveDialog`
+  另存一份「真文件」再打开，以覆盖「打开真文件」这条路。
+- **核实**：这 12 个场景**每一个都真的执行了 `vscode.open`**（`ui-waveform` 3 处、
+  `ui-export-button` 4 处、其余各 1-2 处），产品「打开 Custom Editor → 解析 LAC →
+  渲染 Webview」已被重复验证几十次；`copyFileSync` 只是**给产品准备输入**，
+  按 e2e 第一原则属环境准备，不是替产品做决策。
+- **不做理由**：
+  1. 单独建一个「打开真文件」场景，断言的是**测试侧自己的 `copyFileSync` 是否成功**，
+     不是产品行为；产品坏了它不会红，测试侧坏了它才红 —— 测的维度错；
+  2. `showSaveDialog` 在真宿主**永不 resolve**（README §5.1 / `_probe-dialog-blocking`
+     实测），「另存真文件」这条路本身就走不通，硬做要么挂死要么造后门；
+  3. 边际收益为零：`open-analyzer` 场景已验证产品命令真落盘 + `vscode.open` 拉起面板。
+- **结论**：**不新增场景、不改现有 12 个场景**。此条留在台账作为「想过了、不做」的证据。
+
+### 6.4 **等真机**再推进（唯一真正的后续阶段）
+
+> 需求方裁定：**「等真机到了推进」**。固件可编译
+> （`docs/hardware-validation/records/2026-11-03-pico-firmware-build-proven.md`），
+> **烧录待需求方授权**。在此之前以下全是**待办，不是已覆盖**。
+
+| # | 真机能力 | 为什么 mock/TCP 模拟设备测不了 | 上真机后具体断言什么 | 状态 |
+|---|---|---|---|---|
+| H1 | USB CDC-ACM 物理串口枚举与连接 | mock 是 TCP socket；物理路径依赖 OS 串口节点、`@serialport/bindings-cpp`、VID/PID（2E8A:000A）、DTR/RTS 复位脉冲 | 插入后 1s 内枚举成功；二进制握手返回真实固件版本；DMA 样本与外加信号时序吻合 | ⬜ 等真机 + 授权 |
+| H2 | DMA 缓冲区 overrun / 高频采样极限 | mock 数据是数学理想数组，无物理吞吐瓶颈与 SRAM 溢出 | 24MHz×8 通道下 `OVERRUN` 标记能被驱动截获并传至 Webview 告警；长采样无累积时钟漂移 | ⬜ 等真机 |
+| H3 | PIO 硬件触发延时与毛刺抑制 | 软件 DSL 是内存数组 `findTriggerIndex`；PIO 是纳秒级 GPIO 状态机直接启动 DMA | 信号发生器输入预/后触发脉冲，首个样本点与物理跳变严格对齐 | ⬜ 等真机 |
+| H4 | 物理 USB 异常拔插与重连恢复 | mock TCP 断开是 `socket.destroy()`（OS 发 FIN/RST）；物理拔出是总线断电，驱动抛 `ENOENT`/`EBADF` | 采集中拔出：不崩溃、状态转 Disconnected；重插后自愈重连 | ⬜ 等真机 |
+| H5 | 电气特性与时钟漂移 | DTR/RTS 电平、真实波特率误差、晶振温漂均无软件等价物 | 波特率线控正确；长时采样采样率不随温度累积偏移 | ⬜ 等真机 |
+| H6 | 真机下的「Webview 参数 → `CAPTURE_REQUEST` → 波形上屏」全链 | 项 8 已把 Webview 侧栏连接 → StabilityService → 心跳 → 采集触发跑通，但**设备侧逐字节对账（`tcp-capture-sample-content`）走的仍是 D5 驱动直连**（`new LogicAnalyzerDriverClass`），不是 webview 路径；且无真实 PIO/DMA | 真实设备回传样本与 UI 表单参数、Canvas 光栅化结果三方一致 | ⬜ 等真机（软件层**部分**逼近：webview→设备链路已通，webview→样本内容对账未通） |
+
+**软件层可补但本批不做的**（留待需求方后续排期，不混进真机阶段）：
+- `LIN` / `I2S` / `StreamingI2C` 的 UI 解码场景（四大核心总线已闭环，边际收益递减；
+  底层 decoder 单测已有 `tests/unit/decoders/protocols/` 覆盖）；
+- Webview 快捷键 `F1` / `Ctrl+Shift+D` 的真 DOM 事件派发（单测已锁 `uiStore`，
+  e2e 合成事件不经过真实物理碰撞检测）；
+- 流式采集（串口 Chunk 连续灌入）下的 Canvas 掉帧/微任务饥饿（现有场景均为静态
+  `.lac` 文件一次性解析）。
+
+### 6.5 本批收工判定
+
+```
+软件层：14 场景 / 113 oracle，pass=108 / fail=0 / blocked=1 / not_exercised=4
+        5 条未到 pass 的项全部「机制做不到 + 已登记 + 单测承接」，无遗漏
+真机层：0 覆盖，6 项待办（H1-H6），烧录待授权
+文档层：本节即「为什么不做」的留痕，防止后人顺手补假绿
+```
+
+**结论：现在收工，等真机。** 未经需求方授权，不烧录固件、不新增真机场景、
+不改白名单、不为凑覆盖率动现有 14/113。
