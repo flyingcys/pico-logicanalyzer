@@ -172,7 +172,8 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 | **`connectDevice` / `startCapture` / `networkDiagnostics`** | 真宿主弹窗挂死 | 已实测 3 次，各 6000-6028ms 超时；单测已覆盖前置分支 |
 | **`export-persistence`** | `showSaveDialog` 不可自动化 | 底层落盘已由 `LACEditorProvider.exportPersistence.test.ts` 真写临时目录覆盖 |
 | **webview 采集主路径原不读配置** | 已由项 5 的 a4 覆盖 | 需求方选选项 1 |
-| **`.eslintcache` 被 git 跟踪** | 待单独清理，不属任何项 | `grep -n eslintcache .gitignore` → `:68`（已忽略）<br>但 `git ls-files` 显示仍被跟踪<br>`git log -- .eslintcache` → 历史遗留（`c2674d80` 等）<br>⇒ 每次 lint 产生无意义 diff。**修法**：`git rm --cached .eslintcache` |
+| ~~**`.eslintcache` 被 git 跟踪**~~ | ✅ **已清理**（`bf0e25f5`） | `git rm --cached` 解除跟踪；b3 独立验证 `npm run lint` 后 `git status` 完全空输出 |
+| ~~**三文件死代码簇**~~ | ✅ **已清理**（`049e0621`） | `stage7-self-test.ts` / `week3-self-test.ts` / `test-decoder-integration.ts`，净删 1025 行。**bundle 字节数删前后完全相同（2,427,381）** —— 铁证不进产物。删前核实：三份文件头均为自测性质、六个被覆盖模块各有独立单测、CI 门禁零依赖 |
 
 ---
 
@@ -269,5 +270,7 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 | 6 | P1-1 e2e 进 CI | ✅ 已验收 | `ceb4b269` `aa8c1f61` `a798f1ed` | **CI 24 步首次全绿**（run `41882205445`），含 e2e 真跑。b3 做了 6 个独立变异（含 status 改名、stale）全部符合预期；EXIT=3 默认语义未被洗掉。CI 过程中还暴露并修掉两个既有缺陷：`LogicAnalyzerDriver.test.ts` 遗留 60s 定时器崩溃、`safeDetect` 定时器泄漏（**产品真 bug**） |
 | 7 | P1-2 needsHardware 门控 | ✅ 已验收 | `92b77b75` | CI 连续 2 次绿（`41926526379`）。b3 **亲自攻后门**（给 `network-capture-mock` 加 `needsHardware: true`）→ EXIT=1 并点名，堵死。b3 做 6 个独立变异（含「硬件跳过不能洗白新增未登记」）全部符合。自检 17 例全过。05 主动修了「子集运行 stale 误判」 |
 | 8 | P2-1 mock 改由 webview 驱动 | ✅ 已验收 | `1a7c5216` | **零产品源码改动**。主路径改真 webview 驱动，18 oracle（17 pass + 1 登记未验）。b3 独立跑 M1/M2/M5 三个变异全部命中；05 自报并修掉两个假绿（绝对数→增量、窗口=默认值→2×配置间隔），b3 复现确认修好 |
+| A | 解除 `.eslintcache` 跟踪 | ✅ 已验收 | `bf0e25f5` | b3 独立验证 `npm run lint` 后 `git status` 完全空输出（改动前每次都有 ` M .eslintcache`） |
+| B | 删除三文件死代码簇 | ✅ 已验收 | `049e0621` | 净删 1025 行。**bundle 字节数删前后完全相同（2,427,381）**，配合「临时 import → +565,167 字节」变异，双向证明不进产物。b3 额外核了「删除是否丢失覆盖」：六个模块各有独立单测 |
 
 **图例**：⬜ 待实现 / 🔄 实现中 / 🔍 待验收 / ✅ 已验收 / ❌ 验收未通过
