@@ -1,5 +1,7 @@
 # e2e 覆盖缺口与修复台账（2026-11-04）
 
+> **✅ 状态：全部结项（2026-11-05）。** 8 项 e2e 缺口 + 2 项技术债均已实现并验收，CI 连续 5 次绿。
+>
 > **本文档是 2026-11-04 双方（b3 / 05）9 轮 PK 的全部结论，作为逐项实施的唯一依据。**
 > 需求方于同日裁定：**一项一项实现，05 实现、b3 验收，双方 PK 认同后才进入下一项。**
 >
@@ -9,21 +11,52 @@
 
 ---
 
-## 零、当前 e2e 基线（实测，勿凭印象）
+## ⚠️ 本批工作的边界（必读）
+
+**全部 10 项都是纯软件层。真机验证一项都没做。**
+
+| 真机才能验的 | 为什么 mock 测不了 |
+|---|---|
+| DMA 溢出 / 缓冲区 overrun | 需要真实数据吞吐压力 |
+| PIO 硬件触发延时 | 纳秒级物理时序 |
+| USB 物理拔插 | `ENOENT` / `EBADF` 异常路径 |
+| 电气特性 | DTR/RTS 电平、真实波特率时序误差 |
+| 晶振温漂 | 采样率累积漂移 |
+
+固件可编译（`docs/hardware-validation/records/2026-11-03-pico-firmware-build-proven.md`），
+但**烧录待需求方授权**。这 10 项闭环不代表产品可在真机上工作。
+
+---
+
+## 零、e2e 基线：开工前 vs 结项后
+
+### 开工前（`ac9f7bac`，本台账的起点）
 
 ```
 13 场景 / 99 条 oracle
 pass=95  not_exercised=3  blocked=1  fail=0
 EXIT=3（无 fail，但有未验项 —— 按设计「有未验项就不算通过」）
 
-✅ open-analyzer / create-synthetic-capture / network-scan / network-capture-mock
-✅ ui-waveform / ui-channel-config / ui-trigger-config / ui-decoder
-✅ ui-decoder-spi / ui-decoder-uart / ui-decoder-can
 ⚠️ commands-coverage（3 条命令 not_exercised）
 ⛔ ui-export-button（export-persistence blocked）
+❌ CI 连续 8 次全红（当时未知，项 6 才发现）
 ```
 
-全量耗时 **97 秒**（summary.json 时间戳跨度）。
+### 结项后（`049e0621`，b3 独立复测）
+
+```
+14 场景 / 113 条 oracle
+pass=108  not_exercised=4  blocked=1  fail=0
+默认模式    EXIT=3（语义未被洗掉）
+白名单模式  EXIT=0（5 条未完成项全部命中 known-incomplete.cjs）
+delegateProblems = []
+
+全量单测: 2458 passed / 107 skipped / 0 failed（96 suites）
+CI:       连续 5 次绿，含真宿主 e2e 步骤真跑
+```
+
+**新增场景**：`ui-default-sample-rate`（项 5 落地的配置穿透判据）。
+**oracle 净增 14 条**（含项 8 给 `network-capture-mock` 补的 5 条 webview 路径判据）。
 
 ---
 
@@ -38,7 +71,7 @@ EXIT=3（无 fail，但有未验项 —— 按设计「有未验项就不算通�
 | **改动位置** | `src/frontend/core/utils/KeyboardShortcutManager.ts:433,440` 派发点<br>消费方：`uiStore.showShortcutHelp` / `uiStore.activeTab` |
 | **判据** | 按 F1 后 `uiStore.showShortcutHelp === true`；按 Ctrl+Shift+D 后 `uiStore.activeTab === 'decoder'` |
 | **变异验证** | 删掉 listener → 判据必红 |
-| **状态** | ⬜ 待实现 |
+| **状态** | ✅ 已验收（`ff277a7c`） |
 
 ### 项 2 — P0-1b：删 Ctrl+Shift+M 声明
 
@@ -50,7 +83,7 @@ EXIT=3（无 fail，但有未验项 —— 按设计「有未验项就不算通�
 | **改动位置** | `KeyboardShortcutManager.ts:269-275` 整块删除 |
 | **判据** | `getShortcutsByCategory()` 不再含 `toggle-measurement-panel` |
 | **变异验证** | 保留声明 → 判据红 |
-| **状态** | ⬜ 待实现 |
+| **状态** | ✅ 已验收（`a2c4639f`） |
 
 ### 项 3 — P0-1c：删 1/2/3/4 通道切换声明
 
@@ -61,7 +94,7 @@ EXIT=3（无 fail，但有未验项 —— 按设计「有未验项就不算通�
 | **判定** | 属**未完成的新功能**（L1 三问：无它时既有路径已成立）⇒ 删声明，不做半成品 |
 | **改动位置** | `KeyboardShortcutManager.ts:225,233,241,249` 四条<br>`triggerChannelToggle` 方法若成死代码一并删 |
 | **判据** | `getShortcutsByCategory()` 不再含 `toggle-channel-*` |
-| **状态** | ⬜ 待实现 |
+| **状态** | ✅ 已验收（`6c67cb3d`） |
 
 ### 项 4 — P0-2b：`maxRetries` 配置接线
 
@@ -72,7 +105,7 @@ EXIT=3（无 fail，但有未验项 —— 按设计「有未验项就不算通�
 | **调用点（实测 2 处）** | `src/extension.ts:86`<br>`src/providers/LACEditorProvider.ts:795` |
 | **判据** | ① `NetworkStabilityService.accurate.test.ts:133` 的 `toEqual` 同步加 `maxRetries: 5`<br>② 新增「缺省时返回 5」用例（**mock 的 `get` 必须返回 `defaultValue`，不能返回 `undefined`**） |
 | **变异验证** | M1 fallback 5→3 → ②双断言必红<br>M2 删掉读取 → ①②必红 |
-| **状态** | ⬜ 待实现 |
+| **状态** | ✅ 已验收（`1e12627c` + 补漏 `d9be6fa4`） |
 
 > ⚠️ **`:142` 的「优雅降级」测试不会因本改动变红** —— 因为 mock 的 `get` 返回 `undefined`，
 > 被 `typeof !== 'number'` 过滤掉。所以它**不能**用来验证「缺省 5」。
@@ -125,7 +158,7 @@ M4  fallback 改 3000000     → ③ 必红
 M5  browserHost 漏改        → web-app 编译失败或单测红
 ```
 
-**状态** | ⬜ 待实现 |
+**状态** | ✅ 已验收（后端 `e3747f35` / 前端 `d36f5f05`） |
 
 ### 项 6 — P1-1：e2e 接入 CI
 
@@ -135,7 +168,7 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 | **可行性** | 实测全量 97 秒 |
 | **CI 步骤** | `sudo apt-get install -y xvfb`<br>cache `.vscode-test/`<br>`npm run build && npm run build:e2e-libs`（`build` 的 clean 会删掉 e2e-libs）<br>`xvfb-run -a npm run test:e2e` |
 | **判据** | PR 上 e2e 真跑并影响退出码 |
-| **状态** | ⬜ 待实现 |
+| **状态** | ✅ 已验收（`ceb4b269` + `aa8c1f61` + `a798f1ed`） |
 
 > 同样被排除的还有 `test:frontend:smoke`（`webview-browser-smoke.js`，带真 Chrome 验 SPI 渲染）。
 
@@ -149,7 +182,7 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 | **判据** | ① 已登记硬件场景 + 无硬件 → 跳过但生成 `not_exercised` summary（`hardware-unavailable`），默认仍 EXIT=3 ② **未登记却声明 needsHardware → 非 0 并点名**（堵「加个标记让 oracle 消失」的后门）③ 登记表 stale（登记了但场景不存在/未声明）→ 非 0 ④ 硬件跳过项不参与白名单比对，但必须留痕 |
 | **变异验证** | ① 删掉门控 → 场景变 fail ② 给未登记场景加 `needsHardware: true` → EXIT 非 0 ③ 登记表写一个不存在的场景 → EXIT 非 0 ④ 已登记场景无硬件 → EXIT=0 且 summary 有记录、`profileRemoved=true` |
 | **实测要点** | `profileRemoved` 必须显式 `true`（未启动宿主即无残留），否则 gate 判为残留 → EXIT=1；子集运行（`--scenario`）时未跑到的登记项**不算 stale**，只对本次已执行场景强制 |
-| **状态** | 🔄 已实现，待验收 |
+| **状态** | ✅ 已验收（`92b77b75`） |
 
 ### 项 8 — P2-1：`network-capture-mock` 改由 webview 驱动
 
@@ -159,7 +192,7 @@ M5  browserHost 漏改        → web-app 编译失败或单测红
 | **被绕过的链路** | `LACEditorProvider.connectToNetworkDevice` → `NetworkStabilityService.connect()` + `startHeartbeat()` + `startQualityMonitoring()` —— **e2e 一条都没走到** |
 | **改法** | 用 `__runEditorScenario` 驱动侧栏填 `127.0.0.1:<port>` 点「网络」<br>让 bundle 内的 `connectToNetworkDevice` 跑通 |
 | **判据** | 原有 12 条 oracle 保持 pass + 新增至少 1 条证明走了 `NetworkStabilityService` |
-| **状态** | ⬜ 待实现 |
+| **状态** | ✅ 已验收（`1a7c5216` + `76c5cb96`） |
 
 ---
 
